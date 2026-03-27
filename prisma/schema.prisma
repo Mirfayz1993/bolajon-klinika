@@ -1,0 +1,439 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  ADMIN
+  HEAD_DOCTOR
+  DOCTOR
+  HEAD_NURSE
+  NURSE
+  HEAD_LAB_TECH
+  LAB_TECH
+  RECEPTIONIST
+  SPEECH_THERAPIST
+  MASSAGE_THERAPIST
+  SANITARY_WORKER
+}
+
+enum AppointmentType {
+  CHECKUP
+  FOLLOW_UP
+  SPEECH_THERAPY
+  MASSAGE
+  LAB_TEST
+}
+
+enum AppointmentStatus {
+  SCHEDULED
+  IN_QUEUE
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+  NO_SHOW
+}
+
+enum PaymentMethod {
+  CASH
+  CARD
+  BANK_TRANSFER
+  CLICK
+  PAYME
+}
+
+enum PaymentCategory {
+  CHECKUP
+  LAB_TEST
+  SPEECH_THERAPY
+  MASSAGE
+  TREATMENT
+  INPATIENT
+}
+
+enum PaymentStatus {
+  PAID
+  PENDING
+  PARTIAL
+  CANCELLED
+  REFUNDED
+}
+
+enum BedStatus {
+  AVAILABLE
+  OCCUPIED
+  MAINTENANCE
+}
+
+enum LabTestStatus {
+  PENDING
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+}
+
+enum MedicineTransactionType {
+  STOCK_IN
+  STOCK_OUT
+}
+
+enum SalaryStatus {
+  PENDING
+  PAID
+}
+
+enum QueueStatus {
+  WAITING
+  CALLED
+  DONE
+}
+
+enum NotificationStatus {
+  PENDING
+  SENT
+  FAILED
+}
+
+model User {
+  id               String   @id @default(cuid())
+  name             String
+  phone            String   @unique
+  email            String?  @unique
+  password         String
+  role             Role
+  isActive         Boolean  @default(true)
+  specializationId String?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  specialization Specialization?  @relation(fields: [specializationId], references: [id])
+  appointments   Appointment[]    @relation("DoctorAppointments")
+  labTests       LabTest[]
+  medicalRecords MedicalRecord[]
+  schedules      Schedule[]
+  salaries       Salary[]
+  auditLogs      AuditLog[]
+
+  @@map("users")
+}
+
+model Patient {
+  id             String   @id @default(cuid())
+  firstName      String
+  lastName       String
+  fatherName     String
+  phone          String
+  jshshir        String   @unique
+  birthDate      DateTime
+  district       String?
+  houseNumber    String?
+  medicalHistory String?
+  allergies      String?
+  telegramChatId String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  appointments         Appointment[]
+  payments             Payment[]
+  labTests             LabTest[]
+  admissions           Admission[]
+  medicalRecords       MedicalRecord[]
+  medicineTransactions MedicineTransaction[]
+  notifications        Notification[]
+
+  @@map("patients")
+}
+
+model Specialization {
+  id        String   @id @default(cuid())
+  name      String   @unique
+  createdAt DateTime @default(now())
+
+  users User[]
+
+  @@map("specializations")
+}
+
+model Appointment {
+  id        String            @id @default(cuid())
+  patientId String
+  doctorId  String
+  type      AppointmentType
+  dateTime  DateTime
+  status    AppointmentStatus @default(SCHEDULED)
+  roomId    String?
+  notes     String?
+  createdAt DateTime          @default(now())
+  updatedAt DateTime          @updatedAt
+
+  patient  Patient   @relation(fields: [patientId], references: [id])
+  doctor   User      @relation("DoctorAppointments", fields: [doctorId], references: [id])
+  room     Room?     @relation(fields: [roomId], references: [id])
+  payments Payment[]
+  queue    Queue?
+
+  @@map("appointments")
+}
+
+model Payment {
+  id            String          @id @default(cuid())
+  patientId     String
+  appointmentId String?
+  admissionId   String?
+  amount        Decimal         @db.Decimal(12, 2)
+  method        PaymentMethod
+  category      PaymentCategory
+  status        PaymentStatus   @default(PAID)
+  description   String?
+  createdAt     DateTime        @default(now())
+
+  patient     Patient      @relation(fields: [patientId], references: [id])
+  appointment Appointment? @relation(fields: [appointmentId], references: [id])
+  admission   Admission?   @relation(fields: [admissionId], references: [id])
+
+  @@map("payments")
+}
+
+model LabTestType {
+  id          String   @id @default(cuid())
+  name        String   @unique
+  price       Decimal  @db.Decimal(12, 2)
+  description String?
+  normalRange String?
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+
+  labTests LabTest[]
+
+  @@map("lab_test_types")
+}
+
+model LabTest {
+  id          String        @id @default(cuid())
+  patientId   String
+  testTypeId  String
+  labTechId   String
+  status      LabTestStatus @default(PENDING)
+  results     Json?
+  notes       String?
+  completedAt DateTime?
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  patient  Patient     @relation(fields: [patientId], references: [id])
+  testType LabTestType @relation(fields: [testTypeId], references: [id])
+  labTech  User        @relation(fields: [labTechId], references: [id])
+
+  @@map("lab_tests")
+}
+
+model Medicine {
+  id         String   @id @default(cuid())
+  name       String
+  type       String
+  quantity   Int      @default(0)
+  price      Decimal  @db.Decimal(12, 2)
+  expiryDate DateTime
+  supplierId String?
+  minStock   Int      @default(10)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  supplier     Supplier?             @relation(fields: [supplierId], references: [id])
+  transactions MedicineTransaction[]
+
+  @@map("medicines")
+}
+
+model MedicineTransaction {
+  id          String                  @id @default(cuid())
+  medicineId  String
+  type        MedicineTransactionType
+  quantity    Int
+  patientId   String?
+  admissionId String?
+  notes       String?
+  createdAt   DateTime                @default(now())
+
+  medicine  Medicine   @relation(fields: [medicineId], references: [id])
+  patient   Patient?   @relation(fields: [patientId], references: [id])
+  admission Admission? @relation(fields: [admissionId], references: [id])
+
+  @@map("medicine_transactions")
+}
+
+model Supplier {
+  id        String   @id @default(cuid())
+  name      String
+  phone     String
+  address   String?
+  company   String?
+  createdAt DateTime @default(now())
+
+  medicines Medicine[]
+
+  @@map("suppliers")
+}
+
+model Room {
+  id         String   @id @default(cuid())
+  floor      Int
+  roomNumber String
+  type       String
+  capacity   Int      @default(1)
+  isActive   Boolean  @default(true)
+  createdAt  DateTime @default(now())
+
+  beds         Bed[]
+  appointments Appointment[]
+
+  @@unique([floor, roomNumber])
+  @@map("rooms")
+}
+
+model Bed {
+  id        String    @id @default(cuid())
+  roomId    String
+  bedNumber String
+  status    BedStatus @default(AVAILABLE)
+
+  room       Room        @relation(fields: [roomId], references: [id])
+  admissions Admission[]
+
+  @@unique([roomId, bedNumber])
+  @@map("beds")
+}
+
+model Admission {
+  id            String    @id @default(cuid())
+  patientId     String
+  bedId         String
+  admissionDate DateTime  @default(now())
+  dischargeDate DateTime?
+  dailyRate     Decimal   @db.Decimal(12, 2)
+  notes         String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  patient              Patient               @relation(fields: [patientId], references: [id])
+  bed                  Bed                   @relation(fields: [bedId], references: [id])
+  payments             Payment[]
+  medicineTransactions MedicineTransaction[]
+
+  @@map("admissions")
+}
+
+model MedicalRecord {
+  id        String   @id @default(cuid())
+  patientId String
+  doctorId  String
+  diagnosis String?
+  treatment String?
+  notes     String?
+  createdAt DateTime @default(now())
+
+  patient       Patient        @relation(fields: [patientId], references: [id])
+  doctor        User           @relation(fields: [doctorId], references: [id])
+  prescriptions Prescription[]
+
+  @@map("medical_records")
+}
+
+model Prescription {
+  id              String   @id @default(cuid())
+  medicalRecordId String
+  medicineName    String
+  dosage          String
+  duration        String
+  instructions    String?
+  createdAt       DateTime @default(now())
+
+  medicalRecord MedicalRecord @relation(fields: [medicalRecordId], references: [id])
+
+  @@map("prescriptions")
+}
+
+model Schedule {
+  id        String @id @default(cuid())
+  userId    String
+  dayOfWeek Int
+  startTime String
+  endTime   String
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@unique([userId, dayOfWeek])
+  @@map("schedules")
+}
+
+model Salary {
+  id        String    @id @default(cuid())
+  userId    String
+  amount    Decimal   @db.Decimal(12, 2)
+  month     Int
+  year      Int
+  status    SalaryStatus @default(PENDING)
+  paidAt    DateTime?
+  createdAt DateTime     @default(now())
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@unique([userId, month, year])
+  @@map("salaries")
+}
+
+model AuditLog {
+  id        String   @id @default(cuid())
+  userId    String
+  action    String
+  module    String
+  details   Json?
+  ipAddress String?
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@map("audit_logs")
+}
+
+model Queue {
+  id            String    @id @default(cuid())
+  appointmentId String    @unique
+  queueNumber   Int
+  status        QueueStatus @default(WAITING)
+  calledAt      DateTime?
+  createdAt     DateTime    @default(now())
+
+  appointment Appointment @relation(fields: [appointmentId], references: [id])
+
+  @@map("queue")
+}
+
+model Notification {
+  id        String    @id @default(cuid())
+  patientId String
+  type      String
+  message   String
+  sentAt    DateTime?
+  status    NotificationStatus @default(PENDING)
+  createdAt DateTime           @default(now())
+
+  patient Patient @relation(fields: [patientId], references: [id])
+
+  @@map("notifications")
+}
+
+model RolePermission {
+  id        String   @id @default(cuid())
+  role      Role
+  page      String   // e.g. "/patients", "/appointments"
+  canAccess Boolean  @default(true)
+  updatedAt DateTime @updatedAt
+
+  @@unique([role, page])
+  @@map("role_permissions")
+}

@@ -1,0 +1,358 @@
+'use client';
+
+import { useState, useEffect, useCallback } from 'react';
+import { useSession } from 'next-auth/react';
+import { useLanguage } from '@/hooks/useLanguage';
+import {
+  Plus,
+  Pencil,
+  Trash2,
+  Check,
+  X,
+  Tag,
+  SlidersHorizontal,
+  Building2,
+} from 'lucide-react';
+
+// ─── Types ────────────────────────────────────────────────────────────────────
+
+interface Specialization {
+  id: string;
+  name: string;
+  createdAt: string;
+  _count?: { users: number };
+}
+
+// ─── Component ────────────────────────────────────────────────────────────────
+
+export default function SettingsPage() {
+  const { data: session } = useSession();
+  const { t } = useLanguage();
+  const isAdmin = session?.user?.role === 'ADMIN';
+
+  // ── Specializations state ──────────────────────────────────────────────────
+  const [specializations, setSpecializations] = useState<Specialization[]>([]);
+  const [loadingSpecs, setLoadingSpecs] = useState(true);
+  const [specsError, setSpecsError] = useState('');
+
+  const [actionError, setActionError] = useState('');
+
+  // Add new specialization
+  const [addingSpec, setAddingSpec] = useState(false);
+  const [newSpecName, setNewSpecName] = useState('');
+  const [savingSpec, setSavingSpec] = useState(false);
+
+  // Edit existing specialization
+  const [editingSpecId, setEditingSpecId] = useState<string | null>(null);
+  const [editingSpecName, setEditingSpecName] = useState('');
+  const [savingEdit, setSavingEdit] = useState(false);
+
+  // ── Fetch specializations ──────────────────────────────────────────────────
+
+  const fetchSpecializations = useCallback(async () => {
+    setLoadingSpecs(true);
+    setSpecsError('');
+    try {
+      const res = await fetch('/api/specializations');
+      if (!res.ok) throw new Error(t.common.error);
+      const data: Specialization[] = await res.json();
+      setSpecializations(data);
+    } catch {
+      setSpecsError(t.common.error);
+    } finally {
+      setLoadingSpecs(false);
+    }
+  }, [t.common.error]);
+
+  useEffect(() => {
+    fetchSpecializations();
+  }, [fetchSpecializations]);
+
+  // ── Specialization CRUD ────────────────────────────────────────────────────
+
+  async function handleAddSpec(e: React.FormEvent) {
+    e.preventDefault();
+    if (!newSpecName.trim()) return;
+    setSavingSpec(true);
+    setActionError('');
+    try {
+      const res = await fetch('/api/specializations', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: newSpecName.trim() }),
+      });
+      if (!res.ok) throw new Error(t.common.error);
+      setNewSpecName('');
+      setAddingSpec(false);
+      fetchSpecializations();
+    } catch {
+      setActionError(t.common.error);
+    } finally {
+      setSavingSpec(false);
+    }
+  }
+
+  function startEditSpec(spec: Specialization) {
+    setEditingSpecId(spec.id);
+    setEditingSpecName(spec.name);
+  }
+
+  function cancelEditSpec() {
+    setEditingSpecId(null);
+    setEditingSpecName('');
+  }
+
+  async function handleSaveSpec(id: string) {
+    if (!editingSpecName.trim()) return;
+    setSavingEdit(true);
+    setActionError('');
+    try {
+      const res = await fetch(`/api/specializations/${id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: editingSpecName.trim() }),
+      });
+      if (!res.ok) throw new Error(t.common.error);
+      cancelEditSpec();
+      fetchSpecializations();
+    } catch {
+      setActionError(t.common.error);
+    } finally {
+      setSavingEdit(false);
+    }
+  }
+
+  async function handleDeleteSpec(spec: Specialization) {
+    if (!confirm(t.settings.deleteSpecializationConfirm)) return;
+    setActionError('');
+    try {
+      const res = await fetch(`/api/specializations/${spec.id}`, { method: 'DELETE' });
+      if (!res.ok) throw new Error(t.common.error);
+      fetchSpecializations();
+    } catch {
+      setActionError(t.common.error);
+    }
+  }
+
+  // ── Render ─────────────────────────────────────────────────────────────────
+
+  return (
+    <div className="p-6 max-w-4xl">
+      {/* Page header */}
+      <div className="flex items-center gap-3 mb-8">
+        <div className="w-10 h-10 bg-slate-100 rounded-xl flex items-center justify-center">
+          <SlidersHorizontal size={20} className="text-slate-600" />
+        </div>
+        <div>
+          <h1 className="text-2xl font-bold text-slate-800">{t.settings.title}</h1>
+          <p className="text-sm text-slate-500 mt-0.5">{t.settings.clinicInfo}</p>
+        </div>
+      </div>
+
+      <div className="space-y-6">
+
+        {/* ── Mutaxassisliklar ────────────────────────────────────────────── */}
+        <section className="bg-white rounded-xl shadow-sm border border-slate-100">
+          <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Tag size={18} className="text-blue-600" />
+              <h2 className="text-base font-semibold text-slate-800">
+                {t.settings.specializations}
+              </h2>
+            </div>
+            {isAdmin && !addingSpec && (
+              <button
+                onClick={() => setAddingSpec(true)}
+                className="flex items-center gap-1.5 text-sm text-blue-600 hover:text-blue-700 font-medium transition-colors"
+              >
+                <Plus size={15} />
+                {t.settings.addSpecialization}
+              </button>
+            )}
+          </div>
+
+          {/* Errors */}
+          {specsError && (
+            <div className="mx-6 mt-4 text-red-600 bg-red-50 border border-red-200 p-3 rounded-lg text-sm">
+              {specsError}
+            </div>
+          )}
+          {actionError && (
+            <div className="mx-6 mt-4 text-red-600 bg-red-50 border border-red-200 p-3 rounded-lg text-sm">
+              {actionError}
+            </div>
+          )}
+
+          {/* Add form */}
+          {isAdmin && addingSpec && (
+            <form
+              onSubmit={handleAddSpec}
+              className="px-6 py-4 border-b border-slate-100 bg-blue-50/40"
+            >
+              <div className="flex items-center gap-3">
+                <input
+                  type="text"
+                  autoFocus
+                  value={newSpecName}
+                  onChange={(e) => setNewSpecName(e.target.value)}
+                  placeholder={t.settings.specializationName}
+                  className="flex-1 border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300 bg-white"
+                  required
+                />
+                <button
+                  type="submit"
+                  disabled={savingSpec}
+                  className="flex items-center gap-1.5 bg-blue-600 hover:bg-blue-700 disabled:opacity-60 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors"
+                >
+                  <Check size={14} />
+                  {t.common.save}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { setAddingSpec(false); setNewSpecName(''); }}
+                  className="flex items-center gap-1.5 border border-slate-200 text-slate-600 hover:bg-slate-50 px-4 py-2 rounded-lg text-sm font-medium transition-colors"
+                >
+                  <X size={14} />
+                  {t.common.cancel}
+                </button>
+              </div>
+            </form>
+          )}
+
+          {/* Table */}
+          {loadingSpecs ? (
+            <div className="flex justify-center py-10">
+              <div className="w-7 h-7 border-4 border-blue-200 border-t-blue-600 rounded-full animate-spin" />
+            </div>
+          ) : specializations.length === 0 ? (
+            <div className="text-center py-10 text-slate-500 text-sm">
+              {t.settings.noSpecializations}
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead className="bg-slate-50 border-b border-slate-100">
+                  <tr className="text-left text-xs text-slate-500 uppercase tracking-wide">
+                    <th className="px-6 py-3 font-medium">#</th>
+                    <th className="px-6 py-3 font-medium">{t.settings.specializationName}</th>
+                    <th className="px-6 py-3 font-medium">{t.staff.employeeCount}</th>
+                    {isAdmin && (
+                      <th className="px-6 py-3 font-medium text-right">{t.common.actions}</th>
+                    )}
+                  </tr>
+                </thead>
+                <tbody>
+                  {specializations.map((spec, idx) => (
+                    <tr
+                      key={spec.id}
+                      className="border-b border-slate-50 last:border-0 hover:bg-slate-50 transition-colors"
+                    >
+                      <td className="px-6 py-3.5 text-slate-400">{idx + 1}</td>
+                      <td className="px-6 py-3.5 font-medium text-slate-800">
+                        {editingSpecId === spec.id ? (
+                          <input
+                            type="text"
+                            autoFocus
+                            value={editingSpecName}
+                            onChange={(e) => setEditingSpecName(e.target.value)}
+                            className="border border-slate-200 rounded-lg px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300 w-56"
+                          />
+                        ) : (
+                          spec.name
+                        )}
+                      </td>
+                      <td className="px-6 py-3.5 text-slate-600">
+                        {spec._count?.users ?? 0}
+                      </td>
+                      {isAdmin && (
+                        <td className="px-6 py-3.5">
+                          <div className="flex items-center justify-end gap-2">
+                            {editingSpecId === spec.id ? (
+                              <>
+                                <button
+                                  onClick={() => handleSaveSpec(spec.id)}
+                                  disabled={savingEdit}
+                                  className="p-1.5 text-green-600 hover:bg-green-50 rounded-lg transition-colors disabled:opacity-60"
+                                  title={t.common.save}
+                                >
+                                  <Check size={15} />
+                                </button>
+                                <button
+                                  onClick={cancelEditSpec}
+                                  className="p-1.5 text-slate-400 hover:bg-slate-100 rounded-lg transition-colors"
+                                  title={t.common.cancel}
+                                >
+                                  <X size={15} />
+                                </button>
+                              </>
+                            ) : (
+                              <>
+                                <button
+                                  onClick={() => startEditSpec(spec)}
+                                  className="p-1.5 text-slate-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                                  title={t.common.edit}
+                                >
+                                  <Pencil size={15} />
+                                </button>
+                                <button
+                                  onClick={() => handleDeleteSpec(spec)}
+                                  className="p-1.5 text-slate-500 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                                  title={t.common.delete}
+                                >
+                                  <Trash2 size={15} />
+                                </button>
+                              </>
+                            )}
+                          </div>
+                        </td>
+                      )}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </section>
+
+        {/* ── Klinika ma'lumotlari (placeholder) ──────────────────────────── */}
+        <section className="bg-white rounded-xl shadow-sm border border-slate-100">
+          <div className="px-6 py-4 border-b border-slate-100 flex items-center gap-2">
+            <Building2 size={18} className="text-slate-500" />
+            <h2 className="text-base font-semibold text-slate-800">
+              {t.settings.generalSettings}
+            </h2>
+          </div>
+          <div className="px-6 py-8">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-xs font-medium text-slate-500 mb-1">
+                  {t.settings.clinicName}
+                </label>
+                <div className="border border-dashed border-slate-200 rounded-lg px-3 py-2.5 text-sm text-slate-400 bg-slate-50">
+                  {t.settings.comingSoon}
+                </div>
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-slate-500 mb-1">
+                  {t.settings.clinicPhone}
+                </label>
+                <div className="border border-dashed border-slate-200 rounded-lg px-3 py-2.5 text-sm text-slate-400 bg-slate-50">
+                  {t.settings.comingSoon}
+                </div>
+              </div>
+              <div className="sm:col-span-2">
+                <label className="block text-xs font-medium text-slate-500 mb-1">
+                  {t.settings.clinicAddress}
+                </label>
+                <div className="border border-dashed border-slate-200 rounded-lg px-3 py-2.5 text-sm text-slate-400 bg-slate-50">
+                  {t.settings.comingSoon}
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+      </div>
+    </div>
+  );
+}

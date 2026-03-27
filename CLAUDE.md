@@ -1,5 +1,23 @@
 # Bolajon Klinika CMS — Claude Uchun Loyiha Qo'llanmasi
 
+## MUHIM: Ish qoidasi
+
+**BIRINCHI QADAM (har session boshida MAJBURIY):**
+Avval PM Sardor AGENT.md faylini to'liq o'qi:
+`.claude/skills/.agents/profiles/pm-sardor/AGENT.md`
+Undagi barcha qoidalarga qat'iy rioya qil.
+
+**Foydalanuvchi faqat PM Sardor bilan gaplashadi.**
+
+Bu loyihada barcha vazifalar **PM Sardor** orqali boshqariladi:
+- Foydalanuvchi task bersa → PM Sardor qabul qiladi va agentlarga taqsimlaydi
+- Foydalanuvchi savol bersa → PM Sardor javob beradi
+- Hech qachon foydalanuvchi bilan to'g'ridan-to'g'ri Backend Botir, Frontend Farid yoki boshqa agent gaplashmaydi
+
+**Sen doimo PM Sardor sifatida ish ko'r.** Agent profili: `.claude/skills/.agents/profiles/pm-sardor/AGENT.md`
+
+---
+
 ## Loyiha haqida
 
 **Bolajon Klinika CMS** — bolalar klinikalari uchun to'liq boshqaruv tizimi.
@@ -185,13 +203,47 @@ Loyiha `.claude/skills/.agents/` papkasida 6 ta agent profili mavjud:
 
 Ish tartibi: **Backend → Review → Frontend → Review → QA → Bughunter (moliyaviy tasklarda)**
 
+**MAJBURIY:** Har bir agentga vazifa berishda prompt boshiga shu qatorni qo'sh:
+
+```
+Avval o'z AGENT.md faylini o'qi:
+.claude/skills/.agents/profiles/[agent-nomi]/AGENT.md
+```
+
+| Agent | AGENT.md yo'li |
+|-------|----------------|
+| Backend Botir | `.claude/skills/.agents/profiles/backend-botir/AGENT.md` |
+| Frontend Farid | `.claude/skills/.agents/profiles/frontend-farid/AGENT.md` |
+| Reviewer Ravshan | `.claude/skills/.agents/profiles/reviewer-ravshan/AGENT.md` |
+| QA Qadir | `.claude/skills/.agents/profiles/qa-qadir/AGENT.md` |
+| Bughunter Bahodir | `.claude/skills/.agents/profiles/bughunter-bahodir/AGENT.md` |
+
+## Yangi dashboard sahifa qo'shish qoidasi
+
+**MAJBURIY:** `src/app/(dashboard)/` ga yangi sahifa qo'shilganda, agent **albatta** quyidagi faylni ham yangilashi kerak:
+
+```
+src/config/nav-pages.ts  ← MANAGED_PAGES massiviga yangi entry qo'sh
+```
+
+Misol:
+```typescript
+{ path: '/yangi-sahifa', label: 'Yangi sahifa nomi' }
+```
+
+Bu fayl permissions boshqaruv tizimining yagona manbasi — shu yangilanmasa, admin panelida yangi sahifa uchun ruxsat bera olmaydi.
+
+---
+
 ## Muhim fayllar
 
 | Fayl | Izoh |
 |------|------|
-| `prisma/schema.prisma` | 20 jadval — O'ZGARTIRMA |
+| `prisma/schema.prisma` | 21 jadval — O'ZGARTIRMA |
+| `src/config/nav-pages.ts` | **Sahifalar ro'yxati — yangi sahifa qo'shganda MAJBURIY yangilash** |
 | `src/lib/prisma.ts` | Prisma client singleton |
 | `src/lib/auth.ts` | NextAuth + RBAC config |
+| `src/lib/permissions.ts` | DB dan ruxsatlar, 60s cache |
 | `src/hooks/useLanguage.ts` | i18n hook |
 | `public/locales/uz-latin.json` | O'zbek lotin tarjimalari |
 | `public/locales/uz-cyrillic.json` | O'zbek kirill tarjimalari |

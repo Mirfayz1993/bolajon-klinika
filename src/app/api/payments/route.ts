@@ -1,0 +1,183 @@
+import { NextRequest, NextResponse } from 'next/server';
+import { getServerSession } from 'next-auth';
+import { authOptions } from '@/lib/auth';
+import { prisma } from '@/lib/prisma';
+import { PaymentMethod, PaymentCategory, PaymentStatus, Role } from '@prisma/client';
+
+const READ_ROLES: Role[] = [Role.ADMIN, Role.HEAD_DOCTOR, Role.RECEPTIONIST];
+const WRITE_ROLES: Role[] = [Role.ADMIN, Role.RECEPTIONIST];
+
+export async function GET(req: NextRequest) {
+  const session = await getServerSession(authOptions);
+  if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  if (!READ_ROLES.includes(session.user.role as Role)) {
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+  }
+
+  try {
+    const { searchParams } = new URL(req.url);
+
+    const patientId = searchParams.get('patientId');
+    const status = searchParams.get('status') as PaymentStatus | null;
+    const category = searchParams.get('category') as PaymentCategory | null;
+    const method = searchParams.get('method') as PaymentMethod | null;
+    const dateFrom = searchParams.get('dateFrom');
+    const dateTo = searchParams.get('dateTo');
+    const pageParam = searchParams.get('page');
+    const limitParam = searchParams.get('limit');
+
+    const page = Math.max(1, parseInt(pageParam ?? '1', 10) || 1);
+    const limit = Math.min(100, Math.max(1, parseInt(limitParam ?? '20', 10) || 20));
+    const skip = (page - 1) * limit;
+
+    const where: {
+      patientId?: string;
+      status?: PaymentStatus;
+      category?: PaymentCategory;
+      method?: PaymentMethod;
+      createdAt?: {
+        gte?: Date;
+        lte?: Date;
+      };
+    } = {};
+
+    if (patientId) where.patientId = patientId;
+    if (status && Object.values(PaymentStatus).includes(status)) where.status = status;
+    if (category && Object.values(PaymentCategory).includes(category)) where.category = category;
+    if (method && Object.values(PaymentMethod).includes(method)) where.method = method;
+
+    if (dateFrom || dateTo) {
+      where.createdAt = {};
+      if (dateFrom) {
+        const from = new Date(dateFrom);
+        if (!isNaN(from.getTime())) where.createdAt.gte = from;
+      }
+      if (dateTo) {
+        const to = new Date(dateTo);
+        if (!isNaN(to.getTime())) {
+          to.setHours(23, 59, 59, 999);
+          where.createdAt.lte = to;
+        }
+      }
+    }
+
+    const [payments, total] = await Promise.all([
+      prisma.payment.findMany({
+        where,
+        skip,
+        take: limit,
+        orderBy: { createdAt: 'desc' },
+        include: {
+          patient: {
+            select: { firstName: true, lastName: true },
+          },
+          appointment: {
+            select: { id: true, type: true },
+          },
+          admission: {
+            select: { id: true },
+          },
+        },
+      }),
+      prisma.payment.count({ where }),
+    ]);
+
+    const data = payments.map((p) => ({
+      ...p,
+      amount: Number(p.amount),
+    }));
+
+    const totalPages = Math.ceil(total / limit);
+
+    return NextResponse.json({ data, total, page, limit, totalPages });
+  } catch (error) {
+    console.error(error);
+    return NextResponse.json({ error: 'Server error' }, { status: 500 });
+  }
+}
+
+export async function POST(req: NextRequest) {
+  const session = await getServerSession(authOptions);
+  if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  if (!WRITE_ROLES.includes(session.user.role as Role)) {
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+  }
+
+  try {
+    const body = await req.json() as {
+      patientId?: string;
+      amount?: number;
+      method?: PaymentMethod;
+      category?: PaymentCategory;
+      status?: PaymentStatus;
+      appointmentId?: string;
+      admissionId?: string;
+      description?: string;
+    };
+
+    const { patientId, amount, method, category, status, appointmentId, admissionId, description } = body;
+
+    if (!patientId || amount === undefined || !method || !category) {
+      return NextResponse.json(
+        { error: 'patientId, amount, method, category majburiy' },
+        { status: 400 }
+      );
+    }
+
+    if (typeof amount !== 'number' || amount <= 0) {
+      return NextResponse.json(
+        { error: 'amount 0 dan katta bo\'lishi kerak' },
+        { status: 400 }
+      );
+    }
+
+    if (!Object.values(PaymentMethod).includes(method)) {
+      return NextResponse.json({ error: 'method noto\'g\'ri' }, { status: 400 });
+    }
+
+    if (!Object.values(PaymentCategory).includes(category)) {
+      return NextResponse.json({ error: 'category noto\'g\'ri' }, { status: 400 });
+    }
+
+    if (status && !Object.values(PaymentStatus).includes(status)) {
+      return NextResponse.json({ error: 'status noto\'g\'ri' }, { status: 400 });
+    }
+
+    const patientExists = await prisma.patient.findUnique({ where: { id: patientId } });
+    if (!patientExists) {
+      return NextResponse.json({ error: 'Bemor topilmadi' }, { status: 404 });
+    }
+
+    const payment = await prisma.payment.create({
+      data: {
+        patientId,
+        amount,
+        method,
+        category,
+        status: status ?? PaymentStatus.PAID,
+        appointmentId: appointmentId ?? undefined,
+        admissionId: admissionId ?? undefined,
+        description: description ?? undefined,
+      },
+      include: {
+        patient: {
+          select: { firstName: true, lastName: true },
+        },
+        appointment: {
+          select: { id: true, type: true },
+        },
+        admission: {
+          select: { id: true },
+        },
+      },
+    });
+
+    return NextResponse.json(
+      { ...payment, amount: Number(payment.amount) },
+      { status: 201 }
+    );
+  } catch (error) {
+    console.error(error);
+    return NextResponse.json({ error: 'Server error' }, { status: 500 });
+  }
+}

@@ -22,6 +22,20 @@
 
 ### 2. Task dispatch formati
 
+> **QOIDA #0 (MAJBURIY):** Har qanday agentga yoziladigan promptning eng BIRINCHI qatori shu bo'lishi shart:
+>
+> ```
+> MUHIM: Avval o'z AGENT.md faylingni to'liq o'qi va undagi barcha qoidalarga qat'iy rioya qil.
+> Fayl yo'li: clinic-cms/.claude/skills/.agents/profiles/[agent-ismi]/AGENT.md
+> ```
+>
+> Agent AGENT.md yo'llari (to'g'ri yo'lni ishlatish):
+> - Backend Botir → `clinic-cms/.claude/skills/.agents/profiles/backend-botir/AGENT.md`
+> - Frontend Farid → `clinic-cms/.claude/skills/.agents/profiles/frontend-farid/AGENT.md`
+> - Reviewer Ravshan → `clinic-cms/.claude/skills/.agents/profiles/reviewer-ravshan/AGENT.md`
+> - QA Qadir → `clinic-cms/.claude/skills/.agents/profiles/qa-qadir/AGENT.md`
+> - Bughunter Bahodir → `clinic-cms/.claude/skills/.agents/profiles/bughunter-bahodir/AGENT.md`
+
 Har bir agentga task berganda quyidagilarni berishing SHART:
 
 ```
