@@ -353,53 +353,55 @@ export default function RoomsPage() {
                   {t.rooms.capacity}: {room.capacity}
                 </div>
 
-                {/* Beds summary: Bo'sh / Band */}
-                <div className="flex items-center gap-3 mb-3 text-sm">
-                  <div className="flex items-center gap-1.5">
-                    <span className="w-2.5 h-2.5 rounded-full bg-green-500 inline-block" />
-                    <span className="text-slate-600">
-                      {availCount} {t.rooms.available}
-                    </span>
-                  </div>
-                  <div className="flex items-center gap-1.5">
-                    <span className="w-2.5 h-2.5 rounded-full bg-red-500 inline-block" />
-                    <span className="text-slate-600">
-                      {occupiedCount} {t.rooms.occupied}
-                    </span>
-                  </div>
-                </div>
+                {/* Beds section — only if room has beds */}
+                {totalBeds > 0 && (
+                  <>
+                    {/* Beds summary: Bo'sh / Band */}
+                    <div className="flex items-center gap-3 mb-3 text-sm">
+                      <div className="flex items-center gap-1.5">
+                        <span className="w-2.5 h-2.5 rounded-full bg-green-500 inline-block" />
+                        <span className="text-slate-600">
+                          {availCount} {t.rooms.available}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-1.5">
+                        <span className="w-2.5 h-2.5 rounded-full bg-red-500 inline-block" />
+                        <span className="text-slate-600">
+                          {occupiedCount} {t.rooms.occupied}
+                        </span>
+                      </div>
+                    </div>
 
-                {/* Bed dots */}
-                {room.beds.length > 0 && (
-                  <div className="flex flex-wrap gap-1.5 mb-3">
-                    {room.beds.slice(0, 12).map((bed) => (
-                      <BedDot key={bed.id} status={bed.status} />
-                    ))}
-                    {room.beds.length > 12 && (
-                      <span className="text-xs text-slate-400 self-center">
-                        +{room.beds.length - 12}
-                      </span>
-                    )}
-                  </div>
+                    {/* Bed dots */}
+                    <div className="flex flex-wrap gap-1.5 mb-3">
+                      {room.beds.slice(0, 12).map((bed) => (
+                        <BedDot key={bed.id} status={bed.status} />
+                      ))}
+                      {room.beds.length > 12 && (
+                        <span className="text-xs text-slate-400 self-center">
+                          +{room.beds.length - 12}
+                        </span>
+                      )}
+                    </div>
+
+                    {/* Progress bar */}
+                    <div className="mb-3">
+                      <div className="flex items-center justify-between text-xs text-slate-500 mb-1">
+                        <span className="flex items-center gap-1">
+                          <BedDouble className="w-3.5 h-3.5" />
+                          {totalBeds} {t.rooms.bedsCount}
+                        </span>
+                        <span>{occupiedPct}% {t.rooms.occupied}</span>
+                      </div>
+                      <div className="w-full h-1.5 bg-slate-100 rounded-full overflow-hidden">
+                        <div
+                          className="h-full bg-red-400 rounded-full transition-all"
+                          style={{ width: `${occupiedPct}%` }}
+                        />
+                      </div>
+                    </div>
+                  </>
                 )}
-
-                {/* Progress bar */}
-                <div className="mb-3">
-                  <div className="flex items-center justify-between text-xs text-slate-500 mb-1">
-                    <span className="flex items-center gap-1">
-                      <BedDouble className="w-3.5 h-3.5" />
-                      {totalBeds} {t.rooms.bedsCount}
-                    </span>
-                    <span>{occupiedPct}% {t.rooms.occupied}</span>
-                  </div>
-                  <div className="w-full h-1.5 bg-slate-100 rounded-full overflow-hidden">
-                    {/* inline style: runtime dynamic width, cannot use Tailwind for this */}
-                    <div
-                      className="h-full bg-red-400 rounded-full transition-all"
-                      style={{ width: `${occupiedPct}%` }}
-                    />
-                  </div>
-                </div>
 
                 {/* Actions */}
                 <div className="flex items-center gap-2 mt-auto pt-3 border-t border-slate-100">
