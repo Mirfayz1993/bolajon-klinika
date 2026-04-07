@@ -523,7 +523,10 @@ model Queue {
   queueNumber   Int
   status        QueueStatus @default(WAITING)
   calledAt      DateTime?
-  createdAt     DateTime    @default(now())
+  doneAt        DateTime?
+  isUrgent      Boolean   @default(false)
+  isPriority    Boolean   @default(false) // to'langan, doktor hali kelmagan
+  createdAt     DateTime  @default(now())
 
   appointment Appointment @relation(fields: [appointmentId], references: [id])
 
@@ -545,17 +548,21 @@ model Notification {
 }
 
 model AssignedService {
-  id           String   @id @default(cuid())
-  patientId    String
-  categoryName String   // snapshot (e.g. "Massaj")
-  itemName     String   // snapshot (e.g. "Umumiy massaj")
-  price        Decimal  @db.Decimal(12, 2)
-  itemId       String?  // optional link to ServiceItem
-  isPaid       Boolean  @default(false)
-  paidAt       DateTime?
-  paymentId    String?  @unique
-  assignedById String
-  assignedAt   DateTime @default(now())
+  id             String   @id @default(cuid())
+  patientId      String
+  categoryName   String
+  itemName       String
+  price          Decimal  @db.Decimal(12, 2)
+  itemId         String?
+  isPaid         Boolean  @default(false)
+  paidAt         DateTime?
+  paymentId      String?  @unique
+  assignedById   String
+  assignedAt     DateTime @default(now())
+  // Doktor qabuli uchun
+  doctorId       String?
+  appointmentId  String?  @unique
+  isUrgent       Boolean  @default(false)
 
   patient    Patient @relation(fields: [patientId], references: [id], onDelete: Cascade)
   assignedBy User    @relation("AssignedServices", fields: [assignedById], references: [id])

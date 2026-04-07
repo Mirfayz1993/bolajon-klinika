@@ -62,7 +62,8 @@
     "permissions": "Ruxsatlar",
     "ambulatory": "Ambulator",
     "services": "Xizmatlar",
-    "attendance": "Davomat"
+    "attendance": "Davomat",
+    "doctorQueue": "Doktor navbati"
   },
   "dashboard": {
     "title": "Bosh sahifa",

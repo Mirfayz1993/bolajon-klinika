@@ -32,6 +32,7 @@ import {
   ActivitySquare,
   Tag,
   Clock,
+  PhoneCall,
 } from 'lucide-react';
 
 interface SidebarProps {
@@ -156,6 +157,12 @@ export default function Sidebar({ collapsed, onToggle, userName, userRole }: Sid
       href: '/attendance',
       icon: <Clock size={20} />,
       labelKey: 'attendance',
+    },
+    {
+      key: 'doctor-queue',
+      href: '/doctor-queue',
+      icon: <PhoneCall size={20} />,
+      labelKey: 'doctorQueue',
     },
     {
       key: 'reports',

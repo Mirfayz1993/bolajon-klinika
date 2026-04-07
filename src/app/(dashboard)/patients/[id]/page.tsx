@@ -211,6 +211,9 @@ export default function PatientDetailPage({ params }: PageProps) {
   const [assignCatId, setAssignCatId] = useState('');
   const [assignItemId, setAssignItemId] = useState('');
   const [assignSaving, setAssignSaving] = useState(false);
+  const [assignDoctorId, setAssignDoctorId] = useState('');
+  const [assignIsUrgent, setAssignIsUrgent] = useState(false);
+  const [doctorList, setDoctorList] = useState<{ id: string; name: string }[]>([]);
   const [payingId, setPayingId] = useState<string | null>(null);
   const [payMethod, setPayMethod] = useState('CASH');
   // To'lov modal (single)
@@ -268,6 +271,7 @@ export default function PatientDetailPage({ params }: PageProps) {
   // Lab categories: fetch from lab-test-types
   const [labTestTypes, setLabTestTypes] = useState<ServiceCategoryItem[]>([]);
   const isLabCat = assignCat ? ['lab','laboratoriya','labaratoriya','tahlil'].some(k => assignCat.name.toLowerCase().includes(k)) : false;
+  const isDoctorCat = assignCat ? ['doktor','ko\'rik','korik','checkup','qabul','shifokor'].some(k => assignCat.name.toLowerCase().includes(k)) : false;
 
   useEffect(() => {
     if (!isLabCat) return;
@@ -277,11 +281,21 @@ export default function PatientDetailPage({ params }: PageProps) {
       .catch(() => setLabTestTypes([]));
   }, [isLabCat]);
 
+  useEffect(() => {
+    if (!isDoctorCat) return;
+    if (doctorList.length > 0) return;
+    fetch('/api/staff?role=DOCTOR&role=HEAD_DOCTOR')
+      .then(r => r.json())
+      .then(d => setDoctorList((d.data ?? d).filter((u: { isActive: boolean }) => u.isActive)))
+      .catch(() => null);
+  }, [isDoctorCat, doctorList.length]);
+
   const visibleItems: ServiceCategoryItem[] = isLabCat ? labTestTypes : (assignCat?.items ?? []);
   const assignItem = visibleItems.find(i => i.id === assignItemId);
 
   const saveAssign = async () => {
     if (!assignCat || !assignItem) return;
+    if (isDoctorCat && !assignDoctorId) { alert('Iltimos, doktor tanlang'); return; }
     setAssignSaving(true);
     try {
       const res = await fetch(`/api/patients/${patientId}/assigned-services`, {
@@ -292,11 +306,12 @@ export default function PatientDetailPage({ params }: PageProps) {
           itemName: assignItem.name,
           price: assignItem.price,
           itemId: assignItem.id,
+          ...(isDoctorCat && assignDoctorId ? { doctorId: assignDoctorId, isUrgent: assignIsUrgent } : {}),
         }),
       });
       if (!res.ok) { const d = await res.json(); alert(d.error); return; }
       setShowAssignModal(false);
-      setAssignCatId(''); setAssignItemId('');
+      setAssignCatId(''); setAssignItemId(''); setAssignDoctorId(''); setAssignIsUrgent(false);
       fetchAssigned();
     } finally { setAssignSaving(false); }
   };
@@ -1096,7 +1111,7 @@ export default function PatientDetailPage({ params }: PageProps) {
           <div className="bg-white rounded-2xl shadow-xl w-full max-w-md p-6">
             <div className="flex items-center justify-between mb-4">
               <h3 className="font-semibold text-slate-800">Xizmat tayinlash</h3>
-              <button type="button" onClick={() => { setShowAssignModal(false); setAssignCatId(''); setAssignItemId(''); }}>
+              <button type="button" onClick={() => { setShowAssignModal(false); setAssignCatId(''); setAssignItemId(''); setAssignDoctorId(''); setAssignIsUrgent(false); }}>
                 <X className="w-5 h-5 text-slate-400" />
               </button>
             </div>
@@ -1133,17 +1148,47 @@ export default function PatientDetailPage({ params }: PageProps) {
               </div>
             )}
 
+            {/* Doktor tanlash (faqat doktor kategoriyasi uchun) */}
+            {isDoctorCat && assignCat && (
+              <div className="mb-3">
+                <label className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1 block">Shifokor <span className="text-red-500">*</span></label>
+                <select
+                  value={assignDoctorId}
+                  onChange={e => setAssignDoctorId(e.target.value)}
+                  className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
+                >
+                  <option value="">— Shifokorni tanlang —</option>
+                  {doctorList.map(d => (
+                    <option key={d.id} value={d.id}>{d.name}</option>
+                  ))}
+                </select>
+              </div>
+            )}
+
+            {/* Shoshilinch checkbox */}
+            {isDoctorCat && assignDoctorId && (
+              <label className="flex items-center gap-2 mb-3 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={assignIsUrgent}
+                  onChange={e => setAssignIsUrgent(e.target.checked)}
+                  className="w-4 h-4 accent-red-500"
+                />
+                <span className="text-sm text-red-600 font-medium">⚠ Shoshilinch bemor</span>
+              </label>
+            )}
+
             {assignItem && (
-              <div className="mb-4 px-4 py-3 bg-blue-50 rounded-xl flex justify-between text-sm">
+              <div className={`mb-4 px-4 py-3 rounded-xl flex justify-between text-sm ${assignIsUrgent ? 'bg-red-50' : 'bg-blue-50'}`}>
                 <span className="text-slate-700">{assignItem.name}</span>
-                <span className="font-bold text-blue-700">{fmtMoney(assignItem.price)}</span>
+                <span className={`font-bold ${assignIsUrgent ? 'text-red-700' : 'text-blue-700'}`}>{fmtMoney(assignItem.price)}</span>
               </div>
             )}
 
             <div className="flex gap-2 justify-end">
               <button
                 type="button"
-                onClick={() => { setShowAssignModal(false); setAssignCatId(''); setAssignItemId(''); }}
+                onClick={() => { setShowAssignModal(false); setAssignCatId(''); setAssignItemId(''); setAssignDoctorId(''); setAssignIsUrgent(false); }}
                 className="px-4 py-2 text-sm text-slate-600 border border-slate-200 rounded-xl hover:bg-slate-50"
               >
                 Bekor

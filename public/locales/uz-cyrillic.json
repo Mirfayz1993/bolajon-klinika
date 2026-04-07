@@ -62,7 +62,8 @@
     "permissions": "Рухсатлар",
     "ambulatory": "Амбулатор",
     "services": "Хизматлар",
-    "attendance": "Даvomat"
+    "attendance": "Даvomat",
+    "doctorQueue": "Doktor navbati"
   },
   "dashboard": {
     "title": "Бош саҳифа",
