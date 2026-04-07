@@ -1581,19 +1581,19 @@ export default function PatientDetailPage({ params }: PageProps) {
               <label className="block text-xs font-medium text-slate-600 mb-1">Tashxis</label>
               <textarea rows={2} value={recordForm.diagnosis} placeholder="Tashxis..."
                 onChange={e => setRecordForm(f => ({ ...f, diagnosis: e.target.value }))}
-                className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 resize-none" />
+                className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-900 bg-white focus:outline-none focus:ring-2 focus:ring-blue-400 resize-none" />
             </div>
             <div>
               <label className="block text-xs font-medium text-slate-600 mb-1">Davolash</label>
               <textarea rows={2} value={recordForm.treatment} placeholder="Davolash rejasi..."
                 onChange={e => setRecordForm(f => ({ ...f, treatment: e.target.value }))}
-                className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 resize-none" />
+                className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-900 bg-white focus:outline-none focus:ring-2 focus:ring-blue-400 resize-none" />
             </div>
             <div>
               <label className="block text-xs font-medium text-slate-600 mb-1">Izoh</label>
               <textarea rows={2} value={recordForm.notes} placeholder="Qo'shimcha izoh..."
                 onChange={e => setRecordForm(f => ({ ...f, notes: e.target.value }))}
-                className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 resize-none" />
+                className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-900 bg-white focus:outline-none focus:ring-2 focus:ring-blue-400 resize-none" />
             </div>
           </div>
           <div className="flex justify-end gap-3 mt-6">
