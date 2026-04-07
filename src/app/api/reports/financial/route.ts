@@ -62,6 +62,7 @@ export async function GET(req: NextRequest) {
       MASSAGE: 0,
       TREATMENT: 0,
       INPATIENT: 0,
+      AMBULATORY: 0,
     };
 
     const byMethod: Record<PaymentMethod, number> = {

@@ -4,6 +4,7 @@ import { authOptions } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 import { Role } from '@prisma/client';
 import bcrypt from 'bcryptjs';
+import { encryptPassword, decryptPassword } from '@/lib/encrypt';
 
 export async function GET(req: NextRequest) {
   const session = await getServerSession(authOptions);
@@ -52,6 +53,7 @@ export async function GET(req: NextRequest) {
         role: true,
         isActive: true,
         specializationId: true,
+        encryptedPassword: true,
         specialization: { select: { id: true, name: true } },
         createdAt: true,
         updatedAt: true,
@@ -59,7 +61,13 @@ export async function GET(req: NextRequest) {
       orderBy: { name: 'asc' },
     });
 
-    return NextResponse.json(users);
+    const isAdmin = session.user.role === 'ADMIN';
+    const result = users.map(({ encryptedPassword, ...u }) => ({
+      ...u,
+      plainPassword: isAdmin && encryptedPassword ? decryptPassword(encryptedPassword) : null,
+    }));
+
+    return NextResponse.json(result);
   } catch (error) {
     console.error(error);
     return NextResponse.json({ error: 'Server error' }, { status: 500 });
@@ -85,7 +93,8 @@ export async function POST(req: NextRequest) {
       specializationId?: string;
     };
 
-    const { firstName, lastName, phone, email, password, role, specializationId } = body;
+    const { firstName, lastName, email, password, role, specializationId } = body;
+    const phone = typeof body.phone === 'string' ? body.phone.replace(/\s/g, '') : body.phone;
 
     if (!firstName || !lastName) {
       return NextResponse.json({ error: 'firstName va lastName majburiy' }, { status: 400 });
@@ -125,6 +134,7 @@ export async function POST(req: NextRequest) {
         phone: phone,
         email: email ?? undefined,
         password: passwordHash,
+        encryptedPassword: encryptPassword(password),
         role: role as Role,
         specializationId: specializationId ?? undefined,
       },
@@ -136,13 +146,15 @@ export async function POST(req: NextRequest) {
         role: true,
         isActive: true,
         specializationId: true,
+        encryptedPassword: true,
         specialization: { select: { id: true, name: true } },
         createdAt: true,
         updatedAt: true,
       },
     });
 
-    return NextResponse.json(user, { status: 201 });
+    const { encryptedPassword: ep, ...rest } = user;
+    return NextResponse.json({ ...rest, plainPassword: ep ? decryptPassword(ep) : null }, { status: 201 });
   } catch (error) {
     console.error(error);
     return NextResponse.json({ error: 'Server error' }, { status: 500 });

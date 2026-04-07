@@ -14,7 +14,7 @@ export async function GET(
     const { id } = await params;
 
     const patient = await prisma.patient.findUnique({
-      where: { id },
+      where: { id, deletedAt: null }, // Soft delete: faqat faol bemorlarni ko'rsat
     });
 
     if (!patient) {
@@ -38,7 +38,7 @@ export async function PUT(
   try {
     const { id } = await params;
 
-    const existing = await prisma.patient.findUnique({ where: { id } });
+    const existing = await prisma.patient.findUnique({ where: { id, deletedAt: null } });
     if (!existing) {
       return NextResponse.json({ error: 'Bemor topilmadi' }, { status: 404 });
     }
@@ -99,7 +99,7 @@ export async function PUT(
       }
 
       const duplicate = await prisma.patient.findFirst({
-        where: { jshshir, id: { not: id } },
+        where: { jshshir, id: { not: id }, deletedAt: null },
       });
       if (duplicate) {
         return NextResponse.json(
@@ -151,12 +151,16 @@ export async function DELETE(
   try {
     const { id } = await params;
 
-    const existing = await prisma.patient.findUnique({ where: { id } });
+    const existing = await prisma.patient.findUnique({ where: { id, deletedAt: null } });
     if (!existing) {
       return NextResponse.json({ error: 'Bemor topilmadi' }, { status: 404 });
     }
 
-    await prisma.patient.delete({ where: { id } });
+    // Soft delete: ma'lumotlar saqlanib qoladi, faqat o'chirilgan deb belgilanadi
+    await prisma.patient.update({
+      where: { id },
+      data: { deletedAt: new Date() },
+    });
 
     return NextResponse.json({ success: true });
   } catch (error) {

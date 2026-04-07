@@ -2,14 +2,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
-import { BedStatus, PaymentCategory, PaymentStatus, Prisma } from '@prisma/client';
-
-// 12-soat qoidasi: agar yotish 12 soatdan kam bo'lsa — 0 kun hisoblanadi
-function calculateInpatientDays(admission: Date, discharge: Date): number {
-  const hours = (discharge.getTime() - admission.getTime()) / (1000 * 60 * 60);
-  if (hours <= 12) return 0;
-  return Math.ceil(hours / 24);
-}
+import { BedStatus, PaymentCategory, PaymentStatus } from '@prisma/client';
+import type { Admission, Payment } from '@prisma/client';
+import { calculateInpatientDays } from '@/lib/business-logic';
 
 export async function POST(
   req: NextRequest,
@@ -65,24 +60,21 @@ export async function POST(
       ? `${admission.notes ? admission.notes + '\n' : ''}Chiqish izohi: ${dischargeNotes}`
       : admission.notes ?? undefined;
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const transactionOps: Prisma.PrismaPromise<any>[] = [
-      prisma.admission.update({
-        where: { id },
-        data: {
-          dischargeDate: dischargeAt,
-          notes: updatedNotes,
-        },
-      }),
-      prisma.bed.update({
-        where: { id: admission.bed.id },
-        data: { status: BedStatus.AVAILABLE },
-      }),
-    ];
+    let updatedAdmission: Admission;
+    let payment: Payment | null = null;
 
     if (days > 0) {
       const amount = Number(admission.dailyRate) * days;
-      transactionOps.push(
+
+      const [discharged, , createdPayment] = await prisma.$transaction([
+        prisma.admission.update({
+          where: { id },
+          data: { dischargeDate: dischargeAt, notes: updatedNotes },
+        }),
+        prisma.bed.update({
+          where: { id: admission.bed.id },
+          data: { status: BedStatus.AVAILABLE },
+        }),
         prisma.payment.create({
           data: {
             patientId: admission.patientId,
@@ -93,15 +85,25 @@ export async function POST(
             status: PaymentStatus.PENDING,
             description: `Statsionar: ${days} kun (${hours} soat)`,
           },
-        })
-      );
+        }),
+      ]);
+
+      updatedAdmission = discharged;
+      payment = createdPayment;
+    } else {
+      const [discharged] = await prisma.$transaction([
+        prisma.admission.update({
+          where: { id },
+          data: { dischargeDate: dischargeAt, notes: updatedNotes },
+        }),
+        prisma.bed.update({
+          where: { id: admission.bed.id },
+          data: { status: BedStatus.AVAILABLE },
+        }),
+      ]);
+
+      updatedAdmission = discharged;
     }
-
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const results = await prisma.$transaction(transactionOps) as any[];
-
-    const updatedAdmission = results[0];
-    const payment = days > 0 ? results[2] : null;
 
     return NextResponse.json({
       admission: updatedAdmission,

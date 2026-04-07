@@ -14,6 +14,8 @@ import {
   Loader2,
   AlertCircle,
   X,
+  QrCode,
+  Printer,
 } from 'lucide-react';
 
 interface Patient {
@@ -99,6 +101,11 @@ export default function PatientsPage() {
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
 
+  // QR modal
+  const [qrPatient, setQrPatient] = useState<Patient | null>(null);
+  const [qrDataUrl, setQrDataUrl] = useState<string | null>(null);
+  const [qrLoading, setQrLoading] = useState(false);
+
   const isAdmin = session?.user?.role === 'ADMIN';
 
   const fetchPatients = useCallback(async () => {
@@ -148,10 +155,30 @@ export default function PatientsPage() {
     }
   };
 
+  function formatPhone(value: string): string {
+    const digits = value.replace(/\D/g, '');
+    const national = digits.startsWith('998') ? digits.slice(3) : digits;
+    let result = '+998';
+    if (national.length > 0) result += ' ' + national.slice(0, 2);
+    if (national.length > 2) result += ' ' + national.slice(2, 5);
+    if (national.length > 5) result += ' ' + national.slice(5, 7);
+    if (national.length > 7) result += ' ' + national.slice(7, 9);
+    return result;
+  }
+
+  function handlePhoneInputChange(value: string): string {
+    if (!value.startsWith('+998')) return '+998';
+    return formatPhone(value);
+  }
+
   const handleFormChange = (
     e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>
   ) => {
-    setForm((prev) => ({ ...prev, [e.target.name]: e.target.value }));
+    if (e.target.name === 'phone') {
+      setForm((prev) => ({ ...prev, phone: handlePhoneInputChange(e.target.value) }));
+    } else {
+      setForm((prev) => ({ ...prev, [e.target.name]: e.target.value }));
+    }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -193,6 +220,47 @@ export default function PatientsPage() {
     } finally {
       setSaving(false);
     }
+  };
+
+  const openQr = async (patient: Patient, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setQrPatient(patient);
+    setQrDataUrl(null);
+    setQrLoading(true);
+    try {
+      const res = await fetch(`/api/patients/${patient.id}/qr`);
+      if (res.ok) {
+        const json = await res.json();
+        setQrDataUrl(json.dataUrl);
+      }
+    } finally {
+      setQrLoading(false);
+    }
+  };
+
+  const printQr = () => {
+    if (!qrPatient || !qrDataUrl) return;
+    const win = window.open('', '_blank');
+    if (!win) return;
+    win.document.write(`
+      <html><head><title>QR - ${qrPatient.lastName} ${qrPatient.firstName}</title>
+      <style>
+        body { font-family: sans-serif; text-align: center; padding: 20px; }
+        .name { font-size: 18px; font-weight: bold; margin-bottom: 4px; }
+        .info { font-size: 13px; color: #666; margin-bottom: 16px; }
+        img { width: 220px; height: 220px; }
+        .border { border: 2px solid #1e293b; display: inline-block; padding: 16px; border-radius: 12px; }
+      </style></head>
+      <body onload="window.print();window.close()">
+        <div class="border">
+          <div class="name">${qrPatient.lastName} ${qrPatient.firstName} ${qrPatient.fatherName}</div>
+          <div class="info">${qrPatient.phone} | Tug'ilgan: ${new Date(qrPatient.birthDate).toLocaleDateString('uz-UZ')}</div>
+          <img src="${qrDataUrl}" alt="QR Code" />
+          <div class="info" style="margin-top:8px">Bolajon Klinikasi</div>
+        </div>
+      </body></html>
+    `);
+    win.document.close();
   };
 
   const renderPageNumbers = () => {
@@ -294,13 +362,20 @@ export default function PatientsPage() {
                       {calcAge(patient.birthDate)}
                     </td>
                     <td className="px-4 py-3 text-slate-600">
-                      {new Date(patient.birthDate).toLocaleDateString('uz-UZ')}
+                      {new Date(patient.birthDate).getFullYear()}
                     </td>
                     <td className="px-4 py-3">
                       <div
                         className="flex items-center justify-end gap-1"
                         onClick={(e) => e.stopPropagation()}
                       >
+                        <button
+                          onClick={(e) => openQr(patient, e)}
+                          className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-md transition-colors"
+                          title="QR Code"
+                        >
+                          <QrCode className="w-4 h-4" />
+                        </button>
                         <button
                           onClick={() => router.push(`/patients/${patient.id}`)}
                           className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-md transition-colors"
@@ -445,7 +520,8 @@ export default function PatientsPage() {
                     name="phone"
                     value={form.phone}
                     onChange={handleFormChange}
-                    placeholder="+998901234567"
+                    placeholder="+998 90 123 45 67"
+                    maxLength={17}
                     className="border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                   />
                 </div>
@@ -555,6 +631,64 @@ export default function PatientsPage() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* QR Code Modal */}
+      {qrPatient && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm">
+            <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100">
+              <h2 className="text-lg font-semibold text-slate-800 flex items-center gap-2">
+                <QrCode className="w-5 h-5 text-indigo-600" />
+                QR Code
+              </h2>
+              <button
+                onClick={() => { setQrPatient(null); setQrDataUrl(null); }}
+                className="p-1.5 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-md transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="p-6 flex flex-col items-center gap-4">
+              <div className="text-center">
+                <p className="font-semibold text-slate-800 text-base">
+                  {qrPatient.lastName} {qrPatient.firstName} {qrPatient.fatherName}
+                </p>
+                <p className="text-sm text-slate-500 mt-1">{qrPatient.phone}</p>
+                <p className="text-xs text-slate-400">
+                  {new Date(qrPatient.birthDate).toLocaleDateString('uz-UZ')}
+                </p>
+              </div>
+
+              <div className="border-2 border-slate-200 rounded-xl p-3 bg-white">
+                {qrLoading ? (
+                  <div className="w-52 h-52 flex items-center justify-center">
+                    <Loader2 className="w-8 h-8 animate-spin text-blue-500" />
+                  </div>
+                ) : qrDataUrl ? (
+                  <img src={qrDataUrl} alt="QR Code" className="w-52 h-52" />
+                ) : (
+                  <div className="w-52 h-52 flex items-center justify-center text-slate-400 text-sm">
+                    Xatolik
+                  </div>
+                )}
+              </div>
+
+              <p className="text-xs text-slate-400 text-center">
+                Doktor bu QR kodni laser bilan o'qiydi — bemor ma'lumotlari ochiladi
+              </p>
+
+              <button
+                onClick={printQr}
+                disabled={!qrDataUrl}
+                className="flex items-center gap-2 w-full justify-center px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-medium rounded-lg transition-colors"
+              >
+                <Printer className="w-4 h-4" />
+                Chop etish
+              </button>
+            </div>
           </div>
         </div>
       )}

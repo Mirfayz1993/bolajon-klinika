@@ -59,7 +59,9 @@
     "medicalRecords": "Тиббий карталар",
     "clinic": "Клиник",
     "finance": "Молия",
-    "permissions": "Рухсатлар"
+    "permissions": "Рухсатлар",
+    "ambulatory": "Амбулатор",
+    "services": "Хизматлар"
   },
   "dashboard": {
     "title": "Бош саҳифа",
@@ -81,7 +83,7 @@
     "firstName": "Исм",
     "lastName": "Фамилия",
     "fatherName": "Отасининг исми",
-    "birthDate": "Туғилган сана",
+    "birthDate": "Туғилган йил",
     "gender": "Жинс",
     "male": "Эркак",
     "female": "Аёл",
@@ -175,7 +177,8 @@
       "SPEECH_THERAPY": "Логопедия",
       "MASSAGE": "Массаж",
       "TREATMENT": "Муолажа",
-      "INPATIENT": "Стационар"
+      "INPATIENT": "Стационар",
+      "AMBULATORY": "Амбулатор"
     }
   },
   "staff": {
@@ -249,7 +252,43 @@
       "AVAILABLE": "Бўш",
       "OCCUPIED": "Банд",
       "MAINTENANCE": "Таъмирда"
-    }
+    },
+    "viewDetails": "Батафсил кўриш",
+    "inventory": "Инвентар",
+    "addInventory": "Инвентар қўшиш",
+    "inventoryName": "Жиҳоз номи",
+    "inventoryDescription": "Тавсиф",
+    "inventoryQuantity": "Миқдор",
+    "inventoryUnitPrice": "Бирлик нархи (сўм)",
+    "inventoryStatus": "Ҳолат",
+    "inventoryActive": "Фаол",
+    "inventoryWrittenOff": "Чиқим қилинган",
+    "writeOff": "Чиқим қилиш",
+    "purchaseDate": "Сотиб олинган сана",
+    "noInventory": "Инвентар мавжуд эмас",
+    "responsible": "Жавобгар",
+    "assignResponsible": "Жавобгар тайинлаш",
+    "changeResponsible": "Жавобгарни алмаштириш",
+    "noResponsible": "Жавобгар тайинланмаган",
+    "currentResponsible": "Ҳозирги жавобгар",
+    "expenses": "Харажатлар",
+    "addExpense": "Харажат қўшиш",
+    "expenseType": "Харажат тури",
+    "expenseAmount": "Миқдори (сўм)",
+    "expenseDescription": "Изоҳ",
+    "expenseDate": "Сана",
+    "expenseINVENTORY": "Инвентар харажати",
+    "expenseMEDICINE": "Дори / Реактор",
+    "expenseUTILITY": "Маиший харажат",
+    "noExpenses": "Харажатлар мавжуд эмас",
+    "totalExpenses": "Жами харажатлар",
+    "expensesByType": "Турлари бўйича",
+    "backToRooms": "Хоналарга қайтиш",
+    "overview": "Умумий кўриниш",
+    "inventoryWriteOffConfirm": "Ушбу жиҳоз чиқим қилинсинми?",
+    "inventoryDeleteConfirm": "Ушбу жиҳозни ўчиришни тасдиқлайсизми?",
+    "expenseDeleteConfirm": "Харажатни ўчиришни тасдиқлайсизми?",
+    "selectStaff": "— Ходим танланг —"
   },
   "admissions": {
     "title": "Стационар",
@@ -468,7 +507,13 @@
     "clinicPhone": "Клиника телефони",
     "clinicAddress": "Клиника манзили",
     "comingSoon": "Тез орада...",
-    "clinicInfo": "Клиника созламалари ва маълумотномалари"
+    "clinicInfo": "Клиника созламалари ва маълумотномалари",
+    "roomTypes": "Хона турлари",
+    "addRoomType": "Хона тури қўшиш",
+    "roomTypeName": "Хона тури номи",
+    "noRoomTypes": "Хона турлари топилмади",
+    "deleteRoomTypeConfirm": "Ушбу хона турини ўчиришни тасдиқлайсизми?",
+    "roomsCount": "Хоналар сони"
   },
   "permissions": {
     "title": "Рухсатлар бошқаруви",

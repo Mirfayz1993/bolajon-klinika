@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useSession } from 'next-auth/react';
 import { useLanguage } from '@/hooks/useLanguage';
+import { useRouter } from 'next/navigation';
 import {
   Plus,
   Loader2,
@@ -49,12 +50,11 @@ interface RoomForm {
 const emptyRoomForm: RoomForm = {
   floor: '1',
   roomNumber: '',
-  type: 'WARD',
+  type: '',
   capacity: '4',
   isActive: true,
 };
 
-const ROOM_TYPE_KEYS = ['WARD', 'ICU', 'ISOLATION', 'PROCEDURE'];
 const FLOORS = [1, 2, 3, 4];
 
 // ─── Bed dot indicator ────────────────────────────────────────────────────────
@@ -73,32 +73,30 @@ function BedDot({ status }: { status: Bed['status'] }) {
   );
 }
 
-// ─── Bed status text badge ────────────────────────────────────────────────────
-
-function BedStatusBadge({ status }: { status: Bed['status'] }) {
-  const { t } = useLanguage();
-  const map: Record<Bed['status'], string> = {
-    AVAILABLE: 'bg-green-100 text-green-800',
-    OCCUPIED: 'bg-red-100 text-red-800',
-    MAINTENANCE: 'bg-yellow-100 text-yellow-800',
-  };
-  return (
-    <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${map[status]}`}>
-      {t.rooms.status[status]}
-    </span>
-  );
-}
-
 // ─── Main Component ───────────────────────────────────────────────────────────
 
 export default function RoomsPage() {
   const { t } = useLanguage();
   const { data: session } = useSession();
+  const router = useRouter();
   const isAdmin = session?.user?.role === 'ADMIN';
 
   const [rooms, setRooms] = useState<Room[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const [roomTypes, setRoomTypes] = useState<string[]>([]);
+
+  useEffect(() => {
+    fetch('/api/room-types')
+      .then((r) => r.json())
+      .then((data: { name: string }[]) => {
+        const names = data.map((rt) => rt.name);
+        setRoomTypes(names);
+        setRoomForm((prev) => ({ ...prev, type: prev.type || names[0] || '' }));
+      })
+      .catch(() => {});
+  }, []);
 
   const [floorFilter, setFloorFilter] = useState<number | null>(null);
   const [typeFilter, setTypeFilter] = useState<string | null>(null);
@@ -109,16 +107,6 @@ export default function RoomsPage() {
   const [roomForm, setRoomForm] = useState<RoomForm>(emptyRoomForm);
   const [roomSaving, setRoomSaving] = useState(false);
   const [roomFormError, setRoomFormError] = useState<string | null>(null);
-
-  // Detail modal
-  const [detailRoom, setDetailRoom] = useState<Room | null>(null);
-  const [detailLoading, setDetailLoading] = useState(false);
-
-  // Add bed (inline in detail modal)
-  const [addBedRoomId, setAddBedRoomId] = useState<string | null>(null);
-  const [bedNumber, setBedNumber] = useState('');
-  const [bedSaving, setBedSaving] = useState(false);
-  const [bedError, setBedError] = useState<string | null>(null);
 
   // ─── Fetch rooms ───────────────────────────────────────────────────────────
 
@@ -143,22 +131,6 @@ export default function RoomsPage() {
   useEffect(() => {
     fetchRooms();
   }, [fetchRooms]);
-
-  // ─── Detail room fetch ─────────────────────────────────────────────────────
-
-  const fetchDetailRoom = useCallback(async (id: string) => {
-    setDetailLoading(true);
-    try {
-      const res = await fetch(`/api/rooms/${id}`);
-      if (!res.ok) throw new Error();
-      const data: Room = await res.json();
-      setDetailRoom(data);
-    } catch {
-      setDetailRoom(null);
-    } finally {
-      setDetailLoading(false);
-    }
-  }, []);
 
   // ─── Add / Edit room handlers ──────────────────────────────────────────────
 
@@ -222,9 +194,6 @@ export default function RoomsPage() {
       }
       setShowRoomModal(false);
       fetchRooms();
-      if (detailRoom && editingRoom && detailRoom.id === editingRoom.id) {
-        fetchDetailRoom(editingRoom.id);
-      }
     } catch (err) {
       setRoomFormError(err instanceof Error ? err.message : t.common.error);
     } finally {
@@ -242,68 +211,6 @@ export default function RoomsPage() {
         throw new Error(err.error ?? t.common.error);
       }
       fetchRooms();
-      if (detailRoom?.id === id) setDetailRoom(null);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : t.common.error);
-    }
-  };
-
-  // ─── Add bed handler ───────────────────────────────────────────────────────
-
-  const handleAddBed = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!addBedRoomId) return;
-    setBedSaving(true);
-    setBedError(null);
-    try {
-      const res = await fetch(`/api/rooms/${addBedRoomId}/beds`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ bedNumber }),
-      });
-      if (!res.ok) {
-        const err = await res.json() as { error?: string };
-        throw new Error(err.error ?? t.common.error);
-      }
-      setBedNumber('');
-      setAddBedRoomId(null);
-      fetchRooms();
-      if (detailRoom?.id === addBedRoomId) fetchDetailRoom(addBedRoomId);
-    } catch (err) {
-      setBedError(err instanceof Error ? err.message : t.common.error);
-    } finally {
-      setBedSaving(false);
-    }
-  };
-
-  const handleDeleteBed = async (bedId: string, roomId: string) => {
-    if (!confirm(t.rooms.deleteBedConfirm)) return;
-    try {
-      const res = await fetch(`/api/beds/${bedId}`, { method: 'DELETE' });
-      if (!res.ok) {
-        const err = await res.json() as { error?: string };
-        throw new Error(err.error ?? t.common.error);
-      }
-      fetchRooms();
-      if (detailRoom?.id === roomId) fetchDetailRoom(roomId);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : t.common.error);
-    }
-  };
-
-  const handleChangeBedStatus = async (bedId: string, status: Bed['status'], roomId: string) => {
-    try {
-      const res = await fetch(`/api/beds/${bedId}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status }),
-      });
-      if (!res.ok) {
-        const err = await res.json() as { error?: string };
-        throw new Error(err.error ?? t.common.error);
-      }
-      fetchRooms();
-      if (detailRoom?.id === roomId) fetchDetailRoom(roomId);
     } catch (err) {
       setError(err instanceof Error ? err.message : t.common.error);
     }
@@ -313,11 +220,6 @@ export default function RoomsPage() {
 
   const countByStatus = (beds: Bed[], status: Bed['status']) =>
     beds.filter((b) => b.status === status).length;
-
-  const getRoomTypeLabel = (type: string): string => {
-    const types = t.rooms.types as Record<string, string>;
-    return types[type] ?? type;
-  };
 
   // ─── Render ────────────────────────────────────────────────────────────────
 
@@ -368,7 +270,7 @@ export default function RoomsPage() {
         <div className="w-px h-6 bg-slate-200 mx-1" />
 
         {/* Type filter */}
-        {ROOM_TYPE_KEYS.map((rt) => (
+        {roomTypes.map((rt) => (
           <button
             key={rt}
             onClick={() => setTypeFilter(typeFilter === rt ? null : rt)}
@@ -378,7 +280,7 @@ export default function RoomsPage() {
                 : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-50'
             }`}
           >
-            {getRoomTypeLabel(rt)}
+            {rt}
           </button>
         ))}
       </div>
@@ -435,7 +337,7 @@ export default function RoomsPage() {
                   </div>
                   <div className="flex flex-col items-end gap-1">
                     <span className="text-xs font-medium bg-violet-100 text-violet-700 px-2 py-0.5 rounded-full">
-                      {getRoomTypeLabel(room.type)}
+                      {room.type}
                     </span>
                     {!room.isActive && (
                       <span className="text-xs bg-slate-100 text-slate-500 px-2 py-0.5 rounded-full">
@@ -502,7 +404,7 @@ export default function RoomsPage() {
                 {/* Actions */}
                 <div className="flex items-center gap-2 mt-auto pt-3 border-t border-slate-100">
                   <button
-                    onClick={() => fetchDetailRoom(room.id)}
+                    onClick={() => router.push(`/rooms/${room.id}`)}
                     className="flex items-center gap-1.5 text-xs font-medium text-blue-600 hover:text-blue-700 hover:bg-blue-50 px-3 py-1.5 rounded-lg transition-colors"
                   >
                     <Info className="w-3.5 h-3.5" />
@@ -605,9 +507,9 @@ export default function RoomsPage() {
                     required
                     className="border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                   >
-                    {ROOM_TYPE_KEYS.map((rt) => (
+                    {roomTypes.map((rt) => (
                       <option key={rt} value={rt}>
-                        {getRoomTypeLabel(rt)}
+                        {rt}
                       </option>
                     ))}
                   </select>
@@ -670,192 +572,6 @@ export default function RoomsPage() {
         </div>
       )}
 
-      {/* ── Detail Modal ───────────────────────────────────────────────────── */}
-      {detailRoom !== null && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
-            <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 sticky top-0 bg-white z-10">
-              <h2 className="text-lg font-semibold text-slate-800">
-                {t.rooms.roomDetails} — {t.rooms.number} {detailRoom.roomNumber}
-              </h2>
-              <button
-                onClick={() => setDetailRoom(null)}
-                className="p-1.5 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-md transition-colors"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            <div className="p-6">
-              {detailLoading ? (
-                <div className="flex justify-center py-10">
-                  <Loader2 className="w-6 h-6 animate-spin text-blue-500" />
-                </div>
-              ) : (
-                <>
-                  {/* Room info */}
-                  <div className="grid grid-cols-2 gap-3 mb-6 text-sm">
-                    <div>
-                      <span className="text-slate-500">{t.rooms.floor}:</span>{' '}
-                      <span className="font-medium text-slate-800">
-                        {detailRoom.floor}{t.rooms.floorLabel}
-                      </span>
-                    </div>
-                    <div>
-                      <span className="text-slate-500">{t.rooms.type}:</span>{' '}
-                      <span className="font-medium text-slate-800">
-                        {getRoomTypeLabel(detailRoom.type)}
-                      </span>
-                    </div>
-                    <div>
-                      <span className="text-slate-500">{t.rooms.capacity}:</span>{' '}
-                      <span className="font-medium text-slate-800">{detailRoom.capacity}</span>
-                    </div>
-                    <div>
-                      <span className="text-slate-500">{t.rooms.isActive}:</span>{' '}
-                      <span className={`font-medium ${detailRoom.isActive ? 'text-green-600' : 'text-slate-400'}`}>
-                        {detailRoom.isActive ? t.staff.active : t.staff.inactive}
-                      </span>
-                    </div>
-                  </div>
-
-                  {/* Beds */}
-                  <div className="mb-4">
-                    <div className="flex items-center justify-between mb-3">
-                      <h3 className="font-semibold text-slate-700 text-sm">
-                        {t.rooms.beds} ({detailRoom.beds.length})
-                      </h3>
-                      {isAdmin && (
-                        <button
-                          onClick={() => {
-                            setAddBedRoomId(detailRoom.id);
-                            setBedNumber('');
-                            setBedError(null);
-                          }}
-                          className="flex items-center gap-1.5 text-xs font-medium text-blue-600 hover:text-blue-700 hover:bg-blue-50 px-3 py-1.5 rounded-lg transition-colors"
-                        >
-                          <Plus className="w-3.5 h-3.5" />
-                          {t.rooms.addBed}
-                        </button>
-                      )}
-                    </div>
-
-                    {detailRoom.beds.length === 0 ? (
-                      <p className="text-sm text-slate-400 text-center py-4">
-                        {t.rooms.beds}: 0
-                      </p>
-                    ) : (
-                      <div className="border border-slate-200 rounded-lg overflow-hidden">
-                        <table className="w-full text-sm">
-                          <thead>
-                            <tr className="bg-slate-50 border-b border-slate-200">
-                              <th className="text-left px-4 py-2.5 font-semibold text-slate-600 text-xs">
-                                {t.rooms.bedNumber}
-                              </th>
-                              <th className="text-left px-4 py-2.5 font-semibold text-slate-600 text-xs">
-                                {t.common.status}
-                              </th>
-                              {isAdmin && (
-                                <th className="text-right px-4 py-2.5 font-semibold text-slate-600 text-xs">
-                                  {t.common.actions}
-                                </th>
-                              )}
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {detailRoom.beds.map((bed) => (
-                              <tr key={bed.id} className="border-b border-slate-100 last:border-0">
-                                <td className="px-4 py-2.5 font-medium text-slate-800">
-                                  {bed.bedNumber}
-                                </td>
-                                <td className="px-4 py-2.5">
-                                  {isAdmin ? (
-                                    <select
-                                      value={bed.status}
-                                      onChange={(e) =>
-                                        handleChangeBedStatus(
-                                          bed.id,
-                                          e.target.value as Bed['status'],
-                                          detailRoom.id
-                                        )
-                                      }
-                                      className="text-xs border border-slate-200 rounded-md px-2 py-1 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                                    >
-                                      <option value="AVAILABLE">{t.rooms.status.AVAILABLE}</option>
-                                      <option value="OCCUPIED">{t.rooms.status.OCCUPIED}</option>
-                                      <option value="MAINTENANCE">{t.rooms.status.MAINTENANCE}</option>
-                                    </select>
-                                  ) : (
-                                    <BedStatusBadge status={bed.status} />
-                                  )}
-                                </td>
-                                {isAdmin && (
-                                  <td className="px-4 py-2.5 text-right">
-                                    <button
-                                      onClick={() => handleDeleteBed(bed.id, detailRoom.id)}
-                                      className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-md transition-colors"
-                                      title={t.common.delete}
-                                    >
-                                      <Trash2 className="w-3.5 h-3.5" />
-                                    </button>
-                                  </td>
-                                )}
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Add bed inline form */}
-                  {isAdmin && addBedRoomId === detailRoom.id && (
-                    <form
-                      onSubmit={handleAddBed}
-                      className="bg-slate-50 border border-slate-200 rounded-lg p-4"
-                    >
-                      <h4 className="text-sm font-semibold text-slate-700 mb-3">
-                        {t.rooms.addBed}
-                      </h4>
-                      {bedError && (
-                        <div className="flex items-center gap-2 text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2 mb-3 text-xs">
-                          <AlertCircle className="w-3.5 h-3.5 flex-shrink-0" />
-                          {bedError}
-                        </div>
-                      )}
-                      <div className="flex items-center gap-2">
-                        <input
-                          type="text"
-                          value={bedNumber}
-                          onChange={(e) => setBedNumber(e.target.value)}
-                          placeholder={t.rooms.bedNumber}
-                          required
-                          className="flex-1 border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                        />
-                        <button
-                          type="submit"
-                          disabled={bedSaving}
-                          className="flex items-center gap-1.5 px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-60 text-white text-sm font-medium rounded-lg transition-colors"
-                        >
-                          {bedSaving && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
-                          {t.common.add}
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setAddBedRoomId(null)}
-                          className="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-lg transition-colors"
-                        >
-                          <X className="w-4 h-4" />
-                        </button>
-                      </div>
-                    </form>
-                  )}
-                </>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

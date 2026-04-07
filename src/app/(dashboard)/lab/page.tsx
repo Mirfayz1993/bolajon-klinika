@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { useSession } from "next-auth/react";
+import { useRouter } from "next/navigation";
 import { useLanguage } from "@/hooks/useLanguage";
 import {
   Plus,
@@ -12,6 +13,7 @@ import {
   Pencil,
   Trash2,
   Search,
+  Printer,
 } from "lucide-react";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -29,6 +31,8 @@ interface LabTestType {
   price: number;
   duration: number | null;
   normalRange: string | null;
+  unit: string | null;
+  category: string | null;
 }
 
 interface LabTest {
@@ -69,6 +73,7 @@ function nextStatuses(current: string): string[] {
 export default function LabPage() {
   const { t } = useLanguage();
   const { data: session } = useSession();
+  const router = useRouter();
 
   const role = session?.user?.role as string | undefined;
   const canManageResults =
@@ -112,8 +117,14 @@ export default function LabPage() {
   const [typeName, setTypeName] = useState("");
   const [typePrice, setTypePrice] = useState("");
   const [typeNormalRange, setTypeNormalRange] = useState("");
+  const [typeUnit, setTypeUnit] = useState("");
+  const [typeCategory, setTypeCategory] = useState("");
   const [typeSaving, setTypeSaving] = useState(false);
   const [typeError, setTypeError] = useState<string | null>(null);
+
+  // ── Print modal ────────────────────────────────────────────────────────────
+  const [showPrintModal, setShowPrintModal] = useState(false);
+  const [printTest, setPrintTest] = useState<LabTest | null>(null);
 
   // ─── Data fetchers ─────────────────────────────────────────────────────────
 
@@ -264,6 +275,8 @@ export default function LabPage() {
     setTypeName("");
     setTypePrice("");
     setTypeNormalRange("");
+    setTypeUnit("");
+    setTypeCategory("");
     setTypeError(null);
     setShowTypeModal(true);
   }
@@ -273,6 +286,8 @@ export default function LabPage() {
     setTypeName(tt.name);
     setTypePrice(String(tt.price));
     setTypeNormalRange(tt.normalRange ?? "");
+    setTypeUnit(tt.unit ?? "");
+    setTypeCategory(tt.category ?? "");
     setTypeError(null);
     setShowTypeModal(true);
   }
@@ -287,6 +302,8 @@ export default function LabPage() {
         price: Number(typePrice),
       };
       if (typeNormalRange.trim()) body.normalRange = typeNormalRange.trim();
+      if (typeUnit.trim()) body.unit = typeUnit.trim();
+      if (typeCategory.trim()) body.category = typeCategory.trim();
 
       const url = editingType
         ? `/api/lab-test-types/${editingType.id}`
@@ -322,6 +339,11 @@ export default function LabPage() {
     } catch {
       setTypesError(t.common.error);
     }
+  }
+
+  function openPrintModal(test: LabTest) {
+    setPrintTest(test);
+    setShowPrintModal(true);
   }
 
   // ─── Render ────────────────────────────────────────────────────────────────
@@ -502,6 +524,24 @@ export default function LabPage() {
                                   {t.lab.enterResult}
                                 </button>
                               )}
+                            {test.status === "COMPLETED" && (
+                              <>
+                                <button
+                                  onClick={() => openPrintModal(test)}
+                                  className="p-1.5 text-slate-500 hover:text-purple-600 hover:bg-purple-50 rounded-md transition-colors"
+                                  title="Chop etish (bitta)"
+                                >
+                                  <Printer className="w-4 h-4" />
+                                </button>
+                                <button
+                                  onClick={() => router.push(`/lab/print?patientId=${test.patient.id}`)}
+                                  className="p-1.5 text-slate-500 hover:text-blue-600 hover:bg-blue-50 rounded-md transition-colors"
+                                  title="Barcha tahlillarni guruhlab chop etish"
+                                >
+                                  <Printer className="w-4 h-4 text-blue-500" />
+                                </button>
+                              </>
+                            )}
                           </div>
                         </td>
                       </tr>
@@ -538,6 +578,12 @@ export default function LabPage() {
                     <th className="text-left px-4 py-3 font-semibold text-slate-600">
                       {t.lab.normalRange}
                     </th>
+                    <th className="text-left px-4 py-3 font-semibold text-slate-600 text-xs">
+                      O&apos;lchov
+                    </th>
+                    <th className="text-left px-4 py-3 font-semibold text-slate-600 text-xs">
+                      Guruh
+                    </th>
                     <th className="text-right px-4 py-3 font-semibold text-slate-600">
                       {t.common.actions}
                     </th>
@@ -546,14 +592,14 @@ export default function LabPage() {
                 <tbody>
                   {typesLoading ? (
                     <tr>
-                      <td colSpan={4} className="text-center py-12">
+                      <td colSpan={6} className="text-center py-12">
                         <Loader2 className="w-6 h-6 animate-spin mx-auto text-blue-500" />
                       </td>
                     </tr>
                   ) : testTypes.length === 0 ? (
                     <tr>
                       <td
-                        colSpan={4}
+                        colSpan={6}
                         className="text-center py-12 text-slate-400"
                       >
                         {t.lab.noTestTypes}
@@ -574,6 +620,8 @@ export default function LabPage() {
                         <td className="px-4 py-3 text-slate-500">
                           {tt.normalRange ?? "—"}
                         </td>
+                        <td className="px-4 py-3 text-slate-500 text-sm">{tt.unit ?? "—"}</td>
+                        <td className="px-4 py-3 text-slate-500 text-sm">{tt.category ?? "—"}</td>
                         <td className="px-4 py-3">
                           <div className="flex items-center justify-end gap-1">
                             <button
@@ -847,6 +895,148 @@ export default function LabPage() {
       {/* ═══════════════════════════════════════════════════════
           MODAL: Add / Edit Test Type
       ═══════════════════════════════════════════════════════ */}
+      {/* ── Print Modal ─────────────────────────────────────────────────────── */}
+      {showPrintModal && printTest && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+            {/* Modal header - ekranda ko'rinadi, print da ko'rinmaydi */}
+            <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 print:hidden">
+              <h2 className="text-lg font-semibold text-slate-800">Tahlil natijasi</h2>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => {
+                    const el = document.getElementById('print-content');
+                    if (!el) return;
+                    const win = window.open('', '_blank');
+                    if (!win) return;
+                    win.document.write(`<html><head><title>Tahlil natijasi</title><style>body{font-family:Arial,sans-serif;margin:20px;}table{border-collapse:collapse;width:100%;}th,td{border:1px solid #94a3b8;padding:8px 12px;}th{background:#dbeafe;font-weight:bold;text-align:center;}td:first-child{text-align:left;}h2{text-align:center;color:#1e40af;text-transform:uppercase;letter-spacing:1px;}h1{text-align:center;}.patient-info{display:flex;justify-content:space-between;border-bottom:1px solid #e2e8f0;padding-bottom:12px;margin-bottom:16px;font-size:14px;}.footer{margin-top:32px;padding-top:12px;border-top:1px solid #e2e8f0;display:flex;justify-content:space-between;font-size:11px;color:#94a3b8;}</style></head><body>${el.innerHTML}</body></html>`);
+                    win.document.close();
+                    win.print();
+                  }}
+                  className="flex items-center gap-1.5 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-medium"
+                >
+                  <Printer className="w-4 h-4" />
+                  Chop etish
+                </button>
+                <button
+                  onClick={() => setShowPrintModal(false)}
+                  className="p-1.5 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-md"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+            </div>
+
+            {/* Print content */}
+            <div
+              id="print-content"
+              className="p-8"
+              style={{ fontFamily: 'Arial, sans-serif' }}
+            >
+              {/* Clinic header */}
+              <div className="text-center mb-6">
+                <h1 className="text-xl font-bold text-slate-800">BOLAJON KLINIKASI</h1>
+                <p className="text-sm text-slate-500 mt-1">Laboratoriya tahlil natijalari</p>
+              </div>
+
+              {/* Patient info */}
+              <div className="patient-info flex justify-between mb-6 text-sm border-b border-slate-200 pb-4">
+                <div>
+                  <span className="font-semibold">Bemor:</span>{" "}
+                  {printTest.patient.lastName} {printTest.patient.firstName}{" "}
+                  {printTest.patient.fatherName}
+                </div>
+                <div>
+                  <span className="font-semibold">Sana:</span>{" "}
+                  {new Date(printTest.orderedAt).toLocaleDateString("ru-RU")}
+                </div>
+              </div>
+
+              {/* Category header if exists */}
+              {printTest.testType.category && (
+                <div className="text-center mb-3">
+                  <h2
+                    className="text-base font-bold uppercase tracking-wide"
+                    style={{ color: '#1e40af' }}
+                  >
+                    {printTest.testType.category}
+                  </h2>
+                </div>
+              )}
+
+              {/* Results table */}
+              <table
+                className="w-full text-sm"
+                style={{ borderCollapse: 'collapse', width: '100%' }}
+              >
+                <thead>
+                  <tr style={{ backgroundColor: '#dbeafe' }}>
+                    <th
+                      className="border border-slate-300 px-3 py-2 text-left font-bold text-slate-700"
+                      style={{ border: '1px solid #94a3b8', padding: '8px 12px', textAlign: 'left', fontWeight: 'bold' }}
+                    >
+                      Наименование Анализа
+                    </th>
+                    <th
+                      className="border border-slate-300 px-3 py-2 text-center font-bold text-slate-700"
+                      style={{ border: '1px solid #94a3b8', padding: '8px 12px', textAlign: 'center', fontWeight: 'bold' }}
+                    >
+                      Результат
+                    </th>
+                    <th
+                      className="border border-slate-300 px-3 py-2 text-center font-bold text-slate-700"
+                      style={{ border: '1px solid #94a3b8', padding: '8px 12px', textAlign: 'center', fontWeight: 'bold' }}
+                    >
+                      Норма
+                    </th>
+                    <th
+                      className="border border-slate-300 px-3 py-2 text-center font-bold text-slate-700"
+                      style={{ border: '1px solid #94a3b8', padding: '8px 12px', textAlign: 'center', fontWeight: 'bold' }}
+                    >
+                      Ед.изм
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td
+                      className="border border-slate-300 px-3 py-2 text-slate-800"
+                      style={{ border: '1px solid #94a3b8', padding: '8px 12px' }}
+                    >
+                      {printTest.testType.name}
+                    </td>
+                    <td
+                      className="border border-slate-300 px-3 py-2 text-center font-medium text-slate-900"
+                      style={{ border: '1px solid #94a3b8', padding: '8px 12px', textAlign: 'center', fontWeight: '600' }}
+                    >
+                      {printTest.result ?? "—"}
+                    </td>
+                    <td
+                      className="border border-slate-300 px-3 py-2 text-center text-slate-600"
+                      style={{ border: '1px solid #94a3b8', padding: '8px 12px', textAlign: 'center' }}
+                    >
+                      {printTest.testType.normalRange ?? "—"}
+                    </td>
+                    <td
+                      className="border border-slate-300 px-3 py-2 text-center text-slate-600"
+                      style={{ border: '1px solid #94a3b8', padding: '8px 12px', textAlign: 'center' }}
+                    >
+                      {printTest.testType.unit ?? "—"}
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+
+              {/* Footer */}
+              <div className="footer mt-8 pt-4 border-t border-slate-200 flex justify-between text-xs text-slate-400">
+                <span>Laboratoriya mutaxassisi: _______________</span>
+                <span>Imzo: _______________</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {showTypeModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
           <div className="bg-white rounded-2xl shadow-xl w-full max-w-md">
@@ -906,6 +1096,36 @@ export default function LabPage() {
                   onChange={(e) => setTypeNormalRange(e.target.value)}
                   rows={3}
                   className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none"
+                />
+              </div>
+
+              {/* Guruh nomi (category) */}
+              <div className="flex flex-col gap-1">
+                <label className="text-sm font-medium text-slate-700">
+                  Guruh nomi <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  value={typeCategory}
+                  onChange={(e) => setTypeCategory(e.target.value)}
+                  placeholder="Masalan: ЩИТОВИДНАЯ ЖЕЛЕЗА"
+                  required
+                  className="border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300"
+                />
+                <p className="text-xs text-slate-400">Chop etishda guruh sarlavhasi sifatida ko&apos;rinadi</p>
+              </div>
+
+              {/* O'lchov birligi (unit) */}
+              <div className="flex flex-col gap-1">
+                <label className="text-sm font-medium text-slate-700">
+                  O&apos;lchov birligi (ixtiyoriy)
+                </label>
+                <input
+                  type="text"
+                  value={typeUnit}
+                  onChange={(e) => setTypeUnit(e.target.value)}
+                  placeholder="Masalan: IU/mL, ng/mL, ОП"
+                  className="border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300"
                 />
               </div>
 

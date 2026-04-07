@@ -103,6 +103,8 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    const isAmbulatory = floor === 3; // 3-qavat = ambulator bo'lim
+
     const room = await prisma.room.create({
       data: {
         floor,
@@ -110,6 +112,7 @@ export async function POST(req: NextRequest) {
         type,
         capacity: capacity ?? 1,
         isActive: isActive ?? true,
+        isAmbulatory,
       },
       include: {
         beds: {

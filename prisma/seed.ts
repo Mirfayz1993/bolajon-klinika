@@ -21,18 +21,23 @@ const ALL_ROLES: Role[] = [
 
 // Har bir sahifa uchun canAccess: true bo'lgan rollar
 const PAGE_ACCESS: Record<string, Role[]> = {
-  '/dashboard':    ALL_ROLES,
-  '/patients':     ['ADMIN', 'HEAD_DOCTOR', 'DOCTOR', 'HEAD_NURSE', 'NURSE', 'RECEPTIONIST'],
-  '/appointments': ['ADMIN', 'HEAD_DOCTOR', 'DOCTOR', 'HEAD_NURSE', 'RECEPTIONIST'],
-  '/payments':     ['ADMIN', 'HEAD_DOCTOR', 'RECEPTIONIST'],
-  '/lab':          ['ADMIN', 'HEAD_DOCTOR', 'HEAD_LAB_TECH', 'LAB_TECH', 'DOCTOR'],
-  '/staff':        ['ADMIN', 'HEAD_DOCTOR'],
-  '/queue':        ALL_ROLES,
-  '/rooms':        ['ADMIN', 'HEAD_DOCTOR', 'HEAD_NURSE'],
-  '/schedule':     ['ADMIN', 'HEAD_DOCTOR', 'DOCTOR', 'HEAD_NURSE'],
-  '/reports':      ['ADMIN', 'HEAD_DOCTOR'],
-  '/settings':     ['ADMIN'],
-  '/audit-logs':   ['ADMIN'],
+  '/dashboard':           ALL_ROLES,
+  '/patients':            ['ADMIN', 'HEAD_DOCTOR', 'DOCTOR', 'HEAD_NURSE', 'NURSE', 'RECEPTIONIST', 'SPEECH_THERAPIST', 'MASSAGE_THERAPIST'],
+  '/appointments':        ['ADMIN', 'HEAD_DOCTOR', 'DOCTOR', 'HEAD_NURSE', 'NURSE', 'RECEPTIONIST', 'SPEECH_THERAPIST', 'MASSAGE_THERAPIST'],
+  '/payments':            ['ADMIN', 'HEAD_DOCTOR', 'RECEPTIONIST'],
+  '/lab':                 ['ADMIN', 'HEAD_DOCTOR', 'HEAD_LAB_TECH', 'LAB_TECH', 'DOCTOR'],
+  '/staff':               ['ADMIN', 'HEAD_DOCTOR'],
+  '/queue':               ALL_ROLES,
+  '/rooms':               ['ADMIN', 'HEAD_DOCTOR', 'HEAD_NURSE'],
+  '/admissions':          ['ADMIN', 'HEAD_DOCTOR', 'DOCTOR', 'HEAD_NURSE', 'NURSE'],
+  '/ambulatory':          ['ADMIN', 'HEAD_DOCTOR', 'DOCTOR', 'HEAD_NURSE', 'NURSE', 'SPEECH_THERAPIST', 'MASSAGE_THERAPIST'],
+  '/schedule':            ['ADMIN', 'HEAD_DOCTOR', 'DOCTOR', 'HEAD_NURSE', 'NURSE', 'SPEECH_THERAPIST', 'MASSAGE_THERAPIST'],
+  '/reports':             ['ADMIN', 'HEAD_DOCTOR'],
+  '/settings':            ['ADMIN'],
+  '/settings/permissions':['ADMIN'],
+  '/audit-logs':          ['ADMIN'],
+  '/medical-records':     ['ADMIN', 'HEAD_DOCTOR', 'DOCTOR'],
+  '/services':            ALL_ROLES,
 };
 
 const ALL_PAGES = Object.keys(PAGE_ACCESS);

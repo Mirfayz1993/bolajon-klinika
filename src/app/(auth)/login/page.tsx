@@ -7,6 +7,17 @@ import { useLanguage } from '@/hooks/useLanguage';
 import { Eye, EyeOff, LogIn } from 'lucide-react';
 import Image from 'next/image';
 
+function formatPhone(value: string): string {
+  const digits = value.replace(/\D/g, '');
+  const national = digits.startsWith('998') ? digits.slice(3) : digits;
+  let result = '+998';
+  if (national.length > 0) result += ' ' + national.slice(0, 2);
+  if (national.length > 2) result += ' ' + national.slice(2, 5);
+  if (national.length > 5) result += ' ' + national.slice(5, 7);
+  if (national.length > 7) result += ' ' + national.slice(7, 9);
+  return result;
+}
+
 export default function LoginPage() {
   const router = useRouter();
   const { t } = useLanguage();
@@ -24,7 +35,7 @@ export default function LoginPage() {
 
     try {
       const result = await signIn('credentials', {
-        phone,
+        phone: phone.replace(/\s/g, ''),
         password,
         redirect: false,
       });
@@ -70,7 +81,8 @@ export default function LoginPage() {
                 id="phone"
                 type="text"
                 value={phone}
-                onChange={(e) => setPhone(e.target.value)}
+                onChange={(e) => setPhone(formatPhone(e.target.value))}
+                maxLength={17}
                 placeholder="+998 90 123 45 67"
                 required
                 className="w-full px-4 py-2.5 rounded-lg border border-slate-300 text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition"

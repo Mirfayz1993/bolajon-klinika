@@ -25,6 +25,7 @@ export async function GET(req: NextRequest) {
     const skip = (page - 1) * limit;
 
     const where: {
+      deletedAt: null;
       OR?: Array<{
         firstName?: { contains: string; mode: 'insensitive' };
         lastName?: { contains: string; mode: 'insensitive' };
@@ -32,7 +33,7 @@ export async function GET(req: NextRequest) {
         phone?: { contains: string };
         jshshir?: { contains: string };
       }>;
-    } = {};
+    } = { deletedAt: null }; // Faqat faol bemorlar
 
     if (search) {
       where.OR = [
@@ -99,21 +100,21 @@ export async function POST(req: NextRequest) {
       telegramChatId,
     } = body;
 
-    if (!firstName || !lastName || !fatherName || !phone || !jshshir || !birthDate) {
+    if (!firstName || !lastName || !fatherName || !phone || !birthDate) {
       return NextResponse.json(
-        { error: 'firstName, lastName, fatherName, phone, jshshir, birthDate majburiy' },
+        { error: 'firstName, lastName, fatherName, phone, birthDate majburiy' },
         { status: 400 }
       );
     }
 
-    if (!/^\d{14}$/.test(jshshir)) {
+    if (jshshir && !/^\d{14}$/.test(jshshir)) {
       return NextResponse.json(
         { error: 'jshshir 14 ta raqamdan iborat bo\'lishi kerak' },
         { status: 400 }
       );
     }
 
-    const existing = await prisma.patient.findUnique({ where: { jshshir } });
+    const existing = jshshir ? await prisma.patient.findUnique({ where: { jshshir } }) : null;
     if (existing) {
       return NextResponse.json(
         { error: 'Bu jshshir allaqachon mavjud' },

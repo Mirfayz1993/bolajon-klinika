@@ -2,6 +2,7 @@ import { NextAuthOptions } from 'next-auth';
 import CredentialsProvider from 'next-auth/providers/credentials';
 import { prisma } from '@/lib/prisma';
 import bcrypt from 'bcryptjs';
+import { rateLimit } from '@/lib/rate-limit';
 
 export const authOptions: NextAuthOptions = {
   session: { strategy: 'jwt' },
@@ -16,11 +17,19 @@ export const authOptions: NextAuthOptions = {
       async authorize(credentials) {
         if (!credentials?.phone || !credentials?.password) return null;
 
+        const phoneClean = credentials.phone.replace(/\s/g, '');
+
+        // Brute force himoyasi: 5 ta noto'g'ri urinish → 15 daqiqa blok
+        const limiter = rateLimit(`login:${phoneClean}`, 5, 15 * 60 * 1000);
+        if (!limiter.success) {
+          throw new Error('Juda ko\'p urinish. 15 daqiqadan keyin qayta urinib ko\'ring.');
+        }
+
         const user = await prisma.user.findFirst({
           where: {
             OR: [
-              { phone: credentials.phone },
-              { email: credentials.phone },
+              { phone: phoneClean },
+              { email: phoneClean },
             ],
             isActive: true,
           },

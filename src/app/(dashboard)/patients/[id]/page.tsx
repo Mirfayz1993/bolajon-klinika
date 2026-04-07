@@ -5,1080 +5,1544 @@ import { useSession } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
 import { useLanguage } from '@/hooks/useLanguage';
 import {
-  ArrowLeft,
-  Pencil,
-  Trash2,
-  Check,
-  X,
-  Loader2,
-  AlertCircle,
-  User,
-  Phone,
-  Calendar,
-  MapPin,
-  FileText,
-  AlertTriangle,
-  MessageCircle,
-  Hash,
-  Plus,
-  Printer,
-  ChevronDown,
-  ChevronUp,
-  Droplets,
+  ArrowLeft, Pencil, Trash2, Check, X, Loader2, AlertCircle,
+  User, Phone, Calendar, MapPin, FileText, AlertTriangle,
+  MessageCircle, Hash, Plus, Printer, Droplets,
+  Stethoscope, CreditCard, FlaskConical, BedDouble, ClipboardList, QrCode,
 } from 'lucide-react';
 
-// ─── Types ───────────────────────────────────────────────────────────────────
+// ─── Types ────────────────────────────────────────────────────────────────────
 
 interface Patient {
-  id: string;
-  firstName: string;
-  lastName: string;
-  fatherName: string;
-  phone: string;
-  jshshir: string;
-  birthDate: string;
-  gender?: string;
-  bloodType?: string;
-  district: string | null;
-  houseNumber: string | null;
-  medicalHistory: string | null;
-  allergies: string | null;
-  telegramChatId: string | null;
-  createdAt: string;
-  updatedAt: string;
+  id: string; firstName: string; lastName: string; fatherName: string;
+  phone: string; jshshir: string; birthDate: string;
+  district: string | null; houseNumber: string | null;
+  medicalHistory: string | null; allergies: string | null;
+  telegramChatId: string | null; createdAt: string; updatedAt: string;
 }
 
 interface EditForm {
-  firstName: string;
-  lastName: string;
-  fatherName: string;
-  phone: string;
-  jshshir: string;
-  birthDate: string;
-  district: string;
-  houseNumber: string;
-  medicalHistory: string;
-  allergies: string;
-  telegramChatId: string;
+  firstName: string; lastName: string; fatherName: string;
+  phone: string; jshshir: string; birthDate: string;
+  district: string; houseNumber: string; medicalHistory: string;
+  allergies: string; telegramChatId: string;
 }
 
 interface Prescription {
-  id: string;
-  medicineName: string;
-  dosage: string;
-  duration: string;
-  instructions?: string;
-  createdAt: string;
+  id: string; medicineName: string; dosage: string;
+  duration: string; instructions?: string; createdAt: string;
 }
 
 interface MedicalRecord {
-  id: string;
-  patientId: string;
-  doctorId: string;
-  diagnosis?: string;
-  treatment?: string;
-  notes?: string;
+  id: string; diagnosis?: string; treatment?: string; notes?: string;
   createdAt: string;
-  doctor: { name: string; role: string };
+  doctor: { name: string; role: string; specialization?: { name: string } | null };
   prescriptions: Prescription[];
 }
 
 interface Payment {
-  id: string;
-  amount: number;
-  method: string;
-  category: string;
-  status: string;
-  createdAt: string;
+  id: string; amount: number; method: string; category: string;
+  status: string; createdAt: string;
+  appointment?: { type: string; dateTime: string } | null;
+  admission?: { admissionType: string; admissionDate: string } | null;
 }
 
-interface DoctorUser {
+interface LabTest {
+  id: string; status: string; results: Record<string, unknown> | null;
+  notes?: string | null; completedAt?: string | null; createdAt: string;
+  testType: { name: string; unit?: string | null; normalRange?: string | null; price: number };
+  labTech: { name: string; role: string };
+}
+
+interface Admission {
+  id: string; admissionType: string; admissionDate: string;
+  dischargeDate?: string | null; dailyRate: number; notes?: string | null;
+  bed: { bedNumber: string; room: { floor: number; roomNumber: string; type: string } };
+}
+
+interface Appointment {
+  id: string; type: string; status: string; dateTime: string; notes?: string | null;
+  doctor: { name: string; role: string; specialization?: { name: string } | null };
+}
+
+interface NurseNote {
+  id: string; procedure: string; notes?: string | null;
+  medicines?: { name: string; quantity: number; unit: string }[] | null;
+  createdAt: string;
+  nurse: { name: string; role: string };
+  admission?: {
+    bed: { bedNumber: string; room: { floor: number; roomNumber: string } };
+  } | null;
+}
+
+interface AssignedService {
+  id: string;
+  categoryName: string;
+  itemName: string;
+  price: number;
+  isPaid: boolean;
+  paidAt: string | null;
+  paymentId: string | null;
+  assignedAt: string;
+  assignedBy: { name: string; role: string };
+}
+
+interface ServiceCategoryItem {
   id: string;
   name: string;
-  role: string;
+  price: number;
 }
 
-// ─── Helpers ─────────────────────────────────────────────────────────────────
+interface ServiceCategoryData {
+  id: string;
+  name: string;
+  items: ServiceCategoryItem[];
+}
+
+interface ProfileData {
+  patient: Patient; medicalRecords: MedicalRecord[];
+  payments: Payment[]; labTests: LabTest[];
+  admissions: Admission[]; appointments: Appointment[];
+  nurseNotes: NurseNote[];
+}
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function calcAge(birthDate: string): number {
-  const today = new Date();
-  const birth = new Date(birthDate);
+  const today = new Date(); const birth = new Date(birthDate);
   let age = today.getFullYear() - birth.getFullYear();
   const m = today.getMonth() - birth.getMonth();
   if (m < 0 || (m === 0 && today.getDate() < birth.getDate())) age--;
   return age;
 }
 
-function patientToForm(patient: Patient): EditForm {
-  return {
-    firstName: patient.firstName,
-    lastName: patient.lastName,
-    fatherName: patient.fatherName,
-    phone: patient.phone,
-    jshshir: patient.jshshir,
-    birthDate: patient.birthDate.slice(0, 10),
-    district: patient.district ?? '',
-    houseNumber: patient.houseNumber ?? '',
-    medicalHistory: patient.medicalHistory ?? '',
-    allergies: patient.allergies ?? '',
-    telegramChatId: patient.telegramChatId ?? '',
-  };
+function fmt(dateStr: string) {
+  return new Date(dateStr).toLocaleString('uz-UZ', {
+    year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit',
+  });
 }
 
-function formatCurrency(amount: number, unit: string): string {
-  return `${amount.toLocaleString('uz-UZ')} ${unit}`;
+function fmtDate(dateStr: string) {
+  return new Date(dateStr).toLocaleDateString('uz-UZ');
 }
 
-function handlePrint(prescription: Prescription, t: ReturnType<typeof useLanguage>['t']) {
-  const printContent = `
-    <html>
-    <head><meta charset="utf-8"/><title>${t.medicalRecords.prescription}</title>
-    <style>body{font-family:sans-serif;padding:24px}h2{margin-bottom:16px}p{margin:8px 0}</style>
-    </head>
-    <body>
-      <h2>${t.medicalRecords.prescription}</h2>
-      <p><strong>${t.medicalRecords.medicineName}:</strong> ${prescription.medicineName}</p>
-      <p><strong>${t.medicalRecords.dosage}:</strong> ${prescription.dosage}</p>
-      <p><strong>${t.medicalRecords.duration}:</strong> ${prescription.duration}</p>
-      ${prescription.instructions ? `<p><strong>${t.medicalRecords.instructions}:</strong> ${prescription.instructions}</p>` : ''}
-      <p style="margin-top:24px;color:#888;font-size:12px">${t.common.date}: ${new Date(prescription.createdAt).toLocaleDateString('uz-UZ')}</p>
-    </body>
-    </html>
-  `;
-  const win = window.open('', '_blank');
-  win?.document.write(printContent);
-  win?.print();
-  win?.close();
+function fmtMoney(amount: number) {
+  return amount.toLocaleString('uz-UZ') + ' so\'m';
 }
 
-// ─── Status badge helper ──────────────────────────────────────────────────────
+const CAT_LABELS: Record<string, string> = {
+  CHECKUP: 'Shifokor ko\'rigi', LAB_TEST: 'Laboratoriya', SPEECH_THERAPY: 'Logoped',
+  MASSAGE: 'Massaj', TREATMENT: 'Muolaja (ukol)', INPATIENT: 'Statsionar',
+  AMBULATORY: 'Ambulator',
+};
 
-function paymentStatusClass(status: string): string {
-  switch (status) {
-    case 'PAID': return 'bg-green-100 text-green-800';
-    case 'PARTIAL': return 'bg-yellow-100 text-yellow-800';
-    case 'PENDING': return 'bg-slate-100 text-slate-800';
-    case 'CANCELLED': return 'bg-red-100 text-red-800';
-    case 'REFUNDED': return 'bg-blue-100 text-blue-800';
-    default: return 'bg-slate-100 text-slate-700';
-  }
-}
+const STATUS_COLORS: Record<string, string> = {
+  PAID: 'bg-green-100 text-green-800', PENDING: 'bg-yellow-100 text-yellow-800',
+  PARTIAL: 'bg-orange-100 text-orange-800', CANCELLED: 'bg-red-100 text-red-800',
+  REFUNDED: 'bg-blue-100 text-blue-800',
+};
 
-// ─── Page ────────────────────────────────────────────────────────────────────
+const LAB_STATUS_COLORS: Record<string, string> = {
+  PENDING: 'bg-slate-100 text-slate-700', IN_PROGRESS: 'bg-yellow-100 text-yellow-800',
+  COMPLETED: 'bg-green-100 text-green-800', CANCELLED: 'bg-red-100 text-red-800',
+};
 
-type Tab = 'info' | 'records' | 'payments';
+const APPT_TYPE_LABELS: Record<string, string> = {
+  CHECKUP: 'Ko\'rik', FOLLOW_UP: 'Qayta ko\'rik', SPEECH_THERAPY: 'Logoped',
+  MASSAGE: 'Massaj', LAB_TEST: 'Laboratoriya',
+};
 
-interface PageProps {
-  params: Promise<{ id: string }>;
-}
+const APPT_STATUS_COLORS: Record<string, string> = {
+  SCHEDULED: 'bg-blue-100 text-blue-800', IN_QUEUE: 'bg-yellow-100 text-yellow-800',
+  IN_PROGRESS: 'bg-orange-100 text-orange-800', COMPLETED: 'bg-green-100 text-green-800',
+  CANCELLED: 'bg-red-100 text-red-800', NO_SHOW: 'bg-slate-100 text-slate-700',
+};
+
+// ─── Page ─────────────────────────────────────────────────────────────────────
+
+type Tab = 'info' | 'services' | 'records' | 'nurse' | 'lab';
+
+interface PageProps { params: Promise<{ id: string }> }
 
 export default function PatientDetailPage({ params }: PageProps) {
   const { t } = useLanguage();
   const { data: session } = useSession();
   const router = useRouter();
 
-  const [patientId, setPatientId] = useState<string>('');
+  const [patientId, setPatientId] = useState('');
   const [activeTab, setActiveTab] = useState<Tab>('info');
-
-  // ── Patient state ──────────────────────────────────────────────────────────
-  const [patient, setPatient] = useState<Patient | null>(null);
+  const [profile, setProfile] = useState<ProfileData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  // Edit patient
   const [editing, setEditing] = useState(false);
-  const [form, setForm] = useState<EditForm | null>(null);
+  const [editForm, setEditForm] = useState<EditForm | null>(null);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
 
-  // ── Medical records state ──────────────────────────────────────────────────
-  const [records, setRecords] = useState<MedicalRecord[]>([]);
-  const [recordsLoading, setRecordsLoading] = useState(false);
-  const [recordsError, setRecordsError] = useState<string | null>(null);
-  const [expandedRecords, setExpandedRecords] = useState<Set<string>>(new Set());
+  // QR
+  const [qrDataUrl, setQrDataUrl] = useState<string | null>(null);
+  const [qrLoading, setQrLoading] = useState(false);
+  const [showQr, setShowQr] = useState(false);
 
-  // ── Add record modal ───────────────────────────────────────────────────────
-  const [showRecordModal, setShowRecordModal] = useState(false);
-  const [doctors, setDoctors] = useState<DoctorUser[]>([]);
-  const [recordForm, setRecordForm] = useState({
-    doctorId: '',
-    diagnosis: '',
-    treatment: '',
-    notes: '',
+  // Nurse note modal
+  const [showNurseModal, setShowNurseModal] = useState(false);
+  const [nurseForm, setNurseForm] = useState({
+    procedure: '', notes: '', admissionId: '',
+    medicines: [] as { name: string; quantity: number; unit: string }[],
   });
-  const [savingRecord, setSavingRecord] = useState(false);
-  const [recordFormError, setRecordFormError] = useState<string | null>(null);
-
-  // ── Add prescription modal ─────────────────────────────────────────────────
-  const [prescriptionTarget, setPrescriptionTarget] = useState<string | null>(null);
-  const [prescriptionForm, setPrescriptionForm] = useState({
-    medicineName: '',
-    dosage: '',
-    duration: '',
-    instructions: '',
-  });
-  const [savingPrescription, setSavingPrescription] = useState(false);
-  const [prescriptionFormError, setPrescriptionFormError] = useState<string | null>(null);
-
-  // ── Payments state ─────────────────────────────────────────────────────────
-  const [payments, setPayments] = useState<Payment[]>([]);
-  const [paymentsLoading, setPaymentsLoading] = useState(false);
+  const [savingNote, setSavingNote] = useState(false);
 
   const isAdmin = session?.user?.role === 'ADMIN';
-  const isDoctor =
-    session?.user?.role === 'ADMIN' ||
-    session?.user?.role === 'HEAD_DOCTOR' ||
-    session?.user?.role === 'DOCTOR';
+  const canManageServices = ['ADMIN', 'RECEPTIONIST', 'HEAD_DOCTOR', 'HEAD_NURSE'].includes(
+    session?.user?.role ?? ''
+  );
+  const isNurse = ['ADMIN', 'HEAD_NURSE', 'NURSE', 'HEAD_DOCTOR', 'DOCTOR'].includes(
+    session?.user?.role ?? ''
+  );
 
-  // ── Resolve params ─────────────────────────────────────────────────────────
+  // Assigned services
+  const [assignedServices, setAssignedServices] = useState<AssignedService[]>([]);
+  const [assignedLoading, setAssignedLoading] = useState(false);
+  const [showAssignModal, setShowAssignModal] = useState(false);
+  const [serviceCategories, setServiceCategories] = useState<ServiceCategoryData[]>([]);
+  const [assignCatId, setAssignCatId] = useState('');
+  const [assignItemId, setAssignItemId] = useState('');
+  const [assignSaving, setAssignSaving] = useState(false);
+  const [payingId, setPayingId] = useState<string | null>(null);
+  const [payMethod, setPayMethod] = useState('CASH');
+  // To'lov modal (single)
+  const [showPayModal, setShowPayModal] = useState(false);
+  const [payModalService, setPayModalService] = useState<AssignedService | null>(null);
+  // Bulk to'lov
+  const [selectedForPay, setSelectedForPay] = useState<Set<string>>(new Set());
+  const [showBulkPayModal, setShowBulkPayModal] = useState(false);
+  const [bulkPaying, setBulkPaying] = useState(false);
+  const [bulkPayMethod, setBulkPayMethod] = useState('CASH');
+
   useEffect(() => {
-    params.then((p) => setPatientId(p.id));
+    params.then(({ id }) => setPatientId(id));
   }, [params]);
 
-  // ── Fetch patient ──────────────────────────────────────────────────────────
-  const fetchPatient = useCallback(async () => {
+  const fetchProfile = useCallback(async () => {
     if (!patientId) return;
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch(`/api/patients/${patientId}`);
-      if (res.status === 404) { setError(t.patients.notFound); return; }
-      if (!res.ok) throw new Error(t.common.error);
-      const data: Patient = await res.json();
-      setPatient(data);
+      const res = await fetch(`/api/patients/${patientId}/profile`);
+      if (!res.ok) throw new Error('Xatolik');
+      setProfile(await res.json());
     } catch {
       setError(t.common.error);
     } finally {
       setLoading(false);
     }
-  }, [patientId, t.patients.notFound, t.common.error]);
-
-  useEffect(() => { fetchPatient(); }, [fetchPatient]);
-
-  // ── Fetch records ──────────────────────────────────────────────────────────
-  const fetchRecords = useCallback(async () => {
-    if (!patientId) return;
-    setRecordsLoading(true);
-    setRecordsError(null);
-    try {
-      const res = await fetch(`/api/medical-records?patientId=${patientId}`);
-      if (!res.ok) throw new Error();
-      const data = await res.json();
-      setRecords(Array.isArray(data) ? data : (data.data ?? []));
-    } catch {
-      setRecordsError(t.common.error);
-    } finally {
-      setRecordsLoading(false);
-    }
   }, [patientId, t.common.error]);
 
-  // ── Fetch doctors ──────────────────────────────────────────────────────────
-  const fetchDoctors = useCallback(async () => {
-    try {
-      const [resDoctor, resHeadDoctor] = await Promise.all([
-        fetch('/api/staff?role=DOCTOR'),
-        fetch('/api/staff?role=HEAD_DOCTOR'),
-      ]);
-      const doctorData = resDoctor.ok ? await resDoctor.json() : [];
-      const headDoctorData = resHeadDoctor.ok ? await resHeadDoctor.json() : [];
-      const combined = [
-        ...(Array.isArray(doctorData) ? doctorData : (doctorData.data ?? [])),
-        ...(Array.isArray(headDoctorData) ? headDoctorData : (headDoctorData.data ?? [])),
-      ];
-      setDoctors(combined);
-    } catch {
-      // silent
-    }
-  }, []);
+  useEffect(() => { fetchProfile(); }, [fetchProfile]);
 
-  // ── Fetch payments ─────────────────────────────────────────────────────────
-  const fetchPayments = useCallback(async () => {
+  const fetchAssigned = useCallback(async () => {
     if (!patientId) return;
-    setPaymentsLoading(true);
+    setAssignedLoading(true);
     try {
-      const res = await fetch(`/api/patients/${patientId}/payments`);
-      if (!res.ok) throw new Error();
-      const data = await res.json();
-      setPayments(Array.isArray(data) ? data : (data.data ?? []));
-    } catch {
-      // silent
-    } finally {
-      setPaymentsLoading(false);
-    }
+      const res = await fetch(`/api/patients/${patientId}/assigned-services`);
+      if (res.ok) setAssignedServices(await res.json());
+    } finally { setAssignedLoading(false); }
   }, [patientId]);
 
-  // ── Load tab data on switch ────────────────────────────────────────────────
-  useEffect(() => {
-    if (activeTab === 'records' && patientId) {
-      fetchRecords();
-      if (isDoctor) fetchDoctors();
-    }
-    if (activeTab === 'payments' && patientId) {
-      fetchPayments();
-    }
-  }, [activeTab, patientId, isDoctor, fetchRecords, fetchDoctors, fetchPayments]);
+  useEffect(() => { fetchAssigned(); }, [fetchAssigned]);
 
-  // ── Patient edit handlers ──────────────────────────────────────────────────
-  const handleEdit = () => {
-    if (!patient) return;
-    setForm(patientToForm(patient));
-    setSaveError(null);
+  const openAssignModal = async () => {
+    setShowAssignModal(true);
+    if (serviceCategories.length > 0) return;
+    try {
+      const res = await fetch('/api/service-categories');
+      if (res.ok) setServiceCategories(await res.json());
+    } catch { /* ignore */ }
+  };
+
+  const assignCat = serviceCategories.find(c => c.id === assignCatId);
+
+  // Lab categories: fetch from lab-test-types
+  const [labTestTypes, setLabTestTypes] = useState<ServiceCategoryItem[]>([]);
+  const isLabCat = assignCat ? ['lab','laboratoriya','labaratoriya','tahlil'].some(k => assignCat.name.toLowerCase().includes(k)) : false;
+
+  useEffect(() => {
+    if (!isLabCat) return;
+    fetch('/api/lab-test-types')
+      .then(r => r.json())
+      .then(d => setLabTestTypes(Array.isArray(d) ? d : (d.data ?? [])))
+      .catch(() => setLabTestTypes([]));
+  }, [isLabCat]);
+
+  const visibleItems: ServiceCategoryItem[] = isLabCat ? labTestTypes : (assignCat?.items ?? []);
+  const assignItem = visibleItems.find(i => i.id === assignItemId);
+
+  const saveAssign = async () => {
+    if (!assignCat || !assignItem) return;
+    setAssignSaving(true);
+    try {
+      const res = await fetch(`/api/patients/${patientId}/assigned-services`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          categoryName: assignCat.name,
+          itemName: assignItem.name,
+          price: assignItem.price,
+          itemId: assignItem.id,
+        }),
+      });
+      if (!res.ok) { const d = await res.json(); alert(d.error); return; }
+      setShowAssignModal(false);
+      setAssignCatId(''); setAssignItemId('');
+      fetchAssigned();
+    } finally { setAssignSaving(false); }
+  };
+
+  const deleteAssigned = async (id: string) => {
+    if (!confirm('Xizmatni o\'chirasizmi?')) return;
+    await fetch(`/api/patients/${patientId}/assigned-services`, {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ serviceId: id }),
+    });
+    fetchAssigned();
+  };
+
+  const openPayModal = (svc: AssignedService) => {
+    setPayModalService(svc);
+    setPayMethod('CASH');
+    setShowPayModal(true);
+  };
+
+  const confirmPay = async () => {
+    if (!payModalService) return;
+    setPayingId(payModalService.id);
+    try {
+      const res = await fetch(`/api/patients/${patientId}/assigned-services/${payModalService.id}/pay`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ method: payMethod }),
+      });
+      if (!res.ok) { const d = await res.json(); alert(d.error); return; }
+      setShowPayModal(false);
+      setPayModalService(null);
+      await fetchAssigned();
+      await fetchProfile();
+      printReceipt([payModalService.id]);
+    } finally { setPayingId(null); }
+  };
+
+  // ── Edit ──────────────────────────────────────────────────────────────────
+  const startEdit = () => {
+    if (!profile) return;
+    const p = profile.patient;
+    setEditForm({
+      firstName: p.firstName, lastName: p.lastName, fatherName: p.fatherName,
+      phone: p.phone, jshshir: p.jshshir ?? '',
+      birthDate: new Date(p.birthDate).getFullYear().toString(),
+      district: p.district ?? '', houseNumber: p.houseNumber ?? '',
+      medicalHistory: p.medicalHistory ?? '',
+      allergies: p.allergies ?? '', telegramChatId: p.telegramChatId ?? '',
+    });
     setEditing(true);
   };
 
-  const handleCancel = () => {
-    setEditing(false);
-    setForm(null);
-    setSaveError(null);
-  };
-
-  const handleFormChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
-    setForm((prev) => prev ? { ...prev, [e.target.name]: e.target.value } : prev);
-  };
-
-  const handleSave = async () => {
-    if (!form || !patient) return;
-    setSaving(true);
-    setSaveError(null);
+  const saveEdit = async () => {
+    if (!editForm) return;
+    setSaving(true); setSaveError(null);
     try {
-      const body: Record<string, string | null> = {
-        firstName: form.firstName,
-        lastName: form.lastName,
-        fatherName: form.fatherName,
-        phone: form.phone,
-        jshshir: form.jshshir,
-        birthDate: form.birthDate,
-        district: form.district || null,
-        houseNumber: form.houseNumber || null,
-        medicalHistory: form.medicalHistory || null,
-        allergies: form.allergies || null,
-        telegramChatId: form.telegramChatId || null,
-      };
-      const res = await fetch(`/api/patients/${patient.id}`, {
+      const res = await fetch(`/api/patients/${patientId}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...editForm, birthDate: editForm.birthDate?.length === 4 ? `${editForm.birthDate}-01-01` : (editForm.birthDate || undefined) }),
+      });
+      if (!res.ok) { const e = await res.json(); throw new Error(e.error); }
+      setEditing(false);
+      fetchProfile();
+    } catch (e) {
+      setSaveError(e instanceof Error ? e.message : t.common.error);
+    } finally { setSaving(false); }
+  };
+
+  // ── QR ────────────────────────────────────────────────────────────────────
+  const openQr = async () => {
+    setShowQr(true);
+    if (qrDataUrl) return;
+    setQrLoading(true);
+    try {
+      const res = await fetch(`/api/patients/${patientId}/qr`);
+      if (res.ok) { const j = await res.json(); setQrDataUrl(j.dataUrl); }
+    } finally { setQrLoading(false); }
+  };
+
+  const printQr = () => {
+    if (!profile || !qrDataUrl) return;
+    const p = profile.patient;
+    const win = window.open('', '_blank');
+    if (!win) return;
+    win.document.write(`<html><head><title>QR - ${p.lastName} ${p.firstName}</title>
+      <style>body{font-family:sans-serif;text-align:center;padding:20px}
+      .name{font-size:18px;font-weight:bold;margin-bottom:4px}
+      .info{font-size:13px;color:#666;margin-bottom:16px}
+      img{width:220px;height:220px}
+      .box{border:2px solid #1e293b;display:inline-block;padding:16px;border-radius:12px}
+      </style></head>
+      <body onload="window.print();window.close()">
+        <div class="box">
+          <div class="name">${p.lastName} ${p.firstName} ${p.fatherName}</div>
+          <div class="info">${p.phone} | Tug'ilgan: ${fmtDate(p.birthDate)}</div>
+          <img src="${qrDataUrl}" alt="QR"/>
+          <div class="info" style="margin-top:8px">Bolajon Klinikasi</div>
+        </div>
+      </body></html>`);
+    win.document.close();
+  };
+
+  // ── Nurse note ─────────────────────────────────────────────────────────────
+  const addMedicineRow = () =>
+    setNurseForm(f => ({ ...f, medicines: [...f.medicines, { name: '', quantity: 1, unit: 'ml' }] }));
+
+  const updateMedicine = (idx: number, field: string, value: string | number) =>
+    setNurseForm(f => ({
+      ...f,
+      medicines: f.medicines.map((m, i) => i === idx ? { ...m, [field]: value } : m),
+    }));
+
+  const removeMedicine = (idx: number) =>
+    setNurseForm(f => ({ ...f, medicines: f.medicines.filter((_, i) => i !== idx) }));
+
+  const saveNurseNote = async () => {
+    if (!nurseForm.procedure.trim()) return;
+    setSavingNote(true);
+    try {
+      const body: Record<string, unknown> = { procedure: nurseForm.procedure, notes: nurseForm.notes };
+      if (nurseForm.admissionId) body.admissionId = nurseForm.admissionId;
+      if (nurseForm.medicines.length) body.medicines = nurseForm.medicines.filter(m => m.name.trim());
+      const res = await fetch(`/api/patients/${patientId}/nurse-notes`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
       });
-      if (!res.ok) { const err = await res.json(); throw new Error(err.error || t.common.error); }
-      const updated: Patient = await res.json();
-      setPatient(updated);
-      setEditing(false);
-      setForm(null);
-    } catch (err) {
-      setSaveError(err instanceof Error ? err.message : t.common.error);
-    } finally {
-      setSaving(false);
-    }
+      if (!res.ok) throw new Error();
+      setShowNurseModal(false);
+      setNurseForm({ procedure: '', notes: '', admissionId: '', medicines: [] });
+      fetchProfile();
+    } finally { setSavingNote(false); }
   };
 
-  const handleDelete = async () => {
-    if (!patient) return;
-    if (!confirm(t.patients.deleteConfirm)) return;
-    try {
-      const res = await fetch(`/api/patients/${patient.id}`, { method: 'DELETE' });
-      if (!res.ok) throw new Error(t.common.error);
-      router.push('/patients');
-    } catch {
-      setError(t.common.error);
-    }
-  };
-
-  // ── Record handlers ────────────────────────────────────────────────────────
-  const openRecordModal = () => {
-    setRecordForm({ doctorId: '', diagnosis: '', treatment: '', notes: '' });
-    setRecordFormError(null);
-    setShowRecordModal(true);
-  };
-
-  const handleRecordSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!patientId) return;
-    setSavingRecord(true);
-    setRecordFormError(null);
-    try {
-      const res = await fetch('/api/medical-records', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ patientId, ...recordForm }),
-      });
-      if (!res.ok) { const err = await res.json(); throw new Error(err.error || t.common.error); }
-      setShowRecordModal(false);
-      fetchRecords();
-    } catch (err) {
-      setRecordFormError(err instanceof Error ? err.message : t.common.error);
-    } finally {
-      setSavingRecord(false);
-    }
-  };
-
-  // ── Prescription handlers ──────────────────────────────────────────────────
-  const openPrescriptionModal = (recordId: string) => {
-    setPrescriptionTarget(recordId);
-    setPrescriptionForm({ medicineName: '', dosage: '', duration: '', instructions: '' });
-    setPrescriptionFormError(null);
-  };
-
-  const handlePrescriptionSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!prescriptionTarget) return;
-    setSavingPrescription(true);
-    setPrescriptionFormError(null);
-    try {
-      const res = await fetch(`/api/medical-records/${prescriptionTarget}/prescriptions`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(prescriptionForm),
-      });
-      if (!res.ok) { const err = await res.json(); throw new Error(err.error || t.common.error); }
-      setPrescriptionTarget(null);
-      fetchRecords();
-    } catch (err) {
-      setPrescriptionFormError(err instanceof Error ? err.message : t.common.error);
-    } finally {
-      setSavingPrescription(false);
-    }
-  };
-
-  const toggleRecord = (id: string) => {
-    setExpandedRecords((prev) => {
+  // ── Bulk pay ──────────────────────────────────────────────────────────────
+  const toggleSelectForPay = (id: string) => {
+    setSelectedForPay(prev => {
       const next = new Set(prev);
-      if (next.has(id)) next.delete(id); else next.add(id);
+      next.has(id) ? next.delete(id) : next.add(id);
       return next;
     });
   };
 
-  // ── Loading / error states ─────────────────────────────────────────────────
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center min-h-[60vh]">
-        <Loader2 className="w-8 h-8 animate-spin text-blue-500" />
-      </div>
-    );
-  }
+  const selectAllUnpaid = () => {
+    const unpaidIds = assignedServices.filter(s => !s.isPaid).map(s => s.id);
+    setSelectedForPay(new Set(unpaidIds));
+  };
 
-  if (error || !patient) {
-    return (
-      <div className="p-6">
-        <button
-          onClick={() => router.push('/patients')}
-          className="flex items-center gap-2 text-slate-600 hover:text-slate-800 mb-6 text-sm font-medium"
-        >
-          <ArrowLeft className="w-4 h-4" />
-          {t.common.back}
-        </button>
-        <div className="flex items-center gap-2 text-red-600 bg-red-50 border border-red-200 rounded-lg px-4 py-3 text-sm">
-          <AlertCircle className="w-4 h-4 flex-shrink-0" />
-          {error ?? t.patients.notFound}
+  const bulkPay = async () => {
+    if (selectedForPay.size === 0) return;
+    setBulkPaying(true);
+    try {
+      const ids = Array.from(selectedForPay);
+      await Promise.all(ids.map(id =>
+        fetch(`/api/patients/${patientId}/assigned-services/${id}/pay`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ method: bulkPayMethod }),
+        })
+      ));
+      setShowBulkPayModal(false);
+      const paidIds = Array.from(selectedForPay);
+      setSelectedForPay(new Set());
+      await fetchAssigned();
+      await fetchProfile();
+      printReceipt(paidIds);
+    } finally { setBulkPaying(false); }
+  };
+
+  // ── Print receipt ─────────────────────────────────────────────────────────
+  const printReceipt = async (justPaidIds?: string[]) => {
+    if (!profile) return;
+    const p = profile.patient;
+
+    // Oynani SYNC ochib olamiz (popup bloker oldini olish)
+    const win = window.open('', '_blank', 'width=440,height=720');
+    if (!win) { alert("Popup bloklangan. Brauzer sozlamalaridan ruxsat bering."); return; }
+    win.document.write('<html><body style="font-family:sans-serif;text-align:center;padding:20px">⏳ Yuklanmoqda...</body></html>');
+
+    // Ensure QR is loaded
+    let qr = qrDataUrl;
+    if (!qr) {
+      const r = await fetch(`/api/patients/${patientId}/qr`);
+      if (r.ok) { const j = await r.json(); qr = j.dataUrl; setQrDataUrl(j.dataUrl); }
+    }
+
+    // Klinika logotipi — server dan base64 olamiz (print uchun ishonchli)
+    let logoDataUrl = '';
+    try {
+      const logoRes = await fetch('/api/clinic-logo');
+      if (logoRes.ok) { const j = await logoRes.json(); logoDataUrl = j.dataUrl ?? ''; }
+    } catch { /* fallback: logosiz */ }
+
+    const paid = assignedServices.filter(s => s.isPaid || (justPaidIds && justPaidIds.includes(s.id)));
+    const unpaid = assignedServices.filter(s => !s.isPaid && !(justPaidIds && justPaidIds.includes(s.id)));
+
+    // Medicines from nurse notes
+    const allMedicines: { name: string; quantity: number; unit: string; date: string }[] = [];
+    if (profile) {
+      for (const note of profile.nurseNotes ?? []) {
+        if (Array.isArray(note.medicines)) {
+          for (const m of note.medicines as { name: string; quantity: number; unit: string }[]) {
+            allMedicines.push({ ...m, date: note.createdAt });
+          }
+        }
+      }
+    }
+
+    const totalPaidAmt = paid.reduce((s, sv) => s + Number(sv.price), 0);
+    const fmtM = (n: number) => n.toLocaleString('uz-UZ') + " so'm";
+    const fmtD = (d: string) => new Date(d).toLocaleDateString('uz-UZ');
+
+    const paidRows = paid.map(sv =>
+      `<tr>
+        <td style="padding:6px 8px;border-bottom:1px solid #f1f5f9;">
+          <span style="background:#dcfce7;color:#166534;font-size:10px;padding:1px 6px;border-radius:10px;margin-right:6px;">✓ TO'LANDI</span>
+          <strong>${sv.categoryName}</strong> — ${sv.itemName}
+        </td>
+        <td style="padding:6px 8px;border-bottom:1px solid #f1f5f9;text-align:right;font-weight:bold;color:#1d4ed8;">${fmtM(Number(sv.price))}</td>
+      </tr>`
+    ).join('');
+
+    const unpaidRows = unpaid.map(sv =>
+      `<tr>
+        <td style="padding:5px 8px;color:#64748b;">
+          <span style="color:#94a3b8;margin-right:4px;">◦</span>
+          ${sv.categoryName} — ${sv.itemName}
+        </td>
+        <td style="padding:5px 8px;text-align:right;color:#94a3b8;">${fmtM(Number(sv.price))}</td>
+      </tr>`
+    ).join('');
+
+    const medicineRows = allMedicines.map(m =>
+      `<tr>
+        <td style="padding:5px 8px;color:#64748b;">
+          <span style="color:#94a3b8;margin-right:4px;">💊</span>
+          ${m.name} × ${m.quantity} ${m.unit}
+        </td>
+        <td style="padding:5px 8px;text-align:right;color:#94a3b8;font-size:11px;">${fmtD(m.date)}</td>
+      </tr>`
+    ).join('');
+
+    const reminderSection = (unpaid.length > 0 || allMedicines.length > 0) ? `
+      <tr><td colspan="2" style="height:24px;"></td></tr>
+      <tr><td colspan="2" style="padding:6px 8px;background:#fef9c3;font-size:11px;font-weight:bold;color:#854d0e;letter-spacing:0.5px;border-top:2px dashed #fde68a;border-bottom:1px solid #fde68a;">
+        ⚠ ESLATMA — To'lanmagan xizmatlar
+      </td></tr>
+      ${unpaidRows}
+      ${allMedicines.length > 0 ? `
+        <tr><td colspan="2" style="padding:4px 8px;font-size:11px;font-weight:bold;color:#7c3aed;background:#f5f3ff;border-top:1px solid #e9d5ff;">
+          💊 Belgilangan dorilar
+        </td></tr>
+        ${medicineRows}
+      ` : ''}
+    ` : '';
+
+    win.document.open();
+    win.document.write(`<!DOCTYPE html><html><head>
+      <meta charset="UTF-8"/>
+      <title>Chek — ${p.lastName} ${p.firstName}</title>
+      <style>
+        *{margin:0;padding:0;box-sizing:border-box}
+        body{font-family:'Times New Roman',Times,serif;font-size:13px;background:#fff;padding:0}
+        .wrap{max-width:380px;margin:0 auto;padding:16px}
+        .header{display:flex;align-items:center;gap:12px;padding-bottom:12px;border-bottom:2px solid #1e293b;margin-bottom:12px}
+        .header-logo{width:60px;height:60px;object-fit:contain;flex-shrink:0;border-radius:6px}
+        .header-text{flex:1}
+        .logo{font-size:18px;font-weight:900;letter-spacing:1px}
+        .sub{font-size:11px;color:#64748b}
+        .patient{background:#f8fafc;border-radius:8px;padding:10px 12px;margin-bottom:12px}
+        .patient .name{font-weight:bold;font-size:14px}
+        .patient .info{font-size:11px;color:#64748b;margin-top:3px}
+        table{width:100%;border-collapse:collapse;margin-bottom:8px}
+        .total-row{background:#eff6ff;font-weight:bold}
+        .total-row td{padding:10px 8px!important;font-size:14px;color:#1e40af}
+        .qr-section{text-align:center;margin-top:16px;padding-top:12px;border-top:2px solid #1e293b}
+        .qr-section img{width:120px;height:120px}
+        .qr-section .qr-label{font-size:10px;color:#94a3b8;margin-top:4px}
+        .date{text-align:right;font-size:11px;color:#94a3b8;margin-bottom:8px}
+        @media print{
+          @page{margin:8mm;size:80mm auto}
+          .no-print{display:none}
+          body{font-size:12px}
+          img{print-color-adjust:exact;-webkit-print-color-adjust:exact}
+        }
+      </style>
+    </head><body>
+    <div class="wrap">
+      <div class="no-print" style="text-align:center;margin-bottom:12px">
+        <button onclick="window.print()" style="padding:8px 20px;background:#1d4ed8;color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:13px">🖨️ Chop etish</button>
+      </div>
+      <div class="header">
+        ${logoDataUrl ? `<img class="header-logo" src="${logoDataUrl}" alt="Logo" />` : ''}
+        <div class="header-text">
+          <div class="logo">BOLAJON KLINIKASI</div>
+          <div class="sub">Xizmat ko'rsatish cheki</div>
         </div>
       </div>
-    );
-  }
+      <div class="date">${new Date().toLocaleString('uz-UZ')}</div>
+      <div class="patient">
+        <div class="name">${p.lastName} ${p.firstName} ${p.fatherName}</div>
+        <div class="info">${p.phone} · ${new Date(p.birthDate).getFullYear()}</div>
+      </div>
+      <table>
+        <thead>
+          <tr style="background:#f1f5f9;">
+            <th style="padding:6px 8px;text-align:left;font-size:11px;color:#475569;">XIZMAT</th>
+            <th style="padding:6px 8px;text-align:right;font-size:11px;color:#475569;">NARXI</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${paidRows}
+          <tr class="total-row">
+            <td>JAMI TO'LANGAN</td>
+            <td style="text-align:right">${fmtM(totalPaidAmt)}</td>
+          </tr>
+          ${reminderSection}
+        </tbody>
+      </table>
+      <div class="qr-section">
+        ${qr ? `<img src="${qr}" alt="QR"/>` : '<p style="color:#94a3b8">QR yuklanmadi</p>'}
+        <div class="qr-label">Bemor kartasini skanerlang</div>
+      </div>
+    </div>
+    </body></html>`);
+    win.document.close();
+  };
 
-  // ── Render ─────────────────────────────────────────────────────────────────
+  // ── Delete patient ─────────────────────────────────────────────────────────
+  const handleDelete = async () => {
+    if (!confirm(t.patients.deleteConfirm)) return;
+    const res = await fetch(`/api/patients/${patientId}`, { method: 'DELETE' });
+    if (res.ok) router.push('/patients');
+  };
+
+  // ─────────────────────────────────────────────────────────────────────────
+  if (loading) return (
+    <div className="flex items-center justify-center h-64">
+      <Loader2 className="w-8 h-8 animate-spin text-blue-500" />
+    </div>
+  );
+
+  if (error || !profile) return (
+    <div className="p-6">
+      <div className="flex items-center gap-2 text-red-600 bg-red-50 border border-red-200 rounded-lg px-4 py-3">
+        <AlertCircle className="w-4 h-4" /> {error || 'Bemor topilmadi'}
+      </div>
+    </div>
+  );
+
+  const { patient, medicalRecords, payments, labTests, admissions, appointments, nurseNotes } = profile;
+  const totalPaid = payments.filter(p => p.status === 'PAID').reduce((s, p) => s + p.amount, 0);
+
+  const tabs: { key: Tab; label: string; icon: React.ReactNode; count?: number }[] = [
+    { key: 'info', label: 'Umumiy', icon: <User className="w-4 h-4" /> },
+    { key: 'services', label: 'Xizmatlar', icon: <CreditCard className="w-4 h-4" />, count: assignedServices.length },
+    { key: 'records', label: 'Tashxislar', icon: <Stethoscope className="w-4 h-4" />, count: medicalRecords.length },
+    { key: 'nurse', label: 'Hamshira', icon: <ClipboardList className="w-4 h-4" />, count: nurseNotes.length },
+    { key: 'lab', label: 'Laboratoriya', icon: <FlaskConical className="w-4 h-4" />, count: labTests.length },
+  ];
+
   return (
     <div className="p-6 max-w-5xl mx-auto">
-      {/* Top bar */}
+      {/* Header */}
       <div className="flex items-center justify-between mb-6">
-        <button
-          onClick={() => router.push('/patients')}
-          className="flex items-center gap-2 text-slate-600 hover:text-slate-800 text-sm font-medium transition-colors"
-        >
-          <ArrowLeft className="w-4 h-4" />
-          {t.common.back}
+        <button onClick={() => router.push('/patients')}
+          className="flex items-center gap-2 text-slate-600 hover:text-slate-900 text-sm">
+          <ArrowLeft className="w-4 h-4" /> {t.common.back}
         </button>
+        <div className="flex items-center gap-2">
+          <button onClick={openQr}
+            className="flex items-center gap-2 px-3 py-2 text-sm border border-slate-200 rounded-lg hover:bg-slate-50 text-slate-700">
+            <QrCode className="w-4 h-4" /> QR
+          </button>
+          <button onClick={startEdit}
+            className="flex items-center gap-2 px-3 py-2 text-sm border border-slate-200 rounded-lg hover:bg-slate-50 text-slate-700">
+            <Pencil className="w-4 h-4" /> {t.common.edit}
+          </button>
+          {isAdmin && (
+            <button onClick={handleDelete}
+              className="flex items-center gap-2 px-3 py-2 text-sm bg-red-50 border border-red-200 rounded-lg hover:bg-red-100 text-red-600">
+              <Trash2 className="w-4 h-4" /> {t.common.delete}
+            </button>
+          )}
+        </div>
+      </div>
 
-        {activeTab === 'info' && (
-          <div className="flex items-center gap-2">
-            {!editing ? (
-              <>
-                <button
-                  onClick={handleEdit}
-                  className="flex items-center gap-2 px-4 py-2 border border-slate-200 hover:bg-slate-50 text-slate-700 text-sm font-medium rounded-lg transition-colors"
-                >
-                  <Pencil className="w-4 h-4" />
-                  {t.common.edit}
-                </button>
-                {isAdmin && (
-                  <button
-                    onClick={handleDelete}
-                    className="flex items-center gap-2 px-4 py-2 border border-red-200 hover:bg-red-50 text-red-600 text-sm font-medium rounded-lg transition-colors"
-                  >
-                    <Trash2 className="w-4 h-4" />
-                    {t.common.delete}
-                  </button>
-                )}
-              </>
+      {/* Patient card */}
+      <div className="bg-white rounded-xl border border-slate-200 p-5 mb-6">
+        <div className="flex items-start gap-4">
+          <div className="w-14 h-14 rounded-full bg-blue-100 flex items-center justify-center flex-shrink-0">
+            <User className="w-7 h-7 text-blue-600" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <h1 className="text-xl font-bold text-slate-900">
+              {patient.lastName} {patient.firstName} {patient.fatherName}
+            </h1>
+            <p className="text-sm text-slate-500 mt-0.5">
+              {calcAge(patient.birthDate)} yosh • Ro'yxatdan o'tgan: {fmtDate(patient.createdAt)}
+            </p>
+            <div className="flex flex-wrap gap-4 mt-3 text-sm text-slate-600">
+              <span className="flex items-center gap-1.5"><Phone className="w-3.5 h-3.5" />{patient.phone}</span>
+              {patient.jshshir && <span className="flex items-center gap-1.5"><Hash className="w-3.5 h-3.5" />{patient.jshshir}</span>}
+              {patient.district && <span className="flex items-center gap-1.5"><MapPin className="w-3.5 h-3.5" />{patient.district}</span>}
+            </div>
+          </div>
+          <div className="text-right flex-shrink-0">
+            <div className="text-xs text-slate-500">Jami to&apos;lov</div>
+            <div className="text-lg font-bold text-green-700">{fmtMoney(totalPaid)}</div>
+            <div className="text-xs text-slate-400 mt-0.5">{payments.length} ta operatsiya</div>
+          </div>
+        </div>
+      </div>
+
+      {/* Tabs */}
+      <div className="flex gap-1 border-b border-slate-200 mb-6 overflow-x-auto">
+        {tabs.map(tab => (
+          <button key={tab.key} onClick={() => setActiveTab(tab.key)}
+            className={`flex items-center gap-2 px-4 py-2.5 text-sm font-medium whitespace-nowrap border-b-2 transition-colors ${
+              activeTab === tab.key
+                ? 'border-blue-600 text-blue-700'
+                : 'border-transparent text-slate-500 hover:text-slate-700'
+            }`}>
+            {tab.icon} {tab.label}
+            {tab.count !== undefined && tab.count > 0 && (
+              <span className={`text-xs px-1.5 py-0.5 rounded-full ${
+                activeTab === tab.key ? 'bg-blue-100 text-blue-700' : 'bg-slate-100 text-slate-600'
+              }`}>{tab.count}</span>
+            )}
+          </button>
+        ))}
+      </div>
+
+      {/* ── TAB: UMUMIY ──────────────────────────────────────────────────── */}
+      {activeTab === 'info' && (
+        <div className="space-y-4">
+          <div className="bg-white rounded-xl border border-slate-200 divide-y divide-slate-100">
+            <InfoRow icon={<User className="w-4 h-4 text-slate-400" />} label="To'liq ismi"
+              value={`${patient.lastName} ${patient.firstName} ${patient.fatherName}`} />
+            <InfoRow icon={<Calendar className="w-4 h-4 text-slate-400" />} label="Tug'ilgan yil"
+              value={`${new Date(patient.birthDate).getFullYear()} (${calcAge(patient.birthDate)} yosh)`} />
+            <InfoRow icon={<Phone className="w-4 h-4 text-slate-400" />} label="Telefon" value={patient.phone} />
+            {patient.jshshir && <InfoRow icon={<Hash className="w-4 h-4 text-slate-400" />} label="JSHSHIR" value={patient.jshshir} />}
+            {patient.district && <InfoRow icon={<MapPin className="w-4 h-4 text-slate-400" />} label="Tuman" value={patient.district} />}
+            {patient.houseNumber && <InfoRow icon={<MapPin className="w-4 h-4 text-slate-400" />} label="Uy raqami" value={patient.houseNumber} />}
+            {patient.telegramChatId && <InfoRow icon={<MessageCircle className="w-4 h-4 text-slate-400" />} label="Telegram" value={patient.telegramChatId} />}
+          </div>
+
+          {patient.allergies && (
+            <div className="bg-red-50 border border-red-200 rounded-xl p-4">
+              <div className="flex items-center gap-2 text-red-700 font-medium mb-1">
+                <AlertTriangle className="w-4 h-4" /> Allergiyalar
+              </div>
+              <p className="text-sm text-red-800">{patient.allergies}</p>
+            </div>
+          )}
+
+          {patient.medicalHistory && (
+            <div className="bg-white rounded-xl border border-slate-200 p-4">
+              <div className="flex items-center gap-2 text-slate-700 font-medium mb-2">
+                <FileText className="w-4 h-4 text-slate-400" /> Tibbiy tarix
+              </div>
+              <p className="text-sm text-slate-600">{patient.medicalHistory}</p>
+            </div>
+          )}
+
+          {/* Admissions summary */}
+          {admissions.length > 0 && (
+            <div className="bg-white rounded-xl border border-slate-200 p-4">
+              <div className="flex items-center gap-2 text-slate-700 font-medium mb-3">
+                <BedDouble className="w-4 h-4 text-slate-400" /> Yotqizishlar tarixi
+              </div>
+              <div className="space-y-2">
+                {admissions.map(a => (
+                  <div key={a.id} className="flex items-center justify-between text-sm p-2 bg-slate-50 rounded-lg">
+                    <span className="text-slate-700">
+                      {a.admissionType === 'AMBULATORY' ? 'Ambulator' : 'Statsionar'} —{' '}
+                      {a.bed.room.floor}-qavat, {a.bed.room.roomNumber}-xona, {a.bed.bedNumber}-karavot
+                    </span>
+                    <span className="text-slate-500 text-xs">
+                      {fmtDate(a.admissionDate)} {a.dischargeDate ? `→ ${fmtDate(a.dischargeDate)}` : '(faol)'}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ── TAB: XIZMATLAR ───────────────────────────────────────────────── */}
+      {activeTab === 'services' && (
+        <div className="flex gap-4">
+        {/* Left: main list */}
+        <div className="flex-1 min-w-0 space-y-4">
+          {/* Tayinlangan xizmatlar */}
+          <Section
+            title="Tayinlangan xizmatlar"
+            count={assignedServices.length}
+            action={canManageServices ? (
+              <button
+                type="button"
+                onClick={openAssignModal}
+                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+              >
+                <Plus className="w-3.5 h-3.5" /> Xizmat tayinlash
+              </button>
+            ) : undefined}
+          >
+            {assignedLoading ? (
+              <div className="flex justify-center py-6"><Loader2 className="w-5 h-5 animate-spin text-blue-400" /></div>
+            ) : assignedServices.length === 0 ? (
+              <p className="text-sm text-slate-400 py-4 text-center">Hali xizmat tayinlanmagan</p>
             ) : (
               <>
-                <button
-                  onClick={handleCancel}
-                  disabled={saving}
-                  className="flex items-center gap-2 px-4 py-2 border border-slate-200 hover:bg-slate-50 text-slate-700 text-sm font-medium rounded-lg transition-colors disabled:opacity-60"
-                >
-                  <X className="w-4 h-4" />
-                  {t.common.cancel}
+                {assignedServices.map(svc => (
+                  <div key={svc.id} className="flex items-center justify-between py-3 border-b border-slate-50 last:border-0">
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="text-xs px-2 py-0.5 rounded-full bg-slate-100 text-slate-600 font-medium">
+                          {svc.categoryName}
+                        </span>
+                        <span className="text-sm font-medium text-slate-800">{svc.itemName}</span>
+                        <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${svc.isPaid ? 'bg-green-100 text-green-700' : 'bg-yellow-100 text-yellow-700'}`}>
+                          {svc.isPaid ? 'To\'langan' : 'Kutilmoqda'}
+                        </span>
+                      </div>
+                      <p className="text-xs text-slate-400 mt-0.5">
+                        {svc.assignedBy.name} • {fmtDate(svc.assignedAt)}
+                        {svc.paidAt && ` • To'langan: ${fmtDate(svc.paidAt)}`}
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-2 ml-3">
+                      <span className="text-sm font-semibold text-slate-800">{fmtMoney(Number(svc.price))}</span>
+                      {!svc.isPaid && canManageServices && (
+                        <button
+                          type="button"
+                          onClick={() => openPayModal(svc)}
+                          className="flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
+                        >
+                          <Check className="w-3 h-3" />
+                          To&apos;lash
+                        </button>
+                      )}
+                      {!svc.isPaid && canManageServices && (
+                        <button
+                          type="button"
+                          onClick={() => deleteAssigned(svc.id)}
+                          className="p-1.5 text-slate-300 hover:text-red-500 transition-colors"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                ))}
+                {/* Jami */}
+                {assignedServices.some(s => s.isPaid) && (
+                  <div className="flex justify-between text-sm font-semibold pt-3 border-t border-slate-200">
+                    <span className="text-slate-600">Jami to&apos;langan:</span>
+                    <span className="text-green-700">
+                      {fmtMoney(assignedServices.filter(s => s.isPaid).reduce((sum, s) => sum + Number(s.price), 0))}
+                    </span>
+                  </div>
+                )}
+              </>
+            )}
+          </Section>
+
+          {/* Navbatlar (Uchrashuvlar) */}
+          {appointments.length > 0 && (
+            <Section title="Navbatlar" count={appointments.length}>
+              {appointments.map(a => (
+                <div key={a.id} className="flex items-center justify-between py-3 border-b border-slate-50 last:border-0">
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-medium text-slate-800">
+                        {APPT_TYPE_LABELS[a.type] ?? a.type}
+                      </span>
+                      <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${APPT_STATUS_COLORS[a.status] ?? ''}`}>
+                        {a.status}
+                      </span>
+                    </div>
+                    <p className="text-xs text-slate-500 mt-0.5">
+                      {a.doctor.name} • {fmt(a.dateTime)}
+                    </p>
+                    {a.notes && <p className="text-xs text-slate-400 mt-0.5">{a.notes}</p>}
+                  </div>
+                </div>
+              ))}
+            </Section>
+          )}
+        </div>{/* end left */}
+
+        {/* ── Right panel: To'lov tayyorlash ─────────────────────────── */}
+        <div className="w-72 flex-shrink-0 flex flex-col gap-3">
+          {/* Chek chiqarish */}
+          <button
+            type="button"
+            onClick={() => printReceipt()}
+            className="flex items-center justify-center gap-2 px-4 py-2.5 bg-slate-800 text-white text-sm font-medium rounded-xl hover:bg-slate-900 transition-colors w-full"
+          >
+            <Printer className="w-4 h-4" /> Chek chiqarish
+          </button>
+
+          {/* Unpaid services to select */}
+          <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+            <div className="px-4 py-3 bg-amber-50 border-b border-amber-100 flex items-center justify-between">
+              <span className="text-sm font-semibold text-amber-800">To&apos;lov tayyorlash</span>
+              {assignedServices.some(s => !s.isPaid) && (
+                <button type="button" onClick={selectAllUnpaid} className="text-xs text-amber-600 hover:text-amber-800 underline">
+                  Barchasini
                 </button>
-                <button
-                  onClick={handleSave}
-                  disabled={saving}
-                  className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-60 disabled:cursor-not-allowed text-white text-sm font-medium rounded-lg transition-colors"
-                >
-                  {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
-                  {t.common.save}
-                </button>
+              )}
+            </div>
+            <div className="divide-y divide-slate-50">
+              {assignedServices.filter(s => !s.isPaid).length === 0 ? (
+                <p className="text-xs text-slate-400 text-center py-4">Barcha xizmatlar to&apos;langan</p>
+              ) : (
+                assignedServices.filter(s => !s.isPaid).map(svc => (
+                  <label key={svc.id} className="flex items-start gap-3 px-4 py-3 cursor-pointer hover:bg-slate-50 transition-colors">
+                    <input
+                      type="checkbox"
+                      checked={selectedForPay.has(svc.id)}
+                      onChange={() => toggleSelectForPay(svc.id)}
+                      className="mt-0.5 rounded border-slate-300 text-blue-600"
+                    />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs font-medium text-slate-700 truncate">{svc.itemName}</p>
+                      <p className="text-xs text-slate-400">{svc.categoryName}</p>
+                      <p className="text-xs font-semibold text-blue-700 mt-0.5">{fmtMoney(Number(svc.price))}</p>
+                    </div>
+                  </label>
+                ))
+              )}
+            </div>
+
+            {/* Medicines from nurse notes */}
+            {profile && profile.nurseNotes?.some(n => Array.isArray(n.medicines) && (n.medicines as unknown[]).length > 0) && (
+              <>
+                <div className="px-4 py-2 bg-purple-50 border-t border-purple-100">
+                  <span className="text-xs font-semibold text-purple-700">💊 Dorilar (eslatma)</span>
+                </div>
+                {profile.nurseNotes.map(n =>
+                  Array.isArray(n.medicines) && (n.medicines as unknown[]).length > 0
+                    ? (n.medicines as { name: string; quantity: number; unit: string }[]).map((m, i) => (
+                        <div key={`${n.id}-${i}`} className="flex items-center gap-3 px-4 py-2.5 border-t border-slate-50">
+                          <div className="flex-1 min-w-0">
+                            <p className="text-xs text-slate-700">{m.name}</p>
+                            <p className="text-xs text-slate-400">{m.quantity} {m.unit} · {fmtDate(n.createdAt)}</p>
+                          </div>
+                        </div>
+                      ))
+                    : null
+                )}
               </>
             )}
           </div>
-        )}
 
-        {activeTab === 'records' && isDoctor && (
-          <button
-            onClick={openRecordModal}
-            className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg transition-colors"
-          >
-            <Plus className="w-4 h-4" />
-            {t.medicalRecords.addRecord}
-          </button>
-        )}
-      </div>
-
-      {/* Patient header card */}
-      <div className="bg-white rounded-2xl border border-slate-200 mb-5 overflow-hidden">
-        <div className="bg-gradient-to-r from-blue-50 to-slate-50 px-6 py-5 flex items-center gap-4">
-          <div className="w-12 h-12 rounded-full bg-blue-100 flex items-center justify-center flex-shrink-0">
-            <User className="w-6 h-6 text-blue-600" />
-          </div>
-          <div>
-            <h2 className="text-xl font-bold text-slate-800">
-              {patient.lastName} {patient.firstName} {patient.fatherName}
-            </h2>
-            <p className="text-sm text-slate-500 mt-0.5">
-              ID: {patient.id.slice(0, 8)}... &nbsp;|&nbsp;
-              {new Date(patient.birthDate).toLocaleDateString('uz-UZ')}&nbsp;
-              ({t.patients.age}: {calcAge(patient.birthDate)})
-            </p>
-          </div>
+          {/* Bulk pay button */}
+          {selectedForPay.size > 0 && (
+            <button
+              type="button"
+              onClick={() => setShowBulkPayModal(true)}
+              className="flex items-center justify-center gap-2 px-4 py-2.5 bg-green-600 text-white text-sm font-semibold rounded-xl hover:bg-green-700 transition-colors w-full"
+            >
+              <Check className="w-4 h-4" />
+              {selectedForPay.size} ta — {fmtMoney(
+                assignedServices.filter(s => selectedForPay.has(s.id)).reduce((sum, s) => sum + Number(s.price), 0)
+              )} to&apos;lash
+            </button>
+          )}
         </div>
+        </div>
+      )}
 
-        {/* Tabs */}
-        <div className="flex border-b border-slate-200 px-6">
-          {(['info', 'records', 'payments'] as Tab[]).map((tab) => {
-            const labels: Record<Tab, string> = {
-              info: t.medicalRecords.tabInfo,
-              records: t.medicalRecords.tabRecords,
-              payments: t.medicalRecords.tabPayments,
-            };
-            return (
+      {/* ── PAY MODAL ───────────────────────────────────────────────────── */}
+      {showPayModal && payModalService && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm p-6">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="font-semibold text-slate-800">To&apos;lov qilish</h3>
+              <button type="button" onClick={() => setShowPayModal(false)}>
+                <X className="w-5 h-5 text-slate-400" />
+              </button>
+            </div>
+            <div className="mb-4 p-3 bg-slate-50 rounded-xl text-sm">
+              <p className="text-slate-500 text-xs mb-1">{payModalService.categoryName}</p>
+              <p className="font-medium text-slate-800">{payModalService.itemName}</p>
+              <p className="text-blue-700 font-bold mt-1">{fmtMoney(Number(payModalService.price))}</p>
+            </div>
+            <div className="mb-5">
+              <label className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2 block">To&apos;lov usuli</label>
+              <div className="grid grid-cols-2 gap-2">
+                {[
+                  { val: 'CASH', label: 'Naqd pul' },
+                  { val: 'CARD', label: 'Karta' },
+                  { val: 'CLICK', label: 'Click' },
+                  { val: 'PAYME', label: 'Payme' },
+                  { val: 'BANK_TRANSFER', label: "Bank o'tkazma" },
+                ].map(opt => (
+                  <button
+                    key={opt.val}
+                    type="button"
+                    onClick={() => setPayMethod(opt.val)}
+                    className={`px-3 py-2.5 rounded-xl text-sm font-medium border-2 transition-all ${
+                      payMethod === opt.val
+                        ? 'border-green-500 bg-green-50 text-green-700'
+                        : 'border-slate-200 text-slate-600 hover:border-slate-300'
+                    }`}
+                  >
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div className="flex gap-2">
               <button
-                key={tab}
-                onClick={() => { setEditing(false); setForm(null); setActiveTab(tab); }}
-                className={`px-4 py-3 text-sm font-medium border-b-2 -mb-px transition-colors ${
-                  activeTab === tab
-                    ? 'border-blue-600 text-blue-600'
-                    : 'border-transparent text-slate-500 hover:text-slate-700'
-                }`}
+                type="button"
+                onClick={() => setShowPayModal(false)}
+                className="flex-1 px-4 py-2.5 text-sm text-slate-600 border border-slate-200 rounded-xl hover:bg-slate-50"
               >
-                {labels[tab]}
+                Bekor
               </button>
-            );
-          })}
-        </div>
-      </div>
-
-      {/* ── TAB: Info ────────────────────────────────────────────────────────── */}
-      {activeTab === 'info' && (
-        <>
-          {saveError && (
-            <div className="flex items-center gap-2 text-red-600 bg-red-50 border border-red-200 rounded-lg px-4 py-3 mb-4 text-sm">
-              <AlertCircle className="w-4 h-4 flex-shrink-0" />
-              {saveError}
-            </div>
-          )}
-
-          <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden">
-            <div className="p-6 grid grid-cols-1 md:grid-cols-2 gap-6">
-              <InfoField
-                icon={<Phone className="w-4 h-4 text-slate-400" />}
-                label={t.common.phone}
-                editing={editing}
-                value={patient.phone}
-                editNode={
-                  <input name="phone" value={form?.phone ?? ''} onChange={handleFormChange}
-                    className="border border-slate-200 rounded-lg px-3 py-2 text-sm w-full focus:outline-none focus:ring-2 focus:ring-blue-500" />
-                }
-              />
-
-              <InfoField
-                icon={<Hash className="w-4 h-4 text-slate-400" />}
-                label={t.patients.jshshir}
-                editing={editing}
-                value={patient.jshshir}
-                valueClass="font-mono"
-                editNode={
-                  <input name="jshshir" value={form?.jshshir ?? ''} onChange={handleFormChange} maxLength={14}
-                    className="border border-slate-200 rounded-lg px-3 py-2 text-sm w-full font-mono focus:outline-none focus:ring-2 focus:ring-blue-500" />
-                }
-              />
-
-              <InfoField
-                icon={<Calendar className="w-4 h-4 text-slate-400" />}
-                label={t.patients.birthDate}
-                editing={editing}
-                value={`${new Date(patient.birthDate).toLocaleDateString('uz-UZ')} (${t.patients.age}: ${calcAge(patient.birthDate)})`}
-                editNode={
-                  <input type="date" name="birthDate" value={form?.birthDate ?? ''} onChange={handleFormChange}
-                    className="border border-slate-200 rounded-lg px-3 py-2 text-sm w-full focus:outline-none focus:ring-2 focus:ring-blue-500" />
-                }
-              />
-
-              {patient.gender && (
-                <InfoField
-                  icon={<User className="w-4 h-4 text-slate-400" />}
-                  label={t.patients.gender}
-                  editing={false}
-                  value={patient.gender === 'MALE' ? t.patients.male : patient.gender === 'FEMALE' ? t.patients.female : patient.gender}
-                  editNode={null}
-                />
-              )}
-
-              {patient.bloodType && (
-                <InfoField
-                  icon={<Droplets className="w-4 h-4 text-slate-400" />}
-                  label={t.patients.bloodType}
-                  editing={false}
-                  value={patient.bloodType}
-                  editNode={null}
-                />
-              )}
-
-              <InfoField
-                icon={<MapPin className="w-4 h-4 text-slate-400" />}
-                label={t.patients.district}
-                editing={editing}
-                value={patient.district ?? '—'}
-                editNode={
-                  <input name="district" value={form?.district ?? ''} onChange={handleFormChange}
-                    className="border border-slate-200 rounded-lg px-3 py-2 text-sm w-full focus:outline-none focus:ring-2 focus:ring-blue-500" />
-                }
-              />
-
-              <InfoField
-                icon={<MapPin className="w-4 h-4 text-slate-400" />}
-                label={t.patients.houseNumber}
-                editing={editing}
-                value={patient.houseNumber ?? '—'}
-                editNode={
-                  <input name="houseNumber" value={form?.houseNumber ?? ''} onChange={handleFormChange}
-                    className="border border-slate-200 rounded-lg px-3 py-2 text-sm w-full focus:outline-none focus:ring-2 focus:ring-blue-500" />
-                }
-              />
-
-              <InfoField
-                icon={<MessageCircle className="w-4 h-4 text-slate-400" />}
-                label={t.patients.telegramChatId}
-                editing={editing}
-                value={patient.telegramChatId ?? '—'}
-                editNode={
-                  <input name="telegramChatId" value={form?.telegramChatId ?? ''} onChange={handleFormChange}
-                    className="border border-slate-200 rounded-lg px-3 py-2 text-sm w-full focus:outline-none focus:ring-2 focus:ring-blue-500" />
-                }
-              />
-
-              <div className="md:col-span-2">
-                <InfoField
-                  icon={<AlertTriangle className="w-4 h-4 text-slate-400" />}
-                  label={t.patients.allergies}
-                  editing={editing}
-                  value={patient.allergies ?? '—'}
-                  editNode={
-                    <textarea name="allergies" value={form?.allergies ?? ''} onChange={handleFormChange} rows={2}
-                      className="border border-slate-200 rounded-lg px-3 py-2 text-sm w-full focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none" />
-                  }
-                />
-              </div>
-
-              <div className="md:col-span-2">
-                <InfoField
-                  icon={<FileText className="w-4 h-4 text-slate-400" />}
-                  label={t.patients.medicalHistory}
-                  editing={editing}
-                  value={patient.medicalHistory ?? '—'}
-                  editNode={
-                    <textarea name="medicalHistory" value={form?.medicalHistory ?? ''} onChange={handleFormChange} rows={4}
-                      className="border border-slate-200 rounded-lg px-3 py-2 text-sm w-full focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none" />
-                  }
-                />
-              </div>
-            </div>
-
-            <div className="px-6 py-3 bg-slate-50 border-t border-slate-100 text-xs text-slate-400 flex gap-6">
-              <span>{t.common.createdAt}: {new Date(patient.createdAt).toLocaleString('uz-UZ')}</span>
-              <span>{t.common.updatedAt}: {new Date(patient.updatedAt).toLocaleString('uz-UZ')}</span>
+              <button
+                type="button"
+                onClick={confirmPay}
+                disabled={!!payingId}
+                className="flex-1 flex items-center justify-center gap-1.5 px-4 py-2.5 text-sm font-semibold bg-green-600 text-white rounded-xl hover:bg-green-700 disabled:opacity-50"
+              >
+                {payingId ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
+                To&apos;lash
+              </button>
             </div>
           </div>
-        </>
-      )}
-
-      {/* ── TAB: Medical Records ─────────────────────────────────────────────── */}
-      {activeTab === 'records' && (
-        <div>
-          {recordsError && (
-            <div className="flex items-center gap-2 bg-red-50 border border-red-200 text-red-700 rounded-xl px-5 py-3 mb-4 text-sm">
-              <AlertCircle className="w-4 h-4 flex-shrink-0" />
-              {recordsError}
-            </div>
-          )}
-          {recordsLoading ? (
-            <div className="flex items-center justify-center py-12">
-              <Loader2 className="w-6 h-6 animate-spin text-blue-500" />
-            </div>
-          ) : records.length === 0 ? (
-            <div className="bg-white rounded-xl border border-slate-200 px-6 py-12 text-center text-slate-400 text-sm">
-              {t.medicalRecords.noRecords}
-            </div>
-          ) : (
-            <div className="space-y-4">
-              {records.map((record) => {
-                const expanded = expandedRecords.has(record.id);
-                return (
-                  <div key={record.id} className="bg-white rounded-xl border border-slate-200 overflow-hidden">
-                    {/* Record header */}
-                    <div
-                      className="flex items-center justify-between px-5 py-4 cursor-pointer hover:bg-slate-50 transition-colors"
-                      onClick={() => toggleRecord(record.id)}
-                    >
-                      <div className="flex items-center gap-3">
-                        <div className="w-9 h-9 rounded-full bg-blue-100 flex items-center justify-center flex-shrink-0">
-                          <User className="w-4 h-4 text-blue-600" />
-                        </div>
-                        <div>
-                          <p className="text-sm font-semibold text-slate-800">{record.doctor?.name ?? '—'}</p>
-                          <p className="text-xs text-slate-500">{record.doctor?.role ?? ''}</p>
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-3">
-                        <span className="text-xs text-slate-400">
-                          {new Date(record.createdAt).toLocaleDateString('uz-UZ')}
-                        </span>
-                        {expanded ? <ChevronUp className="w-4 h-4 text-slate-400" /> : <ChevronDown className="w-4 h-4 text-slate-400" />}
-                      </div>
-                    </div>
-
-                    {/* Record body */}
-                    {expanded && (
-                      <div className="px-5 pb-5 border-t border-slate-100 pt-4">
-                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
-                          <RecordField label={t.medicalRecords.diagnosis} value={record.diagnosis ?? '—'} />
-                          <RecordField label={t.medicalRecords.treatment} value={record.treatment ?? '—'} />
-                          <RecordField label={t.medicalRecords.notes} value={record.notes ?? '—'} />
-                        </div>
-
-                        {/* Prescriptions */}
-                        <div className="mt-4">
-                          <div className="flex items-center justify-between mb-3">
-                            <h4 className="text-sm font-semibold text-slate-700">{t.medicalRecords.prescriptions}</h4>
-                            {isDoctor && (
-                              <button
-                                onClick={() => openPrescriptionModal(record.id)}
-                                className="flex items-center gap-1.5 text-xs px-3 py-1.5 bg-green-600 hover:bg-green-700 text-white rounded-lg transition-colors"
-                              >
-                                <Plus className="w-3 h-3" />
-                                {t.medicalRecords.addPrescription}
-                              </button>
-                            )}
-                          </div>
-
-                          {record.prescriptions.length === 0 ? (
-                            <p className="text-sm text-slate-400">{t.medicalRecords.noPrescriptions}</p>
-                          ) : (
-                            <div className="space-y-2">
-                              {record.prescriptions.map((rx) => (
-                                <div key={rx.id} className="flex items-start justify-between bg-slate-50 border border-slate-200 rounded-lg px-4 py-3">
-                                  <div className="flex-1 grid grid-cols-2 md:grid-cols-4 gap-2 text-sm">
-                                    <div>
-                                      <span className="text-xs text-slate-400 block">{t.medicalRecords.medicineName}</span>
-                                      <span className="font-medium text-slate-800">{rx.medicineName}</span>
-                                    </div>
-                                    <div>
-                                      <span className="text-xs text-slate-400 block">{t.medicalRecords.dosage}</span>
-                                      <span className="text-slate-700">{rx.dosage}</span>
-                                    </div>
-                                    <div>
-                                      <span className="text-xs text-slate-400 block">{t.medicalRecords.duration}</span>
-                                      <span className="text-slate-700">{rx.duration}</span>
-                                    </div>
-                                    {rx.instructions && (
-                                      <div>
-                                        <span className="text-xs text-slate-400 block">{t.medicalRecords.instructions}</span>
-                                        <span className="text-slate-700">{rx.instructions}</span>
-                                      </div>
-                                    )}
-                                  </div>
-                                  <button
-                                    onClick={() => handlePrint(rx, t)}
-                                    className="flex items-center gap-1.5 text-xs px-3 py-1.5 border border-slate-200 hover:bg-slate-100 text-slate-600 rounded-lg transition-colors ml-3 flex-shrink-0"
-                                  >
-                                    <Printer className="w-3 h-3" />
-                                    {t.medicalRecords.printPrescription}
-                                  </button>
-                                </div>
-                              ))}
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-          )}
         </div>
       )}
 
-      {/* ── TAB: Payments ────────────────────────────────────────────────────── */}
-      {activeTab === 'payments' && (
-        <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
-          {paymentsLoading ? (
-            <div className="flex items-center justify-center py-12">
-              <Loader2 className="w-6 h-6 animate-spin text-blue-500" />
+      {/* ── BULK PAY MODAL ──────────────────────────────────────────────── */}
+      {showBulkPayModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm p-6">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="font-semibold text-slate-800">To&apos;lov qilish ({selectedForPay.size} ta)</h3>
+              <button type="button" onClick={() => setShowBulkPayModal(false)}><X className="w-5 h-5 text-slate-400" /></button>
             </div>
-          ) : payments.length === 0 ? (
-            <div className="px-6 py-12 text-center text-slate-400 text-sm">
-              {t.medicalRecords.noPayments}
+            <div className="mb-4 max-h-40 overflow-y-auto divide-y divide-slate-50 border border-slate-100 rounded-xl">
+              {assignedServices.filter(s => selectedForPay.has(s.id)).map(svc => (
+                <div key={svc.id} className="flex justify-between px-3 py-2 text-sm">
+                  <span className="text-slate-700 truncate">{svc.itemName}</span>
+                  <span className="font-semibold text-blue-700 ml-2 flex-shrink-0">{fmtMoney(Number(svc.price))}</span>
+                </div>
+              ))}
+              <div className="flex justify-between px-3 py-2 text-sm font-bold bg-blue-50">
+                <span>Jami</span>
+                <span className="text-blue-700">{fmtMoney(assignedServices.filter(s => selectedForPay.has(s.id)).reduce((sum, s) => sum + Number(s.price), 0))}</span>
+              </div>
             </div>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="bg-slate-50 border-b border-slate-200">
-                    <th className="text-left px-4 py-3 font-semibold text-slate-600">{t.common.date}</th>
-                    <th className="text-left px-4 py-3 font-semibold text-slate-600">{t.payments.amount}</th>
-                    <th className="text-left px-4 py-3 font-semibold text-slate-600">{t.payments.method}</th>
-                    <th className="text-left px-4 py-3 font-semibold text-slate-600">{t.payments.category}</th>
-                    <th className="text-left px-4 py-3 font-semibold text-slate-600">{t.common.status}</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100">
-                  {payments.map((pay) => (
-                    <tr key={pay.id} className="hover:bg-slate-50 transition-colors">
-                      <td className="px-4 py-3 text-slate-600">
-                        {new Date(pay.createdAt).toLocaleDateString('uz-UZ')}
-                      </td>
-                      <td className="px-4 py-3 font-medium text-slate-800">
-                        {formatCurrency(pay.amount, t.common?.sum ?? "so'm")}
-                      </td>
-                      <td className="px-4 py-3 text-slate-600">
-                        {(t.payments.methods as Record<string, string>)[pay.method] ?? pay.method}
-                      </td>
-                      <td className="px-4 py-3 text-slate-600">
-                        {(t.payments.categories as Record<string, string>)[pay.category] ?? pay.category}
-                      </td>
-                      <td className="px-4 py-3">
-                        <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${paymentStatusClass(pay.status)}`}>
-                          {(t.payments.statuses as Record<string, string>)[pay.status] ?? pay.status}
-                        </span>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+            <div className="mb-5">
+              <label className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2 block">To&apos;lov usuli</label>
+              <div className="grid grid-cols-2 gap-2">
+                {[
+                  { val: 'CASH', label: 'Naqd pul' },
+                  { val: 'CARD', label: 'Karta' },
+                  { val: 'CLICK', label: 'Click' },
+                  { val: 'PAYME', label: 'Payme' },
+                  { val: 'BANK_TRANSFER', label: "Bank o'tkazma" },
+                ].map(opt => (
+                  <button key={opt.val} type="button" onClick={() => setBulkPayMethod(opt.val)}
+                    className={`px-3 py-2.5 rounded-xl text-sm font-medium border-2 transition-all ${
+                      bulkPayMethod === opt.val ? 'border-green-500 bg-green-50 text-green-700' : 'border-slate-200 text-slate-600 hover:border-slate-300'
+                    }`}>
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
             </div>
-          )}
-        </div>
-      )}
-
-      {/* ── Modal: Add Medical Record ─────────────────────────────────────────── */}
-      {showRecordModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
-            <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100">
-              <h2 className="text-lg font-semibold text-slate-800">{t.medicalRecords.addRecord}</h2>
-              <button onClick={() => setShowRecordModal(false)} className="p-1.5 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-md transition-colors">
-                <X className="w-5 h-5" />
+            <div className="flex gap-2">
+              <button type="button" onClick={() => setShowBulkPayModal(false)}
+                className="flex-1 px-4 py-2.5 text-sm text-slate-600 border border-slate-200 rounded-xl hover:bg-slate-50">
+                Bekor
+              </button>
+              <button type="button" onClick={bulkPay} disabled={bulkPaying}
+                className="flex-1 flex items-center justify-center gap-1.5 px-4 py-2.5 text-sm font-semibold bg-green-600 text-white rounded-xl hover:bg-green-700 disabled:opacity-50">
+                {bulkPaying ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
+                To&apos;lash
               </button>
             </div>
-            <form onSubmit={handleRecordSubmit} className="p-6 space-y-4">
-              {recordFormError && (
-                <div className="flex items-center gap-2 text-red-600 bg-red-50 border border-red-200 rounded-lg px-4 py-3 text-sm">
-                  <AlertCircle className="w-4 h-4 flex-shrink-0" />
-                  {recordFormError}
-                </div>
-              )}
+          </div>
+        </div>
+      )}
 
-              <div className="flex flex-col gap-1">
-                <label className="text-sm font-medium text-slate-700">
-                  {t.medicalRecords.doctor} <span className="text-red-500">*</span>
-                </label>
+      {/* ── ASSIGN SERVICE MODAL ─────────────────────────────────────────── */}
+      {showAssignModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-md p-6">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="font-semibold text-slate-800">Xizmat tayinlash</h3>
+              <button type="button" onClick={() => { setShowAssignModal(false); setAssignCatId(''); setAssignItemId(''); }}>
+                <X className="w-5 h-5 text-slate-400" />
+              </button>
+            </div>
+
+            {/* Category */}
+            <div className="mb-3">
+              <label className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1 block">Bo&apos;lim</label>
+              <select
+                value={assignCatId}
+                onChange={e => { setAssignCatId(e.target.value); setAssignItemId(''); }}
+                className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
+              >
+                <option value="">— Bo&apos;lim tanlang —</option>
+                {serviceCategories.map(c => (
+                  <option key={c.id} value={c.id}>{c.name}</option>
+                ))}
+              </select>
+            </div>
+
+            {/* Item */}
+            {assignCat && (
+              <div className="mb-4">
+                <label className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1 block">Xizmat turi</label>
                 <select
-                  required
-                  value={recordForm.doctorId}
-                  onChange={(e) => setRecordForm((p) => ({ ...p, doctorId: e.target.value }))}
-                  className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500"
+                  value={assignItemId}
+                  onChange={e => setAssignItemId(e.target.value)}
+                  className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
                 >
-                  <option value="">{t.medicalRecords.selectDoctor}</option>
-                  {doctors.map((d) => (
-                    <option key={d.id} value={d.id}>{d.name}</option>
+                  <option value="">— Xizmat tanlang —</option>
+                  {visibleItems.map(i => (
+                    <option key={i.id} value={i.id}>{i.name} — {fmtMoney(i.price)}</option>
                   ))}
                 </select>
               </div>
+            )}
 
-              <div className="flex flex-col gap-1">
-                <label className="text-sm font-medium text-slate-700">{t.medicalRecords.diagnosis}</label>
-                <textarea
-                  rows={3}
-                  value={recordForm.diagnosis}
-                  onChange={(e) => setRecordForm((p) => ({ ...p, diagnosis: e.target.value }))}
-                  className="border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
-                />
+            {assignItem && (
+              <div className="mb-4 px-4 py-3 bg-blue-50 rounded-xl flex justify-between text-sm">
+                <span className="text-slate-700">{assignItem.name}</span>
+                <span className="font-bold text-blue-700">{fmtMoney(assignItem.price)}</span>
               </div>
+            )}
 
-              <div className="flex flex-col gap-1">
-                <label className="text-sm font-medium text-slate-700">{t.medicalRecords.treatment}</label>
-                <textarea
-                  rows={3}
-                  value={recordForm.treatment}
-                  onChange={(e) => setRecordForm((p) => ({ ...p, treatment: e.target.value }))}
-                  className="border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
-                />
-              </div>
-
-              <div className="flex flex-col gap-1">
-                <label className="text-sm font-medium text-slate-700">{t.medicalRecords.notes}</label>
-                <textarea
-                  rows={2}
-                  value={recordForm.notes}
-                  onChange={(e) => setRecordForm((p) => ({ ...p, notes: e.target.value }))}
-                  className="border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
-                />
-              </div>
-
-              <div className="flex items-center justify-end gap-3 pt-2">
-                <button type="button" onClick={() => setShowRecordModal(false)}
-                  className="px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100 rounded-lg transition-colors">
-                  {t.common.cancel}
-                </button>
-                <button type="submit" disabled={savingRecord}
-                  className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-60 text-white text-sm font-medium rounded-lg transition-colors">
-                  {savingRecord && <Loader2 className="w-4 h-4 animate-spin" />}
-                  {t.common.save}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* ── Modal: Add Prescription ───────────────────────────────────────────── */}
-      {prescriptionTarget && isDoctor && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-md max-h-[90vh] overflow-y-auto">
-            <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100">
-              <h2 className="text-lg font-semibold text-slate-800">{t.medicalRecords.addPrescription}</h2>
-              <button onClick={() => setPrescriptionTarget(null)} className="p-1.5 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-md transition-colors">
-                <X className="w-5 h-5" />
+            <div className="flex gap-2 justify-end">
+              <button
+                type="button"
+                onClick={() => { setShowAssignModal(false); setAssignCatId(''); setAssignItemId(''); }}
+                className="px-4 py-2 text-sm text-slate-600 border border-slate-200 rounded-xl hover:bg-slate-50"
+              >
+                Bekor
+              </button>
+              <button
+                type="button"
+                onClick={saveAssign}
+                disabled={!assignItem || assignSaving}
+                className="flex items-center gap-1.5 px-4 py-2 text-sm font-semibold bg-blue-600 text-white rounded-xl hover:bg-blue-700 disabled:opacity-50"
+              >
+                {assignSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
+                Tayinlash
               </button>
             </div>
-            <form onSubmit={handlePrescriptionSubmit} className="p-6 space-y-4">
-              {prescriptionFormError && (
-                <div className="flex items-center gap-2 text-red-600 bg-red-50 border border-red-200 rounded-lg px-4 py-3 text-sm">
-                  <AlertCircle className="w-4 h-4 flex-shrink-0" />
-                  {prescriptionFormError}
-                </div>
-              )}
-
-              <div className="flex flex-col gap-1">
-                <label className="text-sm font-medium text-slate-700">
-                  {t.medicalRecords.medicineName} <span className="text-red-500">*</span>
-                </label>
-                <input
-                  required
-                  value={prescriptionForm.medicineName}
-                  onChange={(e) => setPrescriptionForm((p) => ({ ...p, medicineName: e.target.value }))}
-                  className="border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
-              </div>
-
-              <div className="flex flex-col gap-1">
-                <label className="text-sm font-medium text-slate-700">
-                  {t.medicalRecords.dosage} <span className="text-red-500">*</span>
-                </label>
-                <input
-                  required
-                  value={prescriptionForm.dosage}
-                  onChange={(e) => setPrescriptionForm((p) => ({ ...p, dosage: e.target.value }))}
-                  className="border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
-              </div>
-
-              <div className="flex flex-col gap-1">
-                <label className="text-sm font-medium text-slate-700">
-                  {t.medicalRecords.duration} <span className="text-red-500">*</span>
-                </label>
-                <input
-                  required
-                  value={prescriptionForm.duration}
-                  onChange={(e) => setPrescriptionForm((p) => ({ ...p, duration: e.target.value }))}
-                  className="border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
-              </div>
-
-              <div className="flex flex-col gap-1">
-                <label className="text-sm font-medium text-slate-700">{t.medicalRecords.instructions}</label>
-                <textarea
-                  rows={3}
-                  value={prescriptionForm.instructions}
-                  onChange={(e) => setPrescriptionForm((p) => ({ ...p, instructions: e.target.value }))}
-                  className="border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
-                />
-              </div>
-
-              <div className="flex items-center justify-end gap-3 pt-2">
-                <button type="button" onClick={() => setPrescriptionTarget(null)}
-                  className="px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100 rounded-lg transition-colors">
-                  {t.common.cancel}
-                </button>
-                <button type="submit" disabled={savingPrescription}
-                  className="flex items-center gap-2 px-4 py-2 bg-green-600 hover:bg-green-700 disabled:opacity-60 text-white text-sm font-medium rounded-lg transition-colors">
-                  {savingPrescription && <Loader2 className="w-4 h-4 animate-spin" />}
-                  {t.common.save}
-                </button>
-              </div>
-            </form>
           </div>
         </div>
+      )}
+
+      {/* ── TAB: TASHXISLAR ──────────────────────────────────────────────── */}
+      {activeTab === 'records' && (
+        <div className="space-y-4">
+          {medicalRecords.length === 0 ? <Empty text="Tashxis mavjud emas" /> : medicalRecords.map(r => (
+            <div key={r.id} className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+              <div className="px-4 py-3 bg-slate-50 border-b border-slate-100 flex justify-between items-center">
+                <div>
+                  <span className="text-sm font-semibold text-slate-800">{r.doctor.name}</span>
+                  <span className="text-xs text-slate-500 ml-2">
+                    {r.doctor.specialization?.name ?? r.doctor.role}
+                  </span>
+                </div>
+                <span className="text-xs text-slate-400">{fmt(r.createdAt)}</span>
+              </div>
+              <div className="p-4 space-y-3">
+                {r.diagnosis && (
+                  <div>
+                    <div className="text-xs font-semibold text-slate-500 uppercase mb-1">Tashxis</div>
+                    <p className="text-sm text-slate-800">{r.diagnosis}</p>
+                  </div>
+                )}
+                {r.treatment && (
+                  <div>
+                    <div className="text-xs font-semibold text-slate-500 uppercase mb-1">Davolash</div>
+                    <p className="text-sm text-slate-700">{r.treatment}</p>
+                  </div>
+                )}
+                {r.notes && (
+                  <div>
+                    <div className="text-xs font-semibold text-slate-500 uppercase mb-1">Izoh</div>
+                    <p className="text-sm text-slate-600">{r.notes}</p>
+                  </div>
+                )}
+                {r.prescriptions.length > 0 && (
+                  <div className="mt-3 border-t border-slate-100 pt-3">
+                    <div className="text-xs font-semibold text-slate-500 uppercase mb-2">
+                      Retsept ({r.prescriptions.length} ta dori)
+                    </div>
+                    <div className="space-y-2">
+                      {r.prescriptions.map(rx => (
+                        <div key={rx.id} className="flex items-center justify-between bg-blue-50 rounded-lg px-3 py-2">
+                          <div>
+                            <span className="text-sm font-medium text-blue-900">{rx.medicineName}</span>
+                            <span className="text-xs text-blue-700 ml-2">{rx.dosage} • {rx.duration}</span>
+                            {rx.instructions && <p className="text-xs text-blue-600 mt-0.5">{rx.instructions}</p>}
+                          </div>
+                          <button onClick={() => printPrescription(rx)}
+                            className="p-1.5 text-blue-600 hover:bg-blue-100 rounded-md" title="Chop etish">
+                            <Printer className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* ── TAB: HAMSHIRA QAYDLARI ────────────────────────────────────────── */}
+      {activeTab === 'nurse' && (
+        <div className="space-y-4">
+          {isNurse && (
+            <div className="flex justify-end">
+              <button onClick={() => setShowNurseModal(true)}
+                className="flex items-center gap-2 px-4 py-2 bg-teal-600 hover:bg-teal-700 text-white text-sm rounded-lg">
+                <Plus className="w-4 h-4" /> Qayд qo&apos;shish
+              </button>
+            </div>
+          )}
+
+          {nurseNotes.length === 0 ? <Empty text="Hamshira qaydlari yo'q" /> : nurseNotes.map(n => (
+            <div key={n.id} className="bg-white rounded-xl border border-slate-200 p-4">
+              <div className="flex justify-between items-start mb-2">
+                <div>
+                  <span className="text-sm font-semibold text-slate-800">{n.procedure}</span>
+                  {n.admission && (
+                    <span className="text-xs text-slate-500 ml-2">
+                      ({n.admission.bed.room.floor}-qavat, {n.admission.bed.room.roomNumber}-xona)
+                    </span>
+                  )}
+                </div>
+                <span className="text-xs text-slate-400 flex-shrink-0">{fmt(n.createdAt)}</span>
+              </div>
+              <p className="text-xs text-slate-500 mb-2">
+                Hamshira: <span className="font-medium">{n.nurse.name}</span>
+              </p>
+              {n.notes && <p className="text-sm text-slate-700 mb-2">{n.notes}</p>}
+              {n.medicines && n.medicines.length > 0 && (
+                <div className="mt-2 border-t border-slate-100 pt-2">
+                  <div className="text-xs font-semibold text-slate-500 uppercase mb-1">Ishlatilgan dorilar</div>
+                  <div className="flex flex-wrap gap-2">
+                    {n.medicines.map((m, i) => (
+                      <span key={i} className="bg-orange-50 text-orange-800 text-xs px-2 py-1 rounded-md">
+                        {m.name} — {m.quantity} {m.unit}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* ── TAB: LABORATORIYA ─────────────────────────────────────────────── */}
+      {activeTab === 'lab' && (
+        <div className="space-y-4">
+          {labTests.length === 0 ? <Empty text="Laboratoriya tahlillari yo'q" /> : labTests.map(lt => (
+            <div key={lt.id} className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+              <div className="px-4 py-3 bg-slate-50 border-b border-slate-100 flex justify-between items-center">
+                <div className="flex items-center gap-3">
+                  <span className="text-sm font-semibold text-slate-800">{lt.testType.name}</span>
+                  <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${LAB_STATUS_COLORS[lt.status] ?? ''}`}>
+                    {lt.status === 'PENDING' ? 'Kutilmoqda'
+                      : lt.status === 'IN_PROGRESS' ? 'Jarayonda'
+                      : lt.status === 'COMPLETED' ? 'Tayyor'
+                      : 'Bekor qilindi'}
+                  </span>
+                </div>
+                <span className="text-xs text-slate-400">{fmt(lt.createdAt)}</span>
+              </div>
+              <div className="p-4">
+                <div className="flex justify-between text-xs text-slate-500 mb-3">
+                  <span>Laborant: {lt.labTech.name}</span>
+                  {lt.testType.normalRange && <span>Norma: {lt.testType.normalRange} {lt.testType.unit ?? ''}</span>}
+                  {lt.completedAt && <span>Tugallandi: {fmt(lt.completedAt)}</span>}
+                </div>
+
+                {lt.notes && (
+                  <div className="text-sm text-slate-700 mb-3">
+                    <span className="font-medium text-slate-500 text-xs uppercase">Izoh: </span>
+                    {lt.notes}
+                  </div>
+                )}
+
+                {lt.status === 'COMPLETED' && lt.results && (
+                  <div className="bg-green-50 rounded-lg p-3">
+                    <div className="text-xs font-semibold text-green-700 uppercase mb-2">Natija</div>
+                    <div className="space-y-1">
+                      {Object.entries(lt.results).map(([k, v]) => (
+                        <div key={k} className="flex justify-between text-sm">
+                          <span className="text-slate-600">{k}</span>
+                          <span className="font-medium text-slate-800">{String(v)}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {lt.status === 'PENDING' && (
+                  <div className="bg-yellow-50 rounded-lg px-3 py-2 text-sm text-yellow-800">
+                    Natija hali kiritilmagan — laboratoriya jarayonida
+                  </div>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* ── QR Modal ──────────────────────────────────────────────────────── */}
+      {showQr && (
+        <Modal title="Bemor QR Kodi" onClose={() => setShowQr(false)}>
+          <div className="flex flex-col items-center gap-4 py-4">
+            {qrLoading ? <Loader2 className="w-10 h-10 animate-spin text-blue-500" />
+              : qrDataUrl
+                ? <img src={qrDataUrl} alt="QR" className="w-52 h-52 rounded-xl" />
+                : <div className="text-slate-500 text-sm">QR yuklanmadi</div>
+            }
+            <p className="text-sm text-slate-600 text-center">
+              {patient.lastName} {patient.firstName}<br />
+              <span className="text-slate-400 text-xs">{patient.phone}</span>
+            </p>
+            <button onClick={printQr} disabled={!qrDataUrl}
+              className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg text-sm disabled:opacity-50">
+              <Printer className="w-4 h-4" /> Chop etish
+            </button>
+          </div>
+        </Modal>
+      )}
+
+      {/* ── Edit Modal ────────────────────────────────────────────────────── */}
+      {editing && editForm && (
+        <Modal title={t.patients.editPatient} onClose={() => setEditing(false)}>
+          <div className="grid grid-cols-2 gap-4">
+            {([
+              ['lastName', 'Familiya'], ['firstName', 'Ism'], ['fatherName', 'Otasining ismi'],
+              ['phone', 'Telefon'], ['jshshir', 'JSHSHIR'], ['birthDate', 'Tug\'ilgan yil'],
+              ['district', 'Tuman'], ['houseNumber', 'Uy raqami'], ['telegramChatId', 'Telegram Chat ID'],
+            ] as [keyof EditForm, string][]).map(([key, label]) => (
+              <div key={key} className={key === 'telegramChatId' ? 'col-span-2' : ''}>
+                <label className="block text-xs font-medium text-slate-600 mb-1">{label}</label>
+                <input
+                  type="text"
+                  maxLength={key === 'birthDate' ? 4 : undefined}
+                  placeholder={key === 'birthDate' ? 'YYYY' : undefined}
+                  value={editForm[key]}
+                  onChange={e => setEditForm(f => f ? { ...f, [key]: e.target.value } : f)}
+                  className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+            ))}
+            <div className="col-span-2">
+              <label className="block text-xs font-medium text-slate-600 mb-1">Allergiyalar</label>
+              <textarea value={editForm.allergies}
+                onChange={e => setEditForm(f => f ? { ...f, allergies: e.target.value } : f)}
+                rows={2}
+                className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+            </div>
+            <div className="col-span-2">
+              <label className="block text-xs font-medium text-slate-600 mb-1">Tibbiy tarix</label>
+              <textarea value={editForm.medicalHistory}
+                onChange={e => setEditForm(f => f ? { ...f, medicalHistory: e.target.value } : f)}
+                rows={3}
+                className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+            </div>
+          </div>
+          {saveError && <p className="text-red-600 text-sm mt-3">{saveError}</p>}
+          <div className="flex justify-end gap-3 mt-6">
+            <button onClick={() => setEditing(false)}
+              className="px-4 py-2 border border-slate-200 text-slate-600 rounded-lg text-sm hover:bg-slate-50">
+              <X className="w-4 h-4 inline mr-1" /> {t.common.cancel}
+            </button>
+            <button onClick={saveEdit} disabled={saving}
+              className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg text-sm disabled:opacity-60">
+              {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
+              {t.common.save}
+            </button>
+          </div>
+        </Modal>
+      )}
+
+      {/* ── Nurse Note Modal ──────────────────────────────────────────────── */}
+      {showNurseModal && (
+        <Modal title="Hamshira qaydini qo'shish" onClose={() => setShowNurseModal(false)}>
+          <div className="space-y-4">
+            <div>
+              <label className="block text-xs font-medium text-slate-600 mb-1">Muolaja nomi *</label>
+              <input type="text" value={nurseForm.procedure} placeholder="Ukol, infuziya, bog'lam..."
+                onChange={e => setNurseForm(f => ({ ...f, procedure: e.target.value }))}
+                className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500" />
+            </div>
+
+            {admissions.filter(a => !a.dischargeDate).length > 0 && (
+              <div>
+                <label className="block text-xs font-medium text-slate-600 mb-1">Qaysi xona (ixtiyoriy)</label>
+                <select value={nurseForm.admissionId}
+                  onChange={e => setNurseForm(f => ({ ...f, admissionId: e.target.value }))}
+                  className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500">
+                  <option value="">— Tanlamang —</option>
+                  {admissions.filter(a => !a.dischargeDate).map(a => (
+                    <option key={a.id} value={a.id}>
+                      {a.admissionType === 'AMBULATORY' ? 'Ambulator' : 'Statsionar'} —{' '}
+                      {a.bed.room.floor}-qavat, {a.bed.room.roomNumber}-xona
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
+
+            <div>
+              <label className="block text-xs font-medium text-slate-600 mb-1">Izoh</label>
+              <textarea value={nurseForm.notes} rows={2}
+                onChange={e => setNurseForm(f => ({ ...f, notes: e.target.value }))}
+                placeholder="Muolaja haqida qo'shimcha ma'lumot..."
+                className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500" />
+            </div>
+
+            {/* Dorilar */}
+            <div>
+              <div className="flex justify-between items-center mb-2">
+                <label className="text-xs font-medium text-slate-600">Ishlatilgan dorilar</label>
+                <button onClick={addMedicineRow}
+                  className="text-xs text-teal-600 hover:text-teal-700 flex items-center gap-1">
+                  <Plus className="w-3 h-3" /> Qo&apos;shish
+                </button>
+              </div>
+              {nurseForm.medicines.map((m, i) => (
+                <div key={i} className="flex gap-2 mb-2">
+                  <input type="text" value={m.name} placeholder="Dori nomi"
+                    onChange={e => updateMedicine(i, 'name', e.target.value)}
+                    className="flex-1 border border-slate-200 rounded-lg px-2 py-1.5 text-sm" />
+                  <input type="number" value={m.quantity} min={1}
+                    onChange={e => updateMedicine(i, 'quantity', Number(e.target.value))}
+                    className="w-16 border border-slate-200 rounded-lg px-2 py-1.5 text-sm" />
+                  <input type="text" value={m.unit} placeholder="ml"
+                    onChange={e => updateMedicine(i, 'unit', e.target.value)}
+                    className="w-16 border border-slate-200 rounded-lg px-2 py-1.5 text-sm" />
+                  <button onClick={() => removeMedicine(i)}
+                    className="p-1.5 text-red-400 hover:text-red-600">
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div className="flex justify-end gap-3 mt-6">
+            <button onClick={() => setShowNurseModal(false)}
+              className="px-4 py-2 border border-slate-200 text-slate-600 rounded-lg text-sm">
+              {t.common.cancel}
+            </button>
+            <button onClick={saveNurseNote} disabled={savingNote || !nurseForm.procedure.trim()}
+              className="flex items-center gap-2 px-4 py-2 bg-teal-600 text-white rounded-lg text-sm disabled:opacity-60">
+              {savingNote ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
+              Saqlash
+            </button>
+          </div>
+        </Modal>
       )}
     </div>
   );
 }
 
-// ─── Sub-components ───────────────────────────────────────────────────────────
+// ─── UI helpers ───────────────────────────────────────────────────────────────
 
-interface InfoFieldProps {
-  icon: React.ReactNode;
-  label: string;
-  editing: boolean;
-  value: string;
-  valueClass?: string;
-  editNode: React.ReactNode;
+function InfoRow({ icon, label, value }: { icon: React.ReactNode; label: string; value: string }) {
+  return (
+    <div className="flex items-center gap-3 px-4 py-3">
+      {icon}
+      <span className="text-sm text-slate-500 w-36 flex-shrink-0">{label}</span>
+      <span className="text-sm text-slate-800 font-medium">{value}</span>
+    </div>
+  );
 }
 
-function InfoField({ icon, label, editing, value, valueClass = '', editNode }: InfoFieldProps) {
+function Section({ title, count, children, action }: { title: string; count: number; children: React.ReactNode; action?: React.ReactNode }) {
   return (
-    <div>
-      <div className="flex items-center gap-1.5 mb-1.5">
-        {icon}
-        <span className="text-xs font-semibold text-slate-500 uppercase tracking-wide">{label}</span>
+    <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+      <div className="px-4 py-3 bg-slate-50 border-b border-slate-100 flex justify-between items-center">
+        <div className="flex items-center gap-2">
+          <span className="text-sm font-semibold text-slate-800">{title}</span>
+          <span className="text-xs text-slate-500">{count} ta</span>
+        </div>
+        {action}
       </div>
-      {editing ? editNode : <p className={`text-sm text-slate-800 ${valueClass}`}>{value}</p>}
+      <div className="px-4 py-1">{children}</div>
     </div>
   );
 }
 
-function RecordField({ label, value }: { label: string; value: string }) {
+function Empty({ text }: { text: string }) {
   return (
-    <div>
-      <span className="text-xs font-semibold text-slate-500 uppercase tracking-wide block mb-1">{label}</span>
-      <p className="text-sm text-slate-800">{value}</p>
+    <div className="text-center py-16 text-slate-400">
+      <FileText className="w-10 h-10 mx-auto mb-3 opacity-40" />
+      <p className="text-sm">{text}</p>
     </div>
   );
+}
+
+function Modal({ title, onClose, children }: { title: string; onClose: () => void; children: React.ReactNode }) {
+  return (
+    <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+        <div className="flex justify-between items-center px-6 py-4 border-b border-slate-100">
+          <h2 className="text-base font-semibold text-slate-800">{title}</h2>
+          <button onClick={onClose} className="p-1.5 text-slate-400 hover:text-slate-700 rounded-lg hover:bg-slate-100">
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+        <div className="px-6 py-5">{children}</div>
+      </div>
+    </div>
+  );
+}
+
+function printPrescription(rx: { medicineName: string; dosage: string; duration: string; instructions?: string; createdAt: string }) {
+  const win = window.open('', '_blank');
+  if (!win) return;
+  win.document.write(`<html><head><meta charset="utf-8"/><title>Retsept</title>
+    <style>body{font-family:sans-serif;padding:24px}h2{margin-bottom:16px}p{margin:8px 0}</style>
+    </head><body>
+    <h2>Retsept</h2>
+    <p><strong>Dori:</strong> ${rx.medicineName}</p>
+    <p><strong>Dozasi:</strong> ${rx.dosage}</p>
+    <p><strong>Muddati:</strong> ${rx.duration}</p>
+    ${rx.instructions ? `<p><strong>Ko'rsatma:</strong> ${rx.instructions}</p>` : ''}
+    <p style="margin-top:24px;color:#888;font-size:12px">Sana: ${new Date(rx.createdAt).toLocaleDateString('uz-UZ')}</p>
+    </body></html>`);
+  win.print(); win.close();
 }

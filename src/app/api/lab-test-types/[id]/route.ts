@@ -21,6 +21,8 @@ export async function GET(
         description: true,
         price: true,
         normalRange: true,
+        unit: true,
+        category: true,
         isActive: true,
         createdAt: true,
       },
@@ -62,10 +64,12 @@ export async function PUT(
       description?: string;
       price?: number;
       normalRange?: string;
+      unit?: string;
+      category?: string;
       isActive?: boolean;
     };
 
-    const { name, description, price, normalRange, isActive } = body;
+    const { name, description, price, normalRange, unit, category, isActive } = body;
 
     if (price !== undefined && (typeof price !== 'number' || price < 0)) {
       return NextResponse.json(
@@ -91,6 +95,8 @@ export async function PUT(
         ...(description !== undefined && { description }),
         ...(price !== undefined && { price }),
         ...(normalRange !== undefined && { normalRange }),
+        ...(unit !== undefined && { unit }),
+        ...(category !== undefined && { category }),
         ...(isActive !== undefined && { isActive }),
       },
     });

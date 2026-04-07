@@ -12,6 +12,7 @@ import {
   Tag,
   SlidersHorizontal,
   Building2,
+  DoorOpen,
 } from 'lucide-react';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -21,6 +22,12 @@ interface Specialization {
   name: string;
   createdAt: string;
   _count?: { users: number };
+}
+
+interface RoomType {
+  id: string;
+  name: string;
+  createdAt: string;
 }
 
 // ─── Component ────────────────────────────────────────────────────────────────
@@ -47,6 +54,21 @@ export default function SettingsPage() {
   const [editingSpecName, setEditingSpecName] = useState('');
   const [savingEdit, setSavingEdit] = useState(false);
 
+  // ── Room Types state ───────────────────────────────────────────────────────
+  const [roomTypes, setRoomTypes] = useState<RoomType[]>([]);
+  const [loadingRoomTypes, setLoadingRoomTypes] = useState(true);
+  const [roomTypesError, setRoomTypesError] = useState('');
+
+  const [addingRoomType, setAddingRoomType] = useState(false);
+  const [newRoomTypeName, setNewRoomTypeName] = useState('');
+  const [savingRoomType, setSavingRoomType] = useState(false);
+
+  const [editingRoomTypeId, setEditingRoomTypeId] = useState<string | null>(null);
+  const [editingRoomTypeName, setEditingRoomTypeName] = useState('');
+  const [savingRoomTypeEdit, setSavingRoomTypeEdit] = useState(false);
+
+  const [roomTypeActionError, setRoomTypeActionError] = useState('');
+
   // ── Fetch specializations ──────────────────────────────────────────────────
 
   const fetchSpecializations = useCallback(async () => {
@@ -67,6 +89,87 @@ export default function SettingsPage() {
   useEffect(() => {
     fetchSpecializations();
   }, [fetchSpecializations]);
+
+  // ── Fetch room types ───────────────────────────────────────────────────────
+
+  const fetchRoomTypes = useCallback(async () => {
+    setLoadingRoomTypes(true);
+    setRoomTypesError('');
+    try {
+      const res = await fetch('/api/room-types');
+      if (!res.ok) throw new Error(t.common.error);
+      const data: RoomType[] = await res.json();
+      setRoomTypes(data);
+    } catch {
+      setRoomTypesError(t.common.error);
+    } finally {
+      setLoadingRoomTypes(false);
+    }
+  }, [t.common.error]);
+
+  useEffect(() => {
+    fetchRoomTypes();
+  }, [fetchRoomTypes]);
+
+  // ── Room Type CRUD ─────────────────────────────────────────────────────────
+
+  async function handleAddRoomType(e: React.FormEvent) {
+    e.preventDefault();
+    if (!newRoomTypeName.trim()) return;
+    setSavingRoomType(true);
+    setRoomTypeActionError('');
+    try {
+      const res = await fetch('/api/room-types', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: newRoomTypeName.trim() }),
+      });
+      const data = await res.json() as { error?: string };
+      if (!res.ok) throw new Error(data.error ?? t.common.error);
+      setNewRoomTypeName('');
+      setAddingRoomType(false);
+      fetchRoomTypes();
+    } catch (err) {
+      setRoomTypeActionError(err instanceof Error ? err.message : t.common.error);
+    } finally {
+      setSavingRoomType(false);
+    }
+  }
+
+  async function handleSaveRoomType(id: string) {
+    if (!editingRoomTypeName.trim()) return;
+    setSavingRoomTypeEdit(true);
+    setRoomTypeActionError('');
+    try {
+      const res = await fetch(`/api/room-types/${id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: editingRoomTypeName.trim() }),
+      });
+      const data = await res.json() as { error?: string };
+      if (!res.ok) throw new Error(data.error ?? t.common.error);
+      setEditingRoomTypeId(null);
+      setEditingRoomTypeName('');
+      fetchRoomTypes();
+    } catch (err) {
+      setRoomTypeActionError(err instanceof Error ? err.message : t.common.error);
+    } finally {
+      setSavingRoomTypeEdit(false);
+    }
+  }
+
+  async function handleDeleteRoomType(rt: RoomType) {
+    if (!confirm(t.settings.deleteRoomTypeConfirm)) return;
+    setRoomTypeActionError('');
+    try {
+      const res = await fetch(`/api/room-types/${rt.id}`, { method: 'DELETE' });
+      const data = await res.json() as { error?: string };
+      if (!res.ok) throw new Error(data.error ?? t.common.error);
+      fetchRoomTypes();
+    } catch (err) {
+      setRoomTypeActionError(err instanceof Error ? err.message : t.common.error);
+    }
+  }
 
   // ── Specialization CRUD ────────────────────────────────────────────────────
 
@@ -296,6 +399,162 @@ export default function SettingsPage() {
                                 </button>
                                 <button
                                   onClick={() => handleDeleteSpec(spec)}
+                                  className="p-1.5 text-slate-500 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                                  title={t.common.delete}
+                                >
+                                  <Trash2 size={15} />
+                                </button>
+                              </>
+                            )}
+                          </div>
+                        </td>
+                      )}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </section>
+
+        {/* ── Xona turlari ────────────────────────────────────────────────── */}
+        <section className="bg-white rounded-xl shadow-sm border border-slate-100">
+          <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <DoorOpen size={18} className="text-violet-600" />
+              <h2 className="text-base font-semibold text-slate-800">
+                {t.settings.roomTypes}
+              </h2>
+            </div>
+            {isAdmin && !addingRoomType && (
+              <button
+                onClick={() => setAddingRoomType(true)}
+                className="flex items-center gap-1.5 text-sm text-violet-600 hover:text-violet-700 font-medium transition-colors"
+              >
+                <Plus size={15} />
+                {t.settings.addRoomType}
+              </button>
+            )}
+          </div>
+
+          {roomTypesError && (
+            <div className="mx-6 mt-4 text-red-600 bg-red-50 border border-red-200 p-3 rounded-lg text-sm">
+              {roomTypesError}
+            </div>
+          )}
+          {roomTypeActionError && (
+            <div className="mx-6 mt-4 text-red-600 bg-red-50 border border-red-200 p-3 rounded-lg text-sm">
+              {roomTypeActionError}
+            </div>
+          )}
+
+          {isAdmin && addingRoomType && (
+            <form
+              onSubmit={handleAddRoomType}
+              className="px-6 py-4 border-b border-slate-100 bg-violet-50/40"
+            >
+              <div className="flex items-center gap-3">
+                <input
+                  type="text"
+                  autoFocus
+                  value={newRoomTypeName}
+                  onChange={(e) => setNewRoomTypeName(e.target.value)}
+                  placeholder={t.settings.roomTypeName}
+                  className="flex-1 border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-violet-300 bg-white"
+                  required
+                />
+                <button
+                  type="submit"
+                  disabled={savingRoomType}
+                  className="flex items-center gap-1.5 bg-violet-600 hover:bg-violet-700 disabled:opacity-60 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors"
+                >
+                  <Check size={14} />
+                  {t.common.save}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { setAddingRoomType(false); setNewRoomTypeName(''); }}
+                  className="flex items-center gap-1.5 border border-slate-200 text-slate-600 hover:bg-slate-50 px-4 py-2 rounded-lg text-sm font-medium transition-colors"
+                >
+                  <X size={14} />
+                  {t.common.cancel}
+                </button>
+              </div>
+            </form>
+          )}
+
+          {loadingRoomTypes ? (
+            <div className="flex justify-center py-10">
+              <div className="w-7 h-7 border-4 border-violet-200 border-t-violet-600 rounded-full animate-spin" />
+            </div>
+          ) : roomTypes.length === 0 ? (
+            <div className="text-center py-10 text-slate-500 text-sm">
+              {t.settings.noRoomTypes}
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead className="bg-slate-50 border-b border-slate-100">
+                  <tr className="text-left text-xs text-slate-500 uppercase tracking-wide">
+                    <th className="px-6 py-3 font-medium">#</th>
+                    <th className="px-6 py-3 font-medium">{t.settings.roomTypeName}</th>
+                    {isAdmin && (
+                      <th className="px-6 py-3 font-medium text-right">{t.common.actions}</th>
+                    )}
+                  </tr>
+                </thead>
+                <tbody>
+                  {roomTypes.map((rt, idx) => (
+                    <tr
+                      key={rt.id}
+                      className="border-b border-slate-50 last:border-0 hover:bg-slate-50 transition-colors"
+                    >
+                      <td className="px-6 py-3.5 text-slate-400">{idx + 1}</td>
+                      <td className="px-6 py-3.5 font-medium text-slate-800">
+                        {editingRoomTypeId === rt.id ? (
+                          <input
+                            type="text"
+                            autoFocus
+                            value={editingRoomTypeName}
+                            onChange={(e) => setEditingRoomTypeName(e.target.value)}
+                            className="border border-slate-200 rounded-lg px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-violet-300 w-56"
+                          />
+                        ) : (
+                          rt.name
+                        )}
+                      </td>
+                      {isAdmin && (
+                        <td className="px-6 py-3.5">
+                          <div className="flex items-center justify-end gap-2">
+                            {editingRoomTypeId === rt.id ? (
+                              <>
+                                <button
+                                  onClick={() => handleSaveRoomType(rt.id)}
+                                  disabled={savingRoomTypeEdit}
+                                  className="p-1.5 text-green-600 hover:bg-green-50 rounded-lg transition-colors disabled:opacity-60"
+                                  title={t.common.save}
+                                >
+                                  <Check size={15} />
+                                </button>
+                                <button
+                                  onClick={() => { setEditingRoomTypeId(null); setEditingRoomTypeName(''); }}
+                                  className="p-1.5 text-slate-400 hover:bg-slate-100 rounded-lg transition-colors"
+                                  title={t.common.cancel}
+                                >
+                                  <X size={15} />
+                                </button>
+                              </>
+                            ) : (
+                              <>
+                                <button
+                                  onClick={() => { setEditingRoomTypeId(rt.id); setEditingRoomTypeName(rt.name); }}
+                                  className="p-1.5 text-slate-500 hover:text-violet-600 hover:bg-violet-50 rounded-lg transition-colors"
+                                  title={t.common.edit}
+                                >
+                                  <Pencil size={15} />
+                                </button>
+                                <button
+                                  onClick={() => handleDeleteRoomType(rt)}
                                   className="p-1.5 text-slate-500 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
                                   title={t.common.delete}
                                 >

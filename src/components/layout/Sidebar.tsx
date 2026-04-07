@@ -29,6 +29,8 @@ import {
   ChevronUp,
   LogOut,
   Stethoscope,
+  ActivitySquare,
+  Tag,
 } from 'lucide-react';
 
 interface SidebarProps {
@@ -103,6 +105,12 @@ export default function Sidebar({ collapsed, onToggle, userName, userRole }: Sid
           icon: <Hospital size={20} />,
           labelKey: 'admissions',
         },
+        {
+          key: 'ambulatory',
+          href: '/ambulatory',
+          icon: <ActivitySquare size={20} />,
+          labelKey: 'ambulatory',
+        },
       ],
     },
     {
@@ -147,6 +155,12 @@ export default function Sidebar({ collapsed, onToggle, userName, userRole }: Sid
       href: '/reports',
       icon: <BarChart3 size={20} />,
       labelKey: 'reports',
+    },
+    {
+      key: 'services',
+      href: '/services',
+      icon: <Tag size={20} />,
+      labelKey: 'services',
     },
     {
       key: 'medicalRecords',

@@ -41,6 +41,7 @@ interface Payment {
   description?: string | null;
   createdAt: string;
   patient: { firstName: string; lastName: string };
+  receivedBy?: { id: string; name: string; role: string } | null;
 }
 
 interface PaymentsResponse {
@@ -551,6 +552,7 @@ export default function PaymentsPage() {
                 <th className="text-left px-4 py-3 font-semibold text-slate-600">{t.payments.category}</th>
                 <th className="text-left px-4 py-3 font-semibold text-slate-600">{t.common.status}</th>
                 <th className="text-left px-4 py-3 font-semibold text-slate-600">{t.common.date}</th>
+                <th className="text-left px-4 py-3 font-semibold text-slate-600">Qabul qiluvchi</th>
                 <th className="text-right px-4 py-3 font-semibold text-slate-600">{t.common.actions}</th>
               </tr>
             </thead>
@@ -603,6 +605,13 @@ export default function PaymentsPage() {
                           minute: '2-digit',
                         })}
                       </span>
+                    </td>
+                    <td className="px-4 py-3 text-xs">
+                      {payment.receivedBy ? (
+                        <span className="text-slate-700 font-medium">{payment.receivedBy.name}</span>
+                      ) : (
+                        <span className="text-slate-400">—</span>
+                      )}
                     </td>
                     <td className="px-4 py-3">
                       <div className="flex items-center justify-end gap-1">

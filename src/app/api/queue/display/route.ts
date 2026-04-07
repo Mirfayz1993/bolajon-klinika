@@ -1,20 +1,32 @@
+import { NextRequest } from 'next/server';
 import { prisma } from '@/lib/prisma';
 
-export async function GET() {
+export async function GET(req: NextRequest) {
   const encoder = new TextEncoder();
+  const signal = req.signal; // Client ulanishi uzilsa — abort bo'ladi
 
   const stream = new ReadableStream({
     async start(controller) {
+      let intervalId: ReturnType<typeof setInterval> | null = null;
+
+      const cleanup = () => {
+        if (intervalId !== null) {
+          clearInterval(intervalId);
+          intervalId = null;
+        }
+        try { controller.close(); } catch { /* allaqachon yopilgan */ }
+      };
+
       const sendData = async () => {
+        if (signal.aborted) { cleanup(); return; }
+
         const startOfDay = new Date();
         startOfDay.setHours(0, 0, 0, 0);
 
         const queues = await prisma.queue.findMany({
           where: {
             status: { in: ['WAITING', 'CALLED'] },
-            appointment: {
-              dateTime: { gte: startOfDay },
-            },
+            appointment: { dateTime: { gte: startOfDay } },
           },
           include: {
             appointment: {
@@ -27,22 +39,32 @@ export async function GET() {
           orderBy: { queueNumber: 'asc' },
         });
 
-        const data = JSON.stringify(queues);
-        controller.enqueue(encoder.encode(`data: ${data}\n\n`));
+        controller.enqueue(encoder.encode(`data: ${JSON.stringify(queues)}\n\n`));
       };
 
-      await sendData();
+      // Abort event'ini tinglash
+      signal.addEventListener('abort', cleanup, { once: true });
 
-      const interval = setInterval(async () => {
+      try {
+        await sendData();
+      } catch {
+        cleanup();
+        return;
+      }
+
+      intervalId = setInterval(async () => {
         try {
           await sendData();
         } catch {
-          clearInterval(interval);
-          controller.close();
+          cleanup();
         }
       }, 3000);
 
-      return () => clearInterval(interval);
+      // ReadableStream cancel callback
+      return () => {
+        signal.removeEventListener('abort', cleanup);
+        cleanup();
+      };
     },
   });
 

@@ -61,7 +61,6 @@ interface NewAppointmentForm {
   patientId: string;
   doctorId: string;
   type: AppointmentType | '';
-  dateTime: string;
   notes: string;
 }
 
@@ -102,7 +101,6 @@ const emptyForm: NewAppointmentForm = {
   patientId: '',
   doctorId: '',
   type: '',
-  dateTime: '',
   notes: '',
 };
 
@@ -305,7 +303,7 @@ export default function AppointmentsPage() {
         patientId: form.patientId,
         doctorId: form.doctorId,
         type: form.type,
-        dateTime: new Date(form.dateTime).toISOString(),
+        dateTime: new Date().toISOString(),
       };
       if (form.notes) body.notes = form.notes;
 
@@ -319,6 +317,7 @@ export default function AppointmentsPage() {
         throw new Error(err.error || t.common.error);
       }
       setShowModal(false);
+      setDateFilter(today);
       fetchAppointments();
     } catch (err) {
       setFormError(err instanceof Error ? err.message : t.common.error);
@@ -532,7 +531,8 @@ export default function AppointmentsPage() {
                               e.target.value as AppointmentStatus
                             )
                           }
-                          className="border border-slate-200 rounded px-2 py-1 text-xs text-slate-600 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                          disabled={appt.status === 'CANCELLED' || appt.status === 'COMPLETED' || appt.status === 'NO_SHOW'}
+                          className="border border-slate-200 rounded px-2 py-1 text-xs text-slate-600 focus:outline-none focus:ring-1 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
                         >
                           {ALL_STATUSES.map((s) => (
                             <option key={s} value={s}>
@@ -673,22 +673,6 @@ export default function AppointmentsPage() {
                     </option>
                   ))}
                 </select>
-              </div>
-
-              {/* Date & time */}
-              <div className="flex flex-col gap-1">
-                <label className="text-sm font-medium text-slate-700">
-                  {t.appointments.scheduledAt}{' '}
-                  <span className="text-red-500">*</span>
-                </label>
-                <input
-                  type="datetime-local"
-                  name="dateTime"
-                  value={form.dateTime}
-                  onChange={handleFormChange}
-                  required
-                  className="border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                />
               </div>
 
               {/* Notes */}

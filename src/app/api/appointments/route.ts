@@ -131,48 +131,44 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // Calculate today's queue number for this doctor
+    // Appointment + Queue atomik yaratish (race condition yo'q)
     const startOfDay = new Date(parsedDateTime);
     startOfDay.setHours(0, 0, 0, 0);
     const startOfNextDay = new Date(startOfDay);
     startOfNextDay.setDate(startOfNextDay.getDate() + 1);
 
-    const todayQueues = await prisma.queue.count({
-      where: {
-        appointment: {
+    const { appointment, queue } = await prisma.$transaction(async (tx) => {
+      // Transaction ichida count → race condition imkonsiz
+      const todayCount = await tx.queue.count({
+        where: {
+          appointment: {
+            doctorId,
+            dateTime: { gte: startOfDay, lt: startOfNextDay },
+          },
+        },
+      });
+      const queueNumber = todayCount + 1;
+
+      const newAppointment = await tx.appointment.create({
+        data: {
+          patientId,
           doctorId,
-          dateTime: { gte: startOfDay, lt: startOfNextDay },
+          type: type as AppointmentType,
+          dateTime: parsedDateTime,
+          roomId: roomId ?? undefined,
+          notes: notes ?? undefined,
         },
-      },
-    });
-    const queueNumber = todayQueues + 1;
+        include: {
+          patient: { select: { id: true, firstName: true, lastName: true } },
+          doctor: { select: { id: true, name: true, role: true } },
+        },
+      });
 
-    // Create appointment
-    const appointment = await prisma.appointment.create({
-      data: {
-        patientId,
-        doctorId,
-        type: type as AppointmentType,
-        dateTime: parsedDateTime,
-        roomId: roomId ?? undefined,
-        notes: notes ?? undefined,
-      },
-      include: {
-        patient: {
-          select: { id: true, firstName: true, lastName: true },
-        },
-        doctor: {
-          select: { id: true, name: true, role: true },
-        },
-      },
-    });
+      const newQueue = await tx.queue.create({
+        data: { appointmentId: newAppointment.id, queueNumber },
+      });
 
-    // Create queue entry
-    const queue = await prisma.queue.create({
-      data: {
-        appointmentId: appointment.id,
-        queueNumber,
-      },
+      return { appointment: newAppointment, queue: newQueue };
     });
 
     return NextResponse.json({ ...appointment, queue }, { status: 201 });

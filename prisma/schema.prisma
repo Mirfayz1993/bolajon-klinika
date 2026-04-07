@@ -53,6 +53,12 @@ enum PaymentCategory {
   MASSAGE
   TREATMENT
   INPATIENT
+  AMBULATORY
+}
+
+enum AdmissionType {
+  INPATIENT
+  AMBULATORY
 }
 
 enum PaymentStatus {
@@ -81,6 +87,17 @@ enum MedicineTransactionType {
   STOCK_OUT
 }
 
+enum RoomInventoryStatus {
+  ACTIVE
+  WRITTEN_OFF
+}
+
+enum RoomExpenseType {
+  INVENTORY
+  MEDICINE
+  UTILITY
+}
+
 enum SalaryStatus {
   PENDING
   PAID
@@ -99,43 +116,54 @@ enum NotificationStatus {
 }
 
 model User {
-  id               String   @id @default(cuid())
+  id               String    @id @default(cuid())
   name             String
-  phone            String   @unique
-  email            String?  @unique
-  password         String
-  role             Role
-  isActive         Boolean  @default(true)
+  phone            String    @unique
+  email            String?   @unique
+  password          String
+  encryptedPassword String?
+  role              Role
+  isActive         Boolean   @default(true)
   specializationId String?
-  createdAt        DateTime @default(now())
-  updatedAt        DateTime @updatedAt
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+  deletedAt        DateTime? // Soft delete: null = faol, qiymat = o'chirilgan
 
-  specialization Specialization?  @relation(fields: [specializationId], references: [id])
-  appointments   Appointment[]    @relation("DoctorAppointments")
-  labTests       LabTest[]
-  medicalRecords MedicalRecord[]
-  schedules      Schedule[]
-  salaries       Salary[]
-  auditLogs      AuditLog[]
+  specialization   Specialization?  @relation(fields: [specializationId], references: [id])
+  appointments     Appointment[]    @relation("DoctorAppointments")
+  labTests         LabTest[]
+  medicalRecords   MedicalRecord[]
+  schedules        Schedule[]
+  salaries         Salary[]
+  auditLogs        AuditLog[]
+  userPermissions  UserPermission[]
+  inventoryAdded   RoomInventoryItem[] @relation("InventoryAddedBy")
+  roomResponsible  RoomResponsible[]   @relation("RoomResponsibleUser")
+  roomsAssigned    RoomResponsible[]   @relation("RoomResponsibleAssignedBy")
+  roomExpenses     RoomExpense[]       @relation("ExpenseCreatedBy")
+  nurseNotes        NurseNote[]         @relation("NurseNoteUser")
+  assignedServices  AssignedService[]   @relation("AssignedServices")
+  receivedPayments  Payment[]           @relation("ReceivedPayments")
 
   @@map("users")
 }
 
 model Patient {
-  id             String   @id @default(cuid())
+  id             String    @id @default(cuid())
   firstName      String
   lastName       String
   fatherName     String
   phone          String
-  jshshir        String   @unique
+  jshshir        String?   @unique
   birthDate      DateTime
   district       String?
   houseNumber    String?
   medicalHistory String?
   allergies      String?
   telegramChatId String?
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  deletedAt      DateTime? // Soft delete: null = faol, qiymat = o'chirilgan
 
   appointments         Appointment[]
   payments             Payment[]
@@ -144,6 +172,8 @@ model Patient {
   medicalRecords       MedicalRecord[]
   medicineTransactions MedicineTransaction[]
   notifications        Notification[]
+  nurseNotes           NurseNote[]
+  assignedServices     AssignedService[]
 
   @@map("patients")
 }
@@ -156,6 +186,63 @@ model Specialization {
   users User[]
 
   @@map("specializations")
+}
+
+model RoomType {
+  id        String   @id @default(cuid())
+  name      String   @unique
+  createdAt DateTime @default(now())
+
+  @@map("room_types")
+}
+
+model RoomInventoryItem {
+  id           String              @id @default(cuid())
+  roomId       String
+  name         String
+  description  String?
+  quantity     Int                 @default(1)
+  unitPrice    Decimal?            @db.Decimal(12, 2)
+  purchaseDate DateTime            @default(now())
+  status       RoomInventoryStatus @default(ACTIVE)
+  addedById    String?
+  createdAt    DateTime            @default(now())
+  updatedAt    DateTime            @updatedAt
+
+  room    Room  @relation(fields: [roomId], references: [id])
+  addedBy User? @relation("InventoryAddedBy", fields: [addedById], references: [id])
+
+  @@map("room_inventory_items")
+}
+
+model RoomResponsible {
+  id           String   @id @default(cuid())
+  roomId       String   @unique
+  userId       String
+  assignedAt   DateTime @default(now())
+  assignedById String?
+
+  room       Room  @relation(fields: [roomId], references: [id])
+  user       User  @relation("RoomResponsibleUser", fields: [userId], references: [id])
+  assignedBy User? @relation("RoomResponsibleAssignedBy", fields: [assignedById], references: [id])
+
+  @@map("room_responsibles")
+}
+
+model RoomExpense {
+  id          String          @id @default(cuid())
+  roomId      String
+  type        RoomExpenseType
+  amount      Decimal         @db.Decimal(12, 2)
+  description String?
+  date        DateTime        @default(now())
+  createdById String?
+  createdAt   DateTime        @default(now())
+
+  room      Room  @relation(fields: [roomId], references: [id])
+  createdBy User? @relation("ExpenseCreatedBy", fields: [createdById], references: [id])
+
+  @@map("room_expenses")
 }
 
 model Appointment {
@@ -182,18 +269,20 @@ model Appointment {
 model Payment {
   id            String          @id @default(cuid())
   patientId     String
-  appointmentId String?
-  admissionId   String?
-  amount        Decimal         @db.Decimal(12, 2)
-  method        PaymentMethod
-  category      PaymentCategory
-  status        PaymentStatus   @default(PAID)
-  description   String?
-  createdAt     DateTime        @default(now())
+  appointmentId  String?
+  admissionId    String?
+  receivedById   String?
+  amount         Decimal         @db.Decimal(12, 2)
+  method         PaymentMethod
+  category       PaymentCategory
+  status         PaymentStatus   @default(PAID)
+  description    String?
+  createdAt      DateTime        @default(now())
 
   patient     Patient      @relation(fields: [patientId], references: [id])
   appointment Appointment? @relation(fields: [appointmentId], references: [id])
   admission   Admission?   @relation(fields: [admissionId], references: [id])
+  receivedBy  User?        @relation("ReceivedPayments", fields: [receivedById], references: [id])
 
   @@map("payments")
 }
@@ -204,6 +293,8 @@ model LabTestType {
   price       Decimal  @db.Decimal(12, 2)
   description String?
   normalRange String?
+  unit        String?
+  category    String?
   isActive    Boolean  @default(true)
   createdAt   DateTime @default(now())
 
@@ -280,16 +371,20 @@ model Supplier {
 }
 
 model Room {
-  id         String   @id @default(cuid())
-  floor      Int
-  roomNumber String
-  type       String
-  capacity   Int      @default(1)
-  isActive   Boolean  @default(true)
-  createdAt  DateTime @default(now())
+  id           String   @id @default(cuid())
+  floor        Int
+  roomNumber   String
+  type         String
+  capacity     Int      @default(1)
+  isActive     Boolean  @default(true)
+  isAmbulatory Boolean  @default(false)
+  createdAt    DateTime @default(now())
 
   beds         Bed[]
   appointments Appointment[]
+  inventory    RoomInventoryItem[]
+  responsible  RoomResponsible?
+  expenses     RoomExpense[]
 
   @@unique([floor, roomNumber])
   @@map("rooms")
@@ -309,20 +404,23 @@ model Bed {
 }
 
 model Admission {
-  id            String    @id @default(cuid())
-  patientId     String
-  bedId         String
-  admissionDate DateTime  @default(now())
-  dischargeDate DateTime?
-  dailyRate     Decimal   @db.Decimal(12, 2)
-  notes         String?
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
+  id              String        @id @default(cuid())
+  patientId       String
+  bedId           String
+  admissionType   AdmissionType @default(INPATIENT)
+  admissionDate   DateTime      @default(now())
+  dischargeDate   DateTime?
+  dailyRate       Decimal       @db.Decimal(12, 2)
+  prescriptionId  String?
+  notes           String?
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
 
   patient              Patient               @relation(fields: [patientId], references: [id])
   bed                  Bed                   @relation(fields: [bedId], references: [id])
   payments             Payment[]
   medicineTransactions MedicineTransaction[]
+  nurseNotes           NurseNote[]
 
   @@map("admissions")
 }
@@ -355,6 +453,23 @@ model Prescription {
   medicalRecord MedicalRecord @relation(fields: [medicalRecordId], references: [id])
 
   @@map("prescriptions")
+}
+
+model NurseNote {
+  id          String    @id @default(cuid())
+  patientId   String
+  nurseId     String
+  admissionId String?
+  procedure   String
+  notes       String?
+  medicines   Json?     // [{name, quantity, unit}]
+  createdAt   DateTime  @default(now())
+
+  patient   Patient    @relation(fields: [patientId], references: [id])
+  nurse     User       @relation("NurseNoteUser", fields: [nurseId], references: [id])
+  admission Admission? @relation(fields: [admissionId], references: [id])
+
+  @@map("nurse_notes")
 }
 
 model Schedule {
@@ -427,6 +542,51 @@ model Notification {
   @@map("notifications")
 }
 
+model AssignedService {
+  id           String   @id @default(cuid())
+  patientId    String
+  categoryName String   // snapshot (e.g. "Massaj")
+  itemName     String   // snapshot (e.g. "Umumiy massaj")
+  price        Decimal  @db.Decimal(12, 2)
+  itemId       String?  // optional link to ServiceItem
+  isPaid       Boolean  @default(false)
+  paidAt       DateTime?
+  paymentId    String?  @unique
+  assignedById String
+  assignedAt   DateTime @default(now())
+
+  patient    Patient @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  assignedBy User    @relation("AssignedServices", fields: [assignedById], references: [id])
+
+  @@map("assigned_services")
+}
+
+model ServiceCategory {
+  id        String        @id @default(cuid())
+  name      String        @unique
+  isActive  Boolean       @default(true)
+  createdAt DateTime      @default(now())
+
+  items ServiceItem[]
+
+  @@map("service_categories")
+}
+
+model ServiceItem {
+  id         String          @id @default(cuid())
+  categoryId String
+  name       String
+  price      Decimal         @db.Decimal(12, 2)
+  duration   Int?            // daqiqada (ixtiyoriy)
+  isActive   Boolean         @default(true)
+  createdAt  DateTime        @default(now())
+  updatedAt  DateTime        @updatedAt
+
+  category ServiceCategory @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+
+  @@map("service_items")
+}
+
 model RolePermission {
   id        String   @id @default(cuid())
   role      Role
@@ -436,4 +596,17 @@ model RolePermission {
 
   @@unique([role, page])
   @@map("role_permissions")
+}
+
+model UserPermission {
+  id        String   @id @default(cuid())
+  userId    String
+  page      String   // e.g. "/patients", "/patients:create"
+  canAccess Boolean  @default(true)
+  updatedAt DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, page])
+  @@map("user_permissions")
 }

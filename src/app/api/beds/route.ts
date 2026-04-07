@@ -13,9 +13,12 @@ export async function GET(req: NextRequest) {
     const roomId = searchParams.get('roomId');
     const statusParam = searchParams.get('status');
 
+    const ambulatoryParam = searchParams.get('ambulatory');
+
     const where: {
       roomId?: string;
       status?: BedStatus;
+      room?: { isAmbulatory?: boolean };
     } = {};
 
     if (roomId) where.roomId = roomId;
@@ -30,6 +33,12 @@ export async function GET(req: NextRequest) {
       where.status = statusParam as BedStatus;
     }
 
+    if (ambulatoryParam === 'true') {
+      where.room = { isAmbulatory: true };
+    } else if (ambulatoryParam === 'false') {
+      where.room = { isAmbulatory: false };
+    }
+
     const beds = await prisma.bed.findMany({
       where,
       include: {
@@ -39,6 +48,7 @@ export async function GET(req: NextRequest) {
             roomNumber: true,
             floor: true,
             type: true,
+            isAmbulatory: true,
           },
         },
       },

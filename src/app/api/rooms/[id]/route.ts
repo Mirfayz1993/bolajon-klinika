@@ -54,9 +54,10 @@ export async function PUT(
       type?: string;
       capacity?: number;
       isActive?: boolean;
+      isAmbulatory?: boolean;
     };
 
-    const { floor, roomNumber, type, capacity, isActive } = body;
+    const { floor, roomNumber, type, capacity, isActive, isAmbulatory } = body;
 
     const existing = await prisma.room.findUnique({ where: { id } });
     if (!existing) {
@@ -93,6 +94,7 @@ export async function PUT(
         type: type ?? undefined,
         capacity: capacity ?? undefined,
         isActive: isActive ?? undefined,
+        isAmbulatory: isAmbulatory ?? undefined,
       },
       include: {
         beds: true,

@@ -34,6 +34,8 @@ export async function GET(req: NextRequest) {
         description: true,
         price: true,
         normalRange: true,
+        unit: true,
+        category: true,
         isActive: true,
         createdAt: true,
       },
@@ -62,13 +64,22 @@ export async function POST(req: NextRequest) {
       description?: string;
       price?: number;
       normalRange?: string;
+      unit?: string;
+      category?: string;
     };
 
-    const { name, description, price, normalRange } = body;
+    const { name, description, price, normalRange, unit, category } = body;
 
     if (!name || price === undefined || price === null) {
       return NextResponse.json(
         { error: 'name va price majburiy' },
+        { status: 400 }
+      );
+    }
+
+    if (!category || !category.trim()) {
+      return NextResponse.json(
+        { error: 'Guruh nomi majburiy' },
         { status: 400 }
       );
     }
@@ -94,6 +105,8 @@ export async function POST(req: NextRequest) {
         description: description ?? undefined,
         price,
         normalRange: normalRange ?? undefined,
+        unit: unit ?? undefined,
+        category: category.trim(),
       },
     });
 

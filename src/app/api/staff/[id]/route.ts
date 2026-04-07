@@ -4,6 +4,7 @@ import { authOptions } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 import { Role } from '@prisma/client';
 import bcrypt from 'bcryptjs';
+import { encryptPassword, decryptPassword } from '@/lib/encrypt';
 
 export async function GET(
   req: NextRequest,
@@ -25,6 +26,7 @@ export async function GET(
         role: true,
         isActive: true,
         specializationId: true,
+        encryptedPassword: true,
         specialization: { select: { id: true, name: true } },
         createdAt: true,
         updatedAt: true,
@@ -35,7 +37,12 @@ export async function GET(
       return NextResponse.json({ error: 'Xodim topilmadi' }, { status: 404 });
     }
 
-    return NextResponse.json(user);
+    const isAdmin = session.user.role === 'ADMIN';
+    const { encryptedPassword, ...rest } = user;
+    return NextResponse.json({
+      ...rest,
+      plainPassword: isAdmin && encryptedPassword ? decryptPassword(encryptedPassword) : null,
+    });
   } catch (error) {
     console.error(error);
     return NextResponse.json({ error: 'Server error' }, { status: 500 });
@@ -79,6 +86,7 @@ export async function PUT(
       phone?: string;
       email?: string | null;
       password?: string;
+      encryptedPassword?: string;
       role?: Role;
       specializationId?: string | null;
       isActive?: boolean;
@@ -94,13 +102,14 @@ export async function PUT(
     }
 
     if (phone !== undefined) {
+      const phoneClean = phone.replace(/\s/g, '');
       const duplicate = await prisma.user.findFirst({
-        where: { phone, id: { not: id } },
+        where: { phone: phoneClean, id: { not: id } },
       });
       if (duplicate) {
         return NextResponse.json({ error: 'Bu telefon raqam allaqachon mavjud' }, { status: 400 });
       }
-      updateData.phone = phone;
+      updateData.phone = phoneClean;
     }
 
     if (email !== undefined) {
@@ -119,6 +128,7 @@ export async function PUT(
 
     if (password !== undefined && password !== '') {
       updateData.password = await bcrypt.hash(password, 10);
+      updateData.encryptedPassword = encryptPassword(password);
     }
 
     if (role !== undefined) {
@@ -147,13 +157,18 @@ export async function PUT(
         role: true,
         isActive: true,
         specializationId: true,
+        encryptedPassword: true,
         specialization: { select: { id: true, name: true } },
         createdAt: true,
         updatedAt: true,
       },
     });
 
-    return NextResponse.json(updated);
+    const { encryptedPassword: ep2, ...updatedRest } = updated;
+    return NextResponse.json({
+      ...updatedRest,
+      plainPassword: ep2 ? decryptPassword(ep2) : null,
+    });
   } catch (error) {
     console.error(error);
     return NextResponse.json({ error: 'Server error' }, { status: 500 });
@@ -178,12 +193,16 @@ export async function DELETE(
       return NextResponse.json({ error: 'O\'zingizni o\'chira olmaysiz' }, { status: 403 });
     }
 
-    const existing = await prisma.user.findUnique({ where: { id } });
+    const existing = await prisma.user.findUnique({ where: { id, deletedAt: null } });
     if (!existing) {
       return NextResponse.json({ error: 'Xodim topilmadi' }, { status: 404 });
     }
 
-    await prisma.user.delete({ where: { id } });
+    // Soft delete: foydalanuvchi yozuvlari saqlanib qoladi (audit, tibbiy yozuvlar)
+    await prisma.user.update({
+      where: { id },
+      data: { deletedAt: new Date(), isActive: false },
+    });
 
     return NextResponse.json({ success: true });
   } catch (error) {

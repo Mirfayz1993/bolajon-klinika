@@ -77,6 +77,9 @@ export async function GET(req: NextRequest) {
           admission: {
             select: { id: true },
           },
+          receivedBy: {
+            select: { id: true, name: true, role: true },
+          },
         },
       }),
       prisma.payment.count({ where }),
@@ -158,6 +161,7 @@ export async function POST(req: NextRequest) {
         appointmentId: appointmentId ?? undefined,
         admissionId: admissionId ?? undefined,
         description: description ?? undefined,
+        receivedById: session.user.id,
       },
       include: {
         patient: {
@@ -168,6 +172,9 @@ export async function POST(req: NextRequest) {
         },
         admission: {
           select: { id: true },
+        },
+        receivedBy: {
+          select: { id: true, name: true, role: true },
         },
       },
     });
