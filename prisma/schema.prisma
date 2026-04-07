@@ -415,6 +415,7 @@ model Admission {
   dailyRate       Decimal       @db.Decimal(12, 2)
   prescriptionId  String?
   notes           String?
+  status          String        @default("ACTIVE") // PENDING | ACTIVE | DISCHARGED
   createdAt       DateTime      @default(now())
   updatedAt       DateTime      @updatedAt
 
@@ -423,6 +424,7 @@ model Admission {
   payments             Payment[]
   medicineTransactions MedicineTransaction[]
   nurseNotes           NurseNote[]
+  assignedService      AssignedService?
 
   @@map("admissions")
 }
@@ -563,9 +565,13 @@ model AssignedService {
   doctorId       String?
   appointmentId  String?  @unique
   isUrgent       Boolean  @default(false)
+  // Ambulator uchun
+  admissionId    String?  @unique
+  bedId          String?
 
-  patient    Patient @relation(fields: [patientId], references: [id], onDelete: Cascade)
-  assignedBy User    @relation("AssignedServices", fields: [assignedById], references: [id])
+  patient    Patient    @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  assignedBy User       @relation("AssignedServices", fields: [assignedById], references: [id])
+  admission  Admission? @relation(fields: [admissionId], references: [id])
 
   @@map("assigned_services")
 }

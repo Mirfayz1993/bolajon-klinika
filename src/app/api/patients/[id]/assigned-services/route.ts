@@ -44,13 +44,60 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     itemId?: string;
     doctorId?: string;
     isUrgent?: boolean;
+    bedId?: string;
   };
 
   if (!body.categoryName?.trim() || !body.itemName?.trim() || body.price === undefined) {
     return NextResponse.json({ error: 'Maydonlar to\'ldirilmagan' }, { status: 400 });
   }
 
+  // Ambulator kategoriyasini aniqlash
+  const isAmbulatory = body.categoryName.toLowerCase().includes('ambulator');
+
   try {
+    // Ambulator xizmat va bedId berilgan bo'lsa
+    if (isAmbulatory && body.bedId) {
+      const bed = await db.bed.findUnique({
+        where: { id: body.bedId },
+        include: { room: { select: { isAmbulatory: true, floor: true, roomNumber: true } } },
+      });
+      if (!bed) return NextResponse.json({ error: "To'shak topilmadi" }, { status: 404 });
+
+      const result = await db.$transaction(async (tx: typeof db) => {
+        // Admission PENDING holatida yaratamiz (QR scan kelganda ACTIVE bo'ladi)
+        const admission = await tx.admission.create({
+          data: {
+            patientId,
+            bedId: body.bedId,
+            admissionType: 'AMBULATORY',
+            dailyRate: body.price,
+            status: 'PENDING',
+          },
+        });
+
+        // AssignedService yaratish
+        const service = await tx.assignedService.create({
+          data: {
+            patientId,
+            categoryName: body.categoryName.trim(),
+            itemName: body.itemName.trim(),
+            price: body.price,
+            itemId: body.itemId ?? null,
+            assignedById: session.user.id,
+            admissionId: admission.id,
+            bedId: body.bedId,
+          },
+          include: {
+            assignedBy: { select: { name: true, role: true } },
+          },
+        });
+
+        return { service, admission };
+      });
+
+      return NextResponse.json(result.service, { status: 201 });
+    }
+
     // Doktor tayinlangan bo'lsa — Appointment + Queue yaratamiz
     if (body.doctorId) {
       const result = await db.$transaction(async (tx: typeof db) => {

@@ -14,10 +14,13 @@ export async function GET(req: NextRequest) {
     const statusParam = searchParams.get('status');
     const isActiveParam = searchParams.get('isActive');
 
+    const isAmbulatoryParam = searchParams.get('isAmbulatory');
+
     const where: {
       floor?: number;
       type?: string;
       isActive?: boolean;
+      isAmbulatory?: boolean;
     } = {};
 
     if (floorParam) {
@@ -34,6 +37,10 @@ export async function GET(req: NextRequest) {
       where.isActive = statusParam !== 'inactive';
     } else if (isActiveParam !== null) {
       where.isActive = isActiveParam !== 'false';
+    }
+
+    if (isAmbulatoryParam !== null) {
+      where.isAmbulatory = isAmbulatoryParam !== 'false';
     }
 
     const rooms = await prisma.room.findMany({

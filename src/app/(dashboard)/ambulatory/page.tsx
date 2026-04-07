@@ -12,6 +12,8 @@ import {
   LogOut,
   BedDouble,
   Stethoscope,
+  ScanLine,
+  Clock,
 } from 'lucide-react';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -32,7 +34,7 @@ interface BedOption {
 
 interface AmbulatoryAdmission {
   id: string;
-  status: 'ACTIVE' | 'DISCHARGED';
+  status: 'PENDING' | 'ACTIVE' | 'DISCHARGED';
   admittedAt: string;
   dischargedAt: string | null;
   diagnosis: string | null;
@@ -99,6 +101,12 @@ export default function AmbulatoryPage() {
   const [dischargeError, setDischargeError] = useState<string | null>(null);
   const [dischargeResult, setDischargeResult] = useState<{ amount: number } | null>(null);
 
+  // QR Scan
+  const [qrInput, setQrInput] = useState('');
+  const [qrBusy, setQrBusy] = useState(false);
+  const [qrResult, setQrResult] = useState<{ success: boolean; message: string } | null>(null);
+  const qrInputRef = useRef<HTMLInputElement>(null);
+
   // ─── Fetch ────────────────────────────────────────────────────────────────
 
   const fetchAdmissions = useCallback(async () => {
@@ -125,7 +133,7 @@ export default function AmbulatoryPage() {
 
   useEffect(() => {
     if (!patientSearch.trim()) { setPatientOptions([]); return; }
-    const t = setTimeout(async () => {
+    const timer = setTimeout(async () => {
       setPatientLoading(true);
       try {
         const res = await fetch(`/api/patients?search=${encodeURIComponent(patientSearch)}&limit=10`);
@@ -136,7 +144,7 @@ export default function AmbulatoryPage() {
         setPatientLoading(false);
       }
     }, 350);
-    return () => clearTimeout(t);
+    return () => clearTimeout(timer);
   }, [patientSearch]);
 
   // Close dropdown on outside click
@@ -246,6 +254,41 @@ export default function AmbulatoryPage() {
     }
   };
 
+  // ─── QR Scan ──────────────────────────────────────────────────────────────
+
+  const handleQrScan = async (patientIdRaw: string) => {
+    const patientId = patientIdRaw.trim();
+    if (!patientId) return;
+    setQrBusy(true);
+    setQrResult(null);
+    try {
+      const res = await fetch('/api/ambulatory/qr-scan', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ patientId }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setQrResult({ success: true, message: data.message ?? 'Muvaffaqiyatli' });
+        fetchAdmissions();
+      } else {
+        setQrResult({ success: false, message: data.error ?? 'Xatolik' });
+      }
+    } catch {
+      setQrResult({ success: false, message: 'Server xatosi' });
+    } finally {
+      setQrBusy(false);
+      setQrInput('');
+      setTimeout(() => setQrResult(null), 6000);
+    }
+  };
+
+  const handleQrKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter') {
+      handleQrScan(qrInput);
+    }
+  };
+
   // ─── Render ───────────────────────────────────────────────────────────────
 
   return (
@@ -279,6 +322,47 @@ export default function AmbulatoryPage() {
           )}
         </div>
       </div>
+
+      {/* QR Skaner */}
+      {canManage && (
+        <div className="bg-white rounded-xl border border-slate-200 p-4 mb-6">
+          <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2 flex items-center gap-1.5">
+            <ScanLine className="w-3.5 h-3.5 text-teal-600" /> QR Skaner (Hamshira stoli)
+          </p>
+          <p className="text-xs text-slate-400 mb-3">
+            Bemorning QR kodini skanerlang — KUTMOQDA → qabul, MUOLAJADA → tugatish
+          </p>
+          <div className="flex gap-2 max-w-md">
+            <input
+              ref={qrInputRef}
+              type="text"
+              value={qrInput}
+              onChange={e => setQrInput(e.target.value)}
+              onKeyDown={handleQrKeyDown}
+              placeholder="Bemorning QR kodini skanerlang..."
+              disabled={qrBusy}
+              className="flex-1 border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 disabled:opacity-50"
+            />
+            <button
+              onClick={() => handleQrScan(qrInput)}
+              disabled={qrBusy || !qrInput.trim()}
+              className="px-4 py-2 bg-teal-600 text-white rounded-lg text-sm font-medium hover:bg-teal-700 disabled:opacity-50 transition-colors flex items-center gap-1.5"
+            >
+              {qrBusy ? <Loader2 className="w-4 h-4 animate-spin" /> : <ScanLine className="w-4 h-4" />}
+              Skanerlash
+            </button>
+          </div>
+          {qrResult && (
+            <div className={`mt-3 px-4 py-3 rounded-lg text-sm font-medium ${
+              qrResult.success
+                ? 'bg-green-50 text-green-800 border border-green-200'
+                : 'bg-red-50 text-red-700 border border-red-200'
+            }`}>
+              {qrResult.message}
+            </div>
+          )}
+        </div>
+      )}
 
       {error && (
         <div className="flex items-center gap-2 text-red-600 bg-red-50 border border-red-200 rounded-lg px-4 py-3 mb-4 text-sm">
@@ -317,7 +401,9 @@ export default function AmbulatoryPage() {
                 </tr>
               ) : (
                 admissions.map((adm) => (
-                  <tr key={adm.id} className="border-b border-slate-100 hover:bg-slate-50 transition-colors">
+                  <tr key={adm.id} className={`border-b border-slate-100 hover:bg-slate-50 transition-colors ${
+                    adm.status === 'PENDING' ? 'bg-amber-50/50' : ''
+                  }`}>
                     <td className="px-4 py-3">
                       <p className="font-medium text-slate-800">
                         {adm.patient.lastName} {adm.patient.firstName} {adm.patient.fatherName}
@@ -337,7 +423,11 @@ export default function AmbulatoryPage() {
                       {adm.diagnosis ?? '—'}
                     </td>
                     <td className="px-4 py-3">
-                      {adm.status === 'ACTIVE' ? (
+                      {adm.status === 'PENDING' ? (
+                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-800">
+                          <Clock className="w-3 h-3" /> Kutmoqda
+                        </span>
+                      ) : adm.status === 'ACTIVE' ? (
                         <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-teal-100 text-teal-800">
                           Muolajada
                         </span>
@@ -371,7 +461,7 @@ export default function AmbulatoryPage() {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
           <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 sticky top-0 bg-white z-10">
-              <h2 className="text-lg font-semibold text-slate-800">Ambulator joylashtirishbr</h2>
+              <h2 className="text-lg font-semibold text-slate-800">Ambulator joylashtirish</h2>
               <button onClick={() => setShowAdd(false)} className="p-1.5 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-md">
                 <X className="w-5 h-5" />
               </button>

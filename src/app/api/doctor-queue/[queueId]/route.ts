@@ -42,10 +42,10 @@ export async function PATCH(
       },
     });
 
-    // Appointment holatini IN_PROGRESS ga o'tkazish
+    // Appointment holatini IN_QUEUE da qoldirish — QR scan kelganda IN_PROGRESS bo'ladi
     await prisma.appointment.update({
       where: { id: queue.appointmentId },
-      data: { status: 'IN_PROGRESS' },
+      data: { status: 'IN_QUEUE' },
     });
 
     return NextResponse.json(updated);

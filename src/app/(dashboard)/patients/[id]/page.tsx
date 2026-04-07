@@ -272,6 +272,14 @@ export default function PatientDetailPage({ params }: PageProps) {
   const [labTestTypes, setLabTestTypes] = useState<ServiceCategoryItem[]>([]);
   const isLabCat = assignCat ? ['lab','laboratoriya','labaratoriya','tahlil'].some(k => assignCat.name.toLowerCase().includes(k)) : false;
   const isDoctorCat = assignCat ? ['doktor','ko\'rik','korik','checkup','qabul','shifokor'].some(k => assignCat.name.toLowerCase().includes(k)) : false;
+  const isAmbulatoryCat = assignCat ? assignCat.name.toLowerCase().includes('ambulator') : false;
+
+  // Ambulatory room + bed selection
+  const [ambRooms, setAmbRooms] = useState<{ id: string; roomNumber: string; floor: number }[]>([]);
+  const [ambRoomId, setAmbRoomId] = useState('');
+  const [ambBeds, setAmbBeds] = useState<{ id: string; bedNumber: string; status: string }[]>([]);
+  const [ambBedId, setAmbBedId] = useState('');
+  const [ambBedsLoading, setAmbBedsLoading] = useState(false);
 
   useEffect(() => {
     if (!isLabCat) return;
@@ -290,12 +298,34 @@ export default function PatientDetailPage({ params }: PageProps) {
       .catch(() => null);
   }, [isDoctorCat, doctorList.length]);
 
+  // Ambulatory rooms
+  useEffect(() => {
+    if (!isAmbulatoryCat) return;
+    if (ambRooms.length > 0) return;
+    fetch('/api/rooms?floor=3&isAmbulatory=true')
+      .then(r => r.json())
+      .then(d => setAmbRooms(Array.isArray(d) ? d : (d.data ?? [])))
+      .catch(() => null);
+  }, [isAmbulatoryCat, ambRooms.length]);
+
+  // Ambulatory beds
+  useEffect(() => {
+    if (!ambRoomId) { setAmbBeds([]); setAmbBedId(''); return; }
+    setAmbBedsLoading(true);
+    fetch(`/api/rooms/${ambRoomId}/beds?status=AVAILABLE`)
+      .then(r => r.json())
+      .then(d => { setAmbBeds(Array.isArray(d) ? d : []); })
+      .catch(() => setAmbBeds([]))
+      .finally(() => setAmbBedsLoading(false));
+  }, [ambRoomId]);
+
   const visibleItems: ServiceCategoryItem[] = isLabCat ? labTestTypes : (assignCat?.items ?? []);
   const assignItem = visibleItems.find(i => i.id === assignItemId);
 
   const saveAssign = async () => {
     if (!assignCat || !assignItem) return;
     if (isDoctorCat && !assignDoctorId) { alert('Iltimos, doktor tanlang'); return; }
+    if (isAmbulatoryCat && !ambBedId) { alert("Iltimos, ambulator to'shak tanlang"); return; }
     setAssignSaving(true);
     try {
       const res = await fetch(`/api/patients/${patientId}/assigned-services`, {
@@ -307,11 +337,13 @@ export default function PatientDetailPage({ params }: PageProps) {
           price: assignItem.price,
           itemId: assignItem.id,
           ...(isDoctorCat && assignDoctorId ? { doctorId: assignDoctorId, isUrgent: assignIsUrgent } : {}),
+          ...(isAmbulatoryCat && ambBedId ? { bedId: ambBedId } : {}),
         }),
       });
       if (!res.ok) { const d = await res.json(); alert(d.error); return; }
       setShowAssignModal(false);
       setAssignCatId(''); setAssignItemId(''); setAssignDoctorId(''); setAssignIsUrgent(false);
+      setAmbRoomId(''); setAmbBedId(''); setAmbBeds([]);
       fetchAssigned();
     } finally { setAssignSaving(false); }
   };
@@ -1111,7 +1143,7 @@ export default function PatientDetailPage({ params }: PageProps) {
           <div className="bg-white rounded-2xl shadow-xl w-full max-w-md p-6">
             <div className="flex items-center justify-between mb-4">
               <h3 className="font-semibold text-slate-800">Xizmat tayinlash</h3>
-              <button type="button" onClick={() => { setShowAssignModal(false); setAssignCatId(''); setAssignItemId(''); setAssignDoctorId(''); setAssignIsUrgent(false); }}>
+              <button type="button" onClick={() => { setShowAssignModal(false); setAssignCatId(''); setAssignItemId(''); setAssignDoctorId(''); setAssignIsUrgent(false); setAmbRoomId(''); setAmbBedId(''); setAmbBeds([]); }}>
                 <X className="w-5 h-5 text-slate-400" />
               </button>
             </div>
@@ -1178,6 +1210,58 @@ export default function PatientDetailPage({ params }: PageProps) {
               </label>
             )}
 
+            {/* Ambulator xona tanlash */}
+            {isAmbulatoryCat && assignCat && (
+              <>
+                <div className="mb-3">
+                  <label className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1 block">
+                    Xona (3-qavat ambulator) <span className="text-red-500">*</span>
+                  </label>
+                  <select
+                    value={ambRoomId}
+                    onChange={e => { setAmbRoomId(e.target.value); setAmbBedId(''); }}
+                    className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
+                  >
+                    <option value="">— Xona tanlang —</option>
+                    {ambRooms.map(r => (
+                      <option key={r.id} value={r.id}>
+                        {r.floor}-qavat, {r.roomNumber}-xona
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                {ambRoomId && (
+                  <div className="mb-3">
+                    <label className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1 block">
+                      Bo&apos;sh to&apos;shak <span className="text-red-500">*</span>
+                    </label>
+                    {ambBedsLoading ? (
+                      <div className="flex items-center gap-2 text-sm text-slate-400 px-3 py-2 border border-slate-200 rounded-xl">
+                        <Loader2 className="w-4 h-4 animate-spin" /> Yuklanmoqda...
+                      </div>
+                    ) : ambBeds.length === 0 ? (
+                      <div className="px-3 py-2 text-sm text-slate-400 border border-slate-200 rounded-xl">
+                        Bu xonada bo&apos;sh to&apos;shak yo&apos;q
+                      </div>
+                    ) : (
+                      <select
+                        value={ambBedId}
+                        onChange={e => setAmbBedId(e.target.value)}
+                        className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
+                      >
+                        <option value="">— To&apos;shak tanlang —</option>
+                        {ambBeds.map(b => (
+                          <option key={b.id} value={b.id}>
+                            To&apos;shak {b.bedNumber}
+                          </option>
+                        ))}
+                      </select>
+                    )}
+                  </div>
+                )}
+              </>
+            )}
+
             {assignItem && (
               <div className={`mb-4 px-4 py-3 rounded-xl flex justify-between text-sm ${assignIsUrgent ? 'bg-red-50' : 'bg-blue-50'}`}>
                 <span className="text-slate-700">{assignItem.name}</span>
@@ -1188,7 +1272,7 @@ export default function PatientDetailPage({ params }: PageProps) {
             <div className="flex gap-2 justify-end">
               <button
                 type="button"
-                onClick={() => { setShowAssignModal(false); setAssignCatId(''); setAssignItemId(''); setAssignDoctorId(''); setAssignIsUrgent(false); }}
+                onClick={() => { setShowAssignModal(false); setAssignCatId(''); setAssignItemId(''); setAssignDoctorId(''); setAssignIsUrgent(false); setAmbRoomId(''); setAmbBedId(''); setAmbBeds([]); }}
                 className="px-4 py-2 text-sm text-slate-600 border border-slate-200 rounded-xl hover:bg-slate-50"
               >
                 Bekor

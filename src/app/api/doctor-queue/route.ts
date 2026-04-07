@@ -64,5 +64,11 @@ export async function GET(req: NextRequest) {
     orderBy: { name: 'asc' },
   });
 
-  return NextResponse.json({ queues, done, doctors });
+  // Doktorning xonasi (RoomResponsible orqali)
+  const roomResponsible = await prisma.roomResponsible.findFirst({
+    where: { userId: doctorId },
+    select: { roomId: true, room: { select: { id: true, roomNumber: true, floor: true } } },
+  });
+
+  return NextResponse.json({ queues, done, doctors, roomId: roomResponsible?.roomId ?? null, room: roomResponsible?.room ?? null });
 }
