@@ -485,7 +485,7 @@ export default function PatientDetailPage({ params }: PageProps) {
       if (!res.ok) throw new Error();
       setShowRecordModal(false);
       setRecordForm({ diagnosis: '', treatment: '', notes: '' });
-      loadProfile();
+      fetchProfile();
     } catch { /* ignore */ } finally {
       setSavingRecord(false);
     }
