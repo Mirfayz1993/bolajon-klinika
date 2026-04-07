@@ -8,8 +8,9 @@ const WRITE_ROLES = ['ADMIN', 'HEAD_DOCTOR', 'HEAD_NURSE', 'NURSE', 'RECEPTIONIS
 
 export async function POST(
   req: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
+  const { id } = await params;
   const session = await getServerSession(authOptions);
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   if (!WRITE_ROLES.includes(session.user.role)) {
@@ -24,7 +25,7 @@ export async function POST(
     };
 
     const admission = await prisma.admission.findUnique({
-      where: { id: params.id },
+      where: { id: id },
       include: { bed: true, patient: true },
     });
 
@@ -45,7 +46,7 @@ export async function POST(
 
     // 1. Discharge admission
     const updateAdmission = prisma.admission.update({
-      where: { id: params.id },
+      where: { id: id },
       data: {
         dischargeDate,
         notes: body.notes ? `${admission.notes ?? ''}\n${body.notes}`.trim() : admission.notes,

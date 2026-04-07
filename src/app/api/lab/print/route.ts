@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
+import { LabTestStatus } from '@prisma/client';
 
 export async function GET(req: NextRequest) {
   try {
@@ -17,12 +18,12 @@ export async function GET(req: NextRequest) {
 
     const where: {
       patientId: string;
-      status: string;
+      status: LabTestStatus;
       id?: { in: string[] };
       completedAt?: { gte: Date; lte: Date };
     } = {
       patientId,
-      status: 'COMPLETED',
+      status: LabTestStatus.COMPLETED,
     };
 
     if (testIdsParam) {
@@ -45,7 +46,7 @@ export async function GET(req: NextRequest) {
           select: { id: true, name: true, normalRange: true, unit: true, category: true },
         },
         patient: {
-          select: { id: true, firstName: true, lastName: true, birthDate: true, gender: true },
+          select: { id: true, firstName: true, lastName: true, birthDate: true },
         },
         labTech: {
           select: { id: true, name: true },
