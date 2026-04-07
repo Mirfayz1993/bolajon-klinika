@@ -187,6 +187,11 @@ export default function PatientDetailPage({ params }: PageProps) {
   const [qrLoading, setQrLoading] = useState(false);
   const [showQr, setShowQr] = useState(false);
 
+  // Medical record modal
+  const [showRecordModal, setShowRecordModal] = useState(false);
+  const [recordForm, setRecordForm] = useState({ diagnosis: '', treatment: '', notes: '' });
+  const [savingRecord, setSavingRecord] = useState(false);
+
   // Nurse note modal
   const [showNurseModal, setShowNurseModal] = useState(false);
   const [nurseForm, setNurseForm] = useState({
@@ -202,6 +207,7 @@ export default function PatientDetailPage({ params }: PageProps) {
   const isNurse = ['ADMIN', 'HEAD_NURSE', 'NURSE', 'HEAD_DOCTOR', 'DOCTOR'].includes(
     session?.user?.role ?? ''
   );
+  const isDoctor = ['ADMIN', 'HEAD_DOCTOR', 'DOCTOR'].includes(session?.user?.role ?? '');
 
   // Assigned services
   const [assignedServices, setAssignedServices] = useState<AssignedService[]>([]);
@@ -460,6 +466,30 @@ export default function PatientDetailPage({ params }: PageProps) {
 
   const removeMedicine = (idx: number) =>
     setNurseForm(f => ({ ...f, medicines: f.medicines.filter((_, i) => i !== idx) }));
+
+  const saveRecord = async () => {
+    if (!recordForm.diagnosis.trim() && !recordForm.treatment.trim() && !recordForm.notes.trim()) return;
+    setSavingRecord(true);
+    try {
+      const res = await fetch('/api/medical-records', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          patientId,
+          doctorId: session?.user?.id,
+          diagnosis: recordForm.diagnosis || undefined,
+          treatment: recordForm.treatment || undefined,
+          notes: recordForm.notes || undefined,
+        }),
+      });
+      if (!res.ok) throw new Error();
+      setShowRecordModal(false);
+      setRecordForm({ diagnosis: '', treatment: '', notes: '' });
+      loadProfile();
+    } catch { /* ignore */ } finally {
+      setSavingRecord(false);
+    }
+  };
 
   const saveNurseNote = async () => {
     if (!nurseForm.procedure.trim()) return;
@@ -1294,6 +1324,14 @@ export default function PatientDetailPage({ params }: PageProps) {
       {/* ── TAB: TASHXISLAR ──────────────────────────────────────────────── */}
       {activeTab === 'records' && (
         <div className="space-y-4">
+          {isDoctor && (
+            <div className="flex justify-end">
+              <button onClick={() => setShowRecordModal(true)}
+                className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm rounded-lg">
+                <Plus className="w-4 h-4" /> Tashxis qo&apos;shish
+              </button>
+            </div>
+          )}
           {medicalRecords.length === 0 ? <Empty text="Tashxis mavjud emas" /> : medicalRecords.map(r => (
             <div key={r.id} className="bg-white rounded-xl border border-slate-200 overflow-hidden">
               <div className="px-4 py-3 bg-slate-50 border-b border-slate-100 flex justify-between items-center">
@@ -1521,6 +1559,43 @@ export default function PatientDetailPage({ params }: PageProps) {
               className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg text-sm disabled:opacity-60">
               {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
               {t.common.save}
+            </button>
+          </div>
+        </Modal>
+      )}
+
+      {/* ── Medical Record Modal ──────────────────────────────────────────── */}
+      {showRecordModal && (
+        <Modal title="Tashxis qo'shish" onClose={() => setShowRecordModal(false)}>
+          <div className="space-y-4">
+            <div>
+              <label className="block text-xs font-medium text-slate-600 mb-1">Tashxis</label>
+              <textarea rows={2} value={recordForm.diagnosis} placeholder="Tashxis..."
+                onChange={e => setRecordForm(f => ({ ...f, diagnosis: e.target.value }))}
+                className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 resize-none" />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-slate-600 mb-1">Davolash</label>
+              <textarea rows={2} value={recordForm.treatment} placeholder="Davolash rejasi..."
+                onChange={e => setRecordForm(f => ({ ...f, treatment: e.target.value }))}
+                className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 resize-none" />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-slate-600 mb-1">Izoh</label>
+              <textarea rows={2} value={recordForm.notes} placeholder="Qo'shimcha izoh..."
+                onChange={e => setRecordForm(f => ({ ...f, notes: e.target.value }))}
+                className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 resize-none" />
+            </div>
+          </div>
+          <div className="flex justify-end gap-3 mt-6">
+            <button onClick={() => setShowRecordModal(false)}
+              className="px-4 py-2 border border-slate-200 text-slate-600 rounded-lg text-sm">
+              Bekor qilish
+            </button>
+            <button onClick={saveRecord} disabled={savingRecord || (!recordForm.diagnosis.trim() && !recordForm.treatment.trim() && !recordForm.notes.trim())}
+              className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg text-sm disabled:opacity-60">
+              {savingRecord && <Loader2 className="w-4 h-4 animate-spin" />}
+              Saqlash
             </button>
           </div>
         </Modal>
