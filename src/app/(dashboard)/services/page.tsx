@@ -94,6 +94,45 @@ function Dropdown({
   );
 }
 
+// ─── Confirm Modal ────────────────────────────────────────────────────────────
+
+function ConfirmModal({
+  message,
+  onConfirm,
+  onCancel,
+}: {
+  message: string;
+  onConfirm: () => void;
+  onCancel: () => void;
+}) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 backdrop-blur-sm">
+      <div className="bg-white rounded-2xl shadow-xl p-6 w-full max-w-sm mx-4 flex flex-col gap-5">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 bg-red-50 rounded-xl flex items-center justify-center flex-shrink-0">
+            <Trash2 size={20} className="text-red-500" />
+          </div>
+          <p className="text-slate-700 font-medium">{message}</p>
+        </div>
+        <div className="flex gap-3 justify-end">
+          <button
+            onClick={onCancel}
+            className="px-4 py-2 text-sm font-medium text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-xl transition-colors"
+          >
+            Bekor qilish
+          </button>
+          <button
+            onClick={onConfirm}
+            className="px-4 py-2 text-sm font-medium text-white bg-red-500 hover:bg-red-600 rounded-xl transition-colors"
+          >
+            O&apos;chirish
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── Main ─────────────────────────────────────────────────────────────────────
 
 export default function ServicesPage() {
@@ -101,6 +140,13 @@ export default function ServicesPage() {
   const isAdmin = session?.user?.role === 'ADMIN';
 
   const [tab, setTab] = useState<'calculator' | 'manage'>('calculator');
+
+  // ── Confirm dialog ───────────────────────────────────────────────────────────
+  const [confirmState, setConfirmState] = useState<{ message: string; onConfirm: () => void } | null>(null);
+
+  function showConfirm(message: string, onConfirm: () => void) {
+    setConfirmState({ message, onConfirm });
+  }
 
   // ── Data ────────────────────────────────────────────────────────────────────
   const [categories, setCategories] = useState<ServiceCategory[]>([]);
@@ -224,10 +270,12 @@ export default function ServicesPage() {
     } catch { /* ignore */ }
   }
 
-  async function deleteCategory(id: string) {
-    if (!confirm("Bo'limni o'chirasizmi?")) return;
-    await fetch(`/api/service-categories/${id}`, { method: 'DELETE' });
-    await loadCategories();
+  function deleteCategory(id: string) {
+    showConfirm("Bo'limni o'chirasizmi?", async () => {
+      setConfirmState(null);
+      await fetch(`/api/service-categories/${id}`, { method: 'DELETE' });
+      await loadCategories();
+    });
   }
 
   // ── Item CRUD ────────────────────────────────────────────────────────────
@@ -271,16 +319,27 @@ export default function ServicesPage() {
     await loadCategories();
   }
 
-  async function deleteItem(id: string) {
-    if (!confirm("Xizmatni o'chirasizmi?")) return;
-    await fetch(`/api/service-items/${id}`, { method: 'DELETE' });
-    await loadCategories();
+  function deleteItem(id: string) {
+    showConfirm("Xizmatni o'chirasizmi?", async () => {
+      setConfirmState(null);
+      await fetch(`/api/service-items/${id}`, { method: 'DELETE' });
+      await loadCategories();
+    });
   }
 
   // ── Render ───────────────────────────────────────────────────────────────
 
   return (
     <div className="p-6 flex flex-col gap-6 h-full">
+      {/* Confirm Modal */}
+      {confirmState && (
+        <ConfirmModal
+          message={confirmState.message}
+          onConfirm={confirmState.onConfirm}
+          onCancel={() => setConfirmState(null)}
+        />
+      )}
+
       {/* Header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
@@ -513,7 +572,7 @@ export default function ServicesPage() {
                   <div
                     key={cat.id}
                     onClick={() => setSelCatForItem(cat.id)}
-                    className={`flex items-center justify-between px-3 py-2.5 rounded-xl border cursor-pointer transition-all ${
+                    className={`group flex items-center justify-between px-3 py-2.5 rounded-xl border cursor-pointer transition-all ${
                       selCatForItem === cat.id
                         ? 'border-blue-400 bg-blue-50'
                         : 'border-transparent hover:border-slate-200 hover:bg-slate-50'
