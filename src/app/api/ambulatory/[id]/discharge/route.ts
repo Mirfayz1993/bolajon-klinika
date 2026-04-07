@@ -40,10 +40,6 @@ export async function POST(
     const paymentAmount = Number(body.paymentAmount ?? 0);
     const paymentMethod = (body.paymentMethod ?? 'CASH') as PaymentMethod;
 
-    const txOps: Parameters<typeof prisma.$transaction>[0] extends (arg: infer A) => unknown
-      ? never
-      : unknown[] = [];
-
     // 1. Discharge admission
     const updateAdmission = prisma.admission.update({
       where: { id: id },
@@ -77,7 +73,6 @@ export async function POST(
       );
     }
 
-    void txOps;
     const results = await prisma.$transaction(ops);
     const payment = paymentAmount > 0 ? results[2] : null;
 
