@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
+import { AdmissionType } from '@prisma/client';
 
 // GET /api/ambulatory/nurse
 // Hamshira uchun: PENDING va ACTIVE ambulator bemorlar ro'yxati
@@ -13,7 +14,7 @@ export async function GET(_req: NextRequest) {
   try {
     const admissions = await prisma.admission.findMany({
       where: {
-        admissionType: 'AMBULATORY',
+        admissionType: AdmissionType.AMBULATORY,
         status: { in: ['PENDING', 'ACTIVE'] },
       },
       include: {

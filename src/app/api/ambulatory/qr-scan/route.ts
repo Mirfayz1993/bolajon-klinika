@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
+import { AdmissionType } from '@prisma/client';
 
 // POST /api/ambulatory/qr-scan
 // Body: { patientId: string }
@@ -24,7 +25,7 @@ export async function POST(req: NextRequest) {
     const pendingAdmission = await prisma.admission.findFirst({
       where: {
         patientId,
-        admissionType: 'AMBULATORY',
+        admissionType: AdmissionType.AMBULATORY,
         status: 'PENDING',
       },
       include: {
@@ -64,7 +65,7 @@ export async function POST(req: NextRequest) {
     const activeAdmission = await prisma.admission.findFirst({
       where: {
         patientId,
-        admissionType: 'AMBULATORY',
+        admissionType: AdmissionType.AMBULATORY,
         status: 'ACTIVE',
       },
       include: {
