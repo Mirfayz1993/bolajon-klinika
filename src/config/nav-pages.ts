@@ -80,6 +80,7 @@ export const MANAGED_PAGES: NavPage[] = [
     ],
   },
   { path: '/schedule', label: 'Jadval' },
+  { path: '/attendance', label: 'Davomat' },
   { path: '/reports', label: 'Hisobotlar' },
   { path: '/settings', label: 'Sozlamalar' },
   { path: '/audit-logs', label: 'Audit log' },

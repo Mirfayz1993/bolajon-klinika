@@ -144,6 +144,7 @@ model User {
   nurseNotes        NurseNote[]         @relation("NurseNoteUser")
   assignedServices  AssignedService[]   @relation("AssignedServices")
   receivedPayments  Payment[]           @relation("ReceivedPayments")
+  attendances       Attendance[]
 
   @@map("users")
 }
@@ -385,6 +386,7 @@ model Room {
   inventory    RoomInventoryItem[]
   responsible  RoomResponsible?
   expenses     RoomExpense[]
+  attendances  Attendance[]
 
   @@unique([floor, roomNumber])
   @@map("rooms")
@@ -609,4 +611,20 @@ model UserPermission {
 
   @@unique([userId, page])
   @@map("user_permissions")
+}
+
+model Attendance {
+  id        String    @id @default(cuid())
+  userId    String
+  roomId    String?
+  checkIn   DateTime  @default(now())
+  checkOut  DateTime?
+  date      DateTime  @default(now()) // kun kaliti (soat 00:00)
+  note      String?
+  createdAt DateTime  @default(now())
+
+  user User  @relation(fields: [userId], references: [id])
+  room Room? @relation(fields: [roomId], references: [id])
+
+  @@map("attendances")
 }

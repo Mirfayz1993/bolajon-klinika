@@ -31,6 +31,7 @@ import {
   Stethoscope,
   ActivitySquare,
   Tag,
+  Clock,
 } from 'lucide-react';
 
 interface SidebarProps {
@@ -149,6 +150,12 @@ export default function Sidebar({ collapsed, onToggle, userName, userRole }: Sid
       href: '/schedule',
       icon: <CalendarRange size={20} />,
       labelKey: 'schedule',
+    },
+    {
+      key: 'attendance',
+      href: '/attendance',
+      icon: <Clock size={20} />,
+      labelKey: 'attendance',
     },
     {
       key: 'reports',

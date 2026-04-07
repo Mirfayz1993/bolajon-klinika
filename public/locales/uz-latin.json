@@ -61,7 +61,8 @@
     "finance": "Moliya",
     "permissions": "Ruxsatlar",
     "ambulatory": "Ambulator",
-    "services": "Xizmatlar"
+    "services": "Xizmatlar",
+    "attendance": "Davomat"
   },
   "dashboard": {
     "title": "Bosh sahifa",
