@@ -2,10 +2,11 @@
 
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { useSession } from 'next-auth/react';
+import { useRouter } from 'next/navigation';
 import {
-  PhoneCall, CheckCircle2, AlertTriangle, Clock, User,
+  PhoneCall, CheckCircle2, AlertTriangle, Clock,
   Loader2, ChevronDown, UserCheck, Star, SkipForward,
-  ScanLine, DoorOpen, DoorClosed,
+  ScanLine, DoorOpen, DoorClosed, UserCheck2,
 } from 'lucide-react';
 
 interface Patient { id: string; firstName: string; lastName: string; fatherName: string; phone: string; birthDate: string; }
@@ -41,6 +42,7 @@ function age(birthDate: string) {
 
 export default function DoctorQueuePage() {
   const { data: session } = useSession();
+  const router = useRouter();
   const [queues, setQueues] = useState<QueueItem[]>([]);
   const [done, setDone] = useState<DoneItem[]>([]);
   const [doctors, setDoctors] = useState<Doctor[]>([]);
@@ -111,14 +113,22 @@ export default function DoctorQueuePage() {
     return () => { if (roomPollRef.current) clearInterval(roomPollRef.current); };
   }, [roomId, pollRoomStatus]);
 
-  const action = async (queueId: string, act: 'call' | 'done' | 'urgent') => {
+  const action = async (queueId: string, act: 'call' | 'done' | 'urgent' | 'accept') => {
     setBusy(queueId + act);
-    await fetch(`/api/doctor-queue/${queueId}`, {
+    const res = await fetch(`/api/doctor-queue/${queueId}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ action: act }),
     });
     setBusy(null);
+    if (act === 'accept' && res.ok) {
+      const data = await res.json();
+      const patientId = data.patientId ?? data.appointment?.patient?.id;
+      pollRoomStatus();
+      load();
+      if (patientId) router.push(`/patients/${patientId}?tab=records`);
+      return;
+    }
     load();
     if (act === 'done') pollRoomStatus();
   };
@@ -309,14 +319,24 @@ export default function DoctorQueuePage() {
                     <p className="text-blue-300 text-xs mt-1">Chaqirildi: {fmtTime(called.calledAt)}</p>
                   )}
                 </div>
-                <button
-                  onClick={() => action(called.id, 'done')}
-                  disabled={busy === called.id + 'done'}
-                  className="flex items-center gap-2 px-5 py-2.5 bg-white text-blue-700 font-semibold text-sm rounded-xl hover:bg-blue-50 transition-colors disabled:opacity-50"
-                >
-                  {busy === called.id + 'done' ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle2 className="w-4 h-4" />}
-                  Tugatish
-                </button>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <button
+                    onClick={() => action(called.id, 'accept')}
+                    disabled={!!busy}
+                    className="flex items-center gap-2 px-5 py-2.5 bg-green-500 text-white font-semibold text-sm rounded-xl hover:bg-green-400 transition-colors disabled:opacity-50"
+                  >
+                    {busy === called.id + 'accept' ? <Loader2 className="w-4 h-4 animate-spin" /> : <UserCheck2 className="w-4 h-4" />}
+                    Qabul qilish
+                  </button>
+                  <button
+                    onClick={() => action(called.id, 'done')}
+                    disabled={!!busy}
+                    className="flex items-center gap-2 px-5 py-2.5 bg-white text-blue-700 font-semibold text-sm rounded-xl hover:bg-blue-50 transition-colors disabled:opacity-50"
+                  >
+                    {busy === called.id + 'done' ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle2 className="w-4 h-4" />}
+                    Tugatish
+                  </button>
+                </div>
               </div>
             </div>
           )}

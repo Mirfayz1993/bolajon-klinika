@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { useSession } from 'next-auth/react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { useLanguage } from '@/hooks/useLanguage';
 import {
   ArrowLeft, Pencil, Trash2, Check, X, Loader2, AlertCircle,
@@ -169,9 +169,13 @@ export default function PatientDetailPage({ params }: PageProps) {
   const { t } = useLanguage();
   const { data: session } = useSession();
   const router = useRouter();
+  const searchParams = useSearchParams();
 
   const [patientId, setPatientId] = useState('');
-  const [activeTab, setActiveTab] = useState<Tab>('info');
+  const [activeTab, setActiveTab] = useState<Tab>(() => {
+    const tab = typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('tab') : null;
+    return (tab as Tab) ?? 'info';
+  });
   const [profile, setProfile] = useState<ProfileData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -234,6 +238,11 @@ export default function PatientDetailPage({ params }: PageProps) {
   useEffect(() => {
     params.then(({ id }) => setPatientId(id));
   }, [params]);
+
+  useEffect(() => {
+    const tab = searchParams.get('tab') as Tab | null;
+    if (tab) setActiveTab(tab);
+  }, [searchParams]);
 
   const fetchProfile = useCallback(async () => {
     if (!patientId) return;

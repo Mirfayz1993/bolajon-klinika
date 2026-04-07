@@ -12,7 +12,7 @@ export async function PATCH(
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
   const { queueId } = await params;
-  const body = await req.json() as { action: 'call' | 'done' | 'urgent' };
+  const body = await req.json() as { action: 'call' | 'done' | 'urgent' | 'accept' };
 
   const queue = await prisma.queue.findUnique({
     where: { id: queueId },
@@ -61,6 +61,42 @@ export async function PATCH(
       data: { status: 'COMPLETED' },
     });
     return NextResponse.json(updated);
+  }
+
+  // Qabul qilish: QR siz ham qabul — appointment IN_PROGRESS, xona BAND
+  if (body.action === 'accept') {
+    await prisma.appointment.update({
+      where: { id: queue.appointmentId },
+      data: { status: 'IN_PROGRESS' },
+    });
+
+    // Doktorning xonasini topib OCCUPIED qilish
+    const responsible = await prisma.roomResponsible.findFirst({
+      where: { userId: queue.appointment.doctorId },
+    });
+    if (responsible) {
+      // Xona IN_PROGRESS appointmentga bog'lanishi uchun appointment.roomId yangilash
+      await prisma.appointment.update({
+        where: { id: queue.appointmentId },
+        data: { roomId: responsible.roomId },
+      });
+    }
+
+    const updated = await prisma.queue.findUnique({
+      where: { id: queueId },
+      include: {
+        appointment: {
+          include: {
+            patient: { select: { id: true, firstName: true, lastName: true } },
+          },
+        },
+      },
+    });
+
+    return NextResponse.json({
+      ...updated,
+      patientId: queue.appointment.patientId,
+    });
   }
 
   if (body.action === 'urgent') {
