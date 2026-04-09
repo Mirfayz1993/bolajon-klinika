@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { signOut } from 'next-auth/react';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useLanguage } from '@/hooks/useLanguage';
 import Image from 'next/image';
 import {
@@ -54,6 +54,19 @@ interface NavItem {
 export default function Sidebar({ collapsed, onToggle, userName, userRole }: SidebarProps) {
   const pathname = usePathname();
   const { t } = useLanguage();
+  const [allowedPages, setAllowedPages] = useState<string[] | null>(null);
+
+  useEffect(() => {
+    fetch('/api/permissions/my')
+      .then((r) => r.json())
+      .then((d) => setAllowedPages(d.allowedPages ?? null))
+      .catch(() => setAllowedPages(null));
+  }, []);
+
+  const canAccess = (href: string) => {
+    if (!allowedPages) return true; // yuklanayotganda yashirmaymiz
+    return allowedPages.includes(href);
+  };
 
   const getRoleLabel = (role: string | null | undefined): string => {
     const roles = t.roles as Record<string, string>;
@@ -221,8 +234,11 @@ export default function Sidebar({ collapsed, onToggle, userName, userRole }: Sid
   const renderNavItem = (item: NavItem) => {
     // Group with children (accordion)
     if (item.children) {
+      const visibleChildren = item.children.filter((c) => !c.href || canAccess(c.href));
+      if (visibleChildren.length === 0) return null;
+
       const expanded = expandedGroups[item.key];
-      const hasActiveChild = item.children.some((c) => c.href && isActive(c.href));
+      const hasActiveChild = visibleChildren.some((c) => c.href && isActive(c.href));
 
       return (
         <div key={item.key}>
@@ -243,7 +259,7 @@ export default function Sidebar({ collapsed, onToggle, userName, userRole }: Sid
 
           {!collapsed && expanded && (
             <div className="ml-4 mt-0.5 space-y-0.5 border-l border-slate-200 pl-3">
-              {item.children.map((child) => renderNavItem(child))}
+              {visibleChildren.map((child) => renderNavItem(child))}
             </div>
           )}
         </div>
@@ -252,6 +268,7 @@ export default function Sidebar({ collapsed, onToggle, userName, userRole }: Sid
 
     // Regular link
     if (!item.href) return null;
+    if (!canAccess(item.href)) return null;
     const active = isActive(item.href);
 
     return (
