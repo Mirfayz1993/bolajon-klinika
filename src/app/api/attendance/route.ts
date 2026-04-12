@@ -3,7 +3,7 @@ import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 
-const ALLOWED = ['ADMIN', 'RECEPTIONIST', 'HEAD_DOCTOR', 'HEAD_NURSE'];
+const ALLOWED = ['ADMIN', 'RECEPTIONIST', 'HEAD_DOCTOR', 'HEAD_NURSE', 'DOCTOR', 'NURSE', 'HEAD_LAB_TECH', 'LAB_TECH', 'SPEECH_THERAPIST', 'MASSAGE_THERAPIST', 'SANITARY_WORKER'];
 
 function dayStart(d: Date) {
   const s = new Date(d);

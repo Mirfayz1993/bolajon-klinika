@@ -2,14 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
-import { LabTestStatus, Prisma } from '@prisma/client';
-
-const ALLOWED_TRANSITIONS: Record<string, LabTestStatus[]> = {
-  PENDING: ['IN_PROGRESS'],
-  IN_PROGRESS: ['COMPLETED'],
-  COMPLETED: [],
-  CANCELLED: [],
-};
+import { Prisma } from '@prisma/client';
 
 export async function GET(
   _req: NextRequest,
@@ -67,10 +60,12 @@ export async function PUT(
   const session = await getServerSession(authOptions);
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
-  const allowedRoles = ['HEAD_LAB_TECH', 'LAB_TECH'];
+  const allowedRoles = ['ADMIN', 'HEAD_LAB_TECH', 'LAB_TECH'];
   if (!allowedRoles.includes(session.user.role)) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
+
+  const isHeadLabTech = session.user.role === 'HEAD_LAB_TECH' || session.user.role === 'ADMIN';
 
   try {
     const { id } = await params;
@@ -80,68 +75,49 @@ export async function PUT(
       return NextResponse.json({ error: 'Tahlil topilmadi' }, { status: 404 });
     }
 
+    // Only HEAD_LAB_TECH/ADMIN can edit already COMPLETED tests
+    if (existing.status === 'COMPLETED' && !isHeadLabTech) {
+      return NextResponse.json({ error: 'Faqat Bosh laborant natijani o\'zgartira oladi' }, { status: 403 });
+    }
+
     const body = await req.json() as {
-      status?: LabTestStatus;
-      results?: Record<string, unknown>;
+      result?: string;
     };
 
-    const { status, results } = body;
-
-    if (!status && results === undefined) {
-      return NextResponse.json(
-        { error: 'status yoki results bo\'lishi kerak' },
-        { status: 400 }
-      );
+    if (!body.result || !body.result.trim()) {
+      return NextResponse.json({ error: 'Natija majburiy' }, { status: 400 });
     }
 
-    const updateData: {
-      status?: LabTestStatus;
-      results?: Prisma.InputJsonValue;
-      completedAt?: Date;
-    } = {};
+    const newValue = body.result.trim();
 
-    if (status) {
-      const allowed = ALLOWED_TRANSITIONS[existing.status];
-      if (!allowed || !allowed.includes(status)) {
-        return NextResponse.json(
-          {
-            error: `Status o'tishi mumkin emas: ${existing.status} → ${status}. Ruxsat etilgan: ${allowed?.join(', ') || 'yo\'q'}`,
-          },
-          { status: 400 }
-        );
-      }
-
-      if (status === 'COMPLETED' && results === undefined) {
-        return NextResponse.json(
-          { error: 'COMPLETED statusida results majburiy' },
-          { status: 400 }
-        );
-      }
-
-      updateData.status = status;
-
-      if (status === 'COMPLETED') {
-        updateData.completedAt = new Date();
-      }
+    // Build change history in notes
+    type HistoryEntry = { date: string; from: string | null; to: string; by: string };
+    let history: HistoryEntry[] = [];
+    if (existing.notes) {
+      try { history = JSON.parse(existing.notes) as HistoryEntry[]; } catch { history = []; }
     }
+    const existingResults = existing.results as Record<string, unknown> | null;
+    const prevValue = existingResults?.value != null ? String(existingResults.value) : null;
 
-    if (results !== undefined) {
-      updateData.results = results as Prisma.InputJsonValue;
-    }
+    history.push({
+      date: new Date().toISOString(),
+      from: prevValue,
+      to: newValue,
+      by: session.user.name ?? session.user.id,
+    });
 
     const updated = await prisma.labTest.update({
       where: { id },
-      data: updateData,
+      data: {
+        status: 'COMPLETED',
+        completedAt: existing.completedAt ?? new Date(),
+        results: { value: newValue } as Prisma.InputJsonValue,
+        notes: JSON.stringify(history),
+      },
       include: {
-        patient: {
-          select: { id: true, firstName: true, lastName: true },
-        },
-        testType: {
-          select: { id: true, name: true, price: true },
-        },
-        labTech: {
-          select: { id: true, name: true },
-        },
+        patient: { select: { id: true, firstName: true, lastName: true } },
+        testType: { select: { id: true, name: true, price: true, normalRange: true, unit: true } },
+        labTech: { select: { id: true, name: true } },
       },
     });
 

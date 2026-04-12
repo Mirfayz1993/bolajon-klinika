@@ -28,13 +28,16 @@ export async function GET(
       where: { id },
       include: {
         patient: {
-          select: { firstName: true, lastName: true },
+          select: { firstName: true, lastName: true, fatherName: true, birthDate: true, phone: true },
         },
         appointment: {
           select: { id: true, type: true },
         },
         admission: {
           select: { id: true },
+        },
+        receivedBy: {
+          select: { id: true, name: true },
         },
       },
     });

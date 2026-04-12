@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useSession } from 'next-auth/react';
+import { useRouter } from 'next/navigation';
 import { useLanguage } from '@/hooks/useLanguage';
 import {
   Plus,
@@ -14,9 +15,12 @@ import {
   Stethoscope,
   ScanLine,
   Clock,
+  History,
+  ChevronRight,
+  Building2,
 } from 'lucide-react';
 
-// ─── Types ────────────────────────────────────────────────────────────────────
+// --- Types --------------------------------------------------------------------
 
 interface PatientOption {
   id: string;
@@ -42,7 +46,80 @@ interface AmbulatoryAdmission {
   bed: { id: string; bedNumber: string; room: { roomNumber: string; floor: number } };
 }
 
-// ─── Helpers ──────────────────────────────────────────────────────────────────
+interface AmbRoomBedPatient {
+  id: string;
+  firstName: string;
+  lastName: string;
+}
+
+interface AmbRoomBed {
+  id: string;
+  bedNumber: string;
+  status: 'AVAILABLE' | 'OCCUPIED' | 'MAINTENANCE';
+  admissions: { id: string; patient: AmbRoomBedPatient }[];
+}
+
+interface AmbRoomWithBeds {
+  id: string;
+  roomNumber: string;
+  floor: number;
+  type: string;
+  isAmbulatory: boolean;
+  beds: AmbRoomBed[];
+}
+
+// --- Ambulatory Bed Card ------------------------------------------------------
+
+function AmbBedCard({
+  bed,
+  onOccupiedClick,
+}: {
+  bed: AmbRoomBed;
+  onOccupiedClick: (patientId: string) => void;
+}) {
+  const { t } = useLanguage();
+  const patient = bed.admissions?.[0]?.patient;
+
+  if (bed.status === 'AVAILABLE') {
+    return (
+      <div className="flex flex-col items-center gap-0.5 p-2 bg-green-50 border border-green-200 rounded-lg min-w-[68px]">
+        <BedDouble className="w-4 h-4 text-green-600" />
+        <span className="text-xs font-semibold text-green-700">{bed.bedNumber}</span>
+        <span className="text-[10px] font-medium text-green-600 bg-green-100 px-1.5 py-0.5 rounded-full whitespace-nowrap">
+          {t.rooms.available}
+        </span>
+      </div>
+    );
+  }
+
+  if (bed.status === 'OCCUPIED' && patient) {
+    return (
+      <button
+        onClick={() => onOccupiedClick(patient.id)}
+        className="flex flex-col items-center gap-0.5 p-2 bg-red-50 border border-red-200 rounded-lg min-w-[68px] hover:bg-red-100 hover:border-red-300 transition-colors cursor-pointer"
+        title={`${patient.firstName} ${patient.lastName}`}
+      >
+        <BedDouble className="w-4 h-4 text-red-600" />
+        <span className="text-xs font-semibold text-red-700">{bed.bedNumber}</span>
+        <span className="text-[10px] font-medium text-red-600 leading-tight max-w-[64px] truncate text-center">
+          {patient.firstName} {patient.lastName}
+        </span>
+      </button>
+    );
+  }
+
+  return (
+    <div className="flex flex-col items-center gap-0.5 p-2 bg-yellow-50 border border-yellow-200 rounded-lg min-w-[68px]">
+      <BedDouble className="w-4 h-4 text-yellow-600" />
+      <span className="text-xs font-semibold text-yellow-700">{bed.bedNumber}</span>
+      <span className="text-[10px] font-medium text-yellow-600 bg-yellow-100 px-1.5 py-0.5 rounded-full whitespace-nowrap">
+        {bed.status === 'MAINTENANCE' ? t.rooms.maintenance : t.rooms.occupied}
+      </span>
+    </div>
+  );
+}
+
+// --- Helpers ------------------------------------------------------------------
 
 function formatDate(iso: string): string {
   return new Date(iso).toLocaleString('uz-UZ', {
@@ -51,26 +128,34 @@ function formatDate(iso: string): string {
   });
 }
 
-function formatCurrency(amount: number): string {
-  return new Intl.NumberFormat('uz-UZ').format(amount) + " so'm";
+function formatDateShort(iso: string): string {
+  return new Date(iso).toLocaleString('uz-UZ', {
+    day: '2-digit', month: '2-digit',
+    hour: '2-digit', minute: '2-digit',
+  });
 }
 
-// ─── Roles ────────────────────────────────────────────────────────────────────
+// --- Roles --------------------------------------------------------------------
 
 const CAN_MANAGE = ['ADMIN', 'HEAD_DOCTOR', 'HEAD_NURSE', 'NURSE', 'RECEPTIONIST'];
 
-// ─── Main Component ───────────────────────────────────────────────────────────
+// --- Main Component -----------------------------------------------------------
 
 export default function AmbulatoryPage() {
   const { t } = useLanguage();
   const { data: session } = useSession();
+  const router = useRouter();
   const canManage = CAN_MANAGE.includes(session?.user?.role ?? '');
 
-  // List
-  const [admissions, setAdmissions] = useState<AmbulatoryAdmission[]>([]);
+  // All admissions (active + discharged)
+  const [allAdmissions, setAllAdmissions] = useState<AmbulatoryAdmission[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [statusFilter, setStatusFilter] = useState<'ACTIVE' | 'ALL'>('ACTIVE');
+  const [showAll, setShowAll] = useState(false);
+
+  // Room map
+  const [ambRooms, setAmbRooms] = useState<AmbRoomWithBeds[]>([]);
+  const [ambRoomsLoading, setAmbRoomsLoading] = useState(false);
 
   // Add modal
   const [showAdd, setShowAdd] = useState(false);
@@ -94,12 +179,10 @@ export default function AmbulatoryPage() {
 
   // Discharge modal
   const [dischargeAdm, setDischargeAdm] = useState<AmbulatoryAdmission | null>(null);
-  const [payAmount, setPayAmount] = useState('');
-  const [payMethod, setPayMethod] = useState('CASH');
   const [dischargeNotes, setDischargeNotes] = useState('');
   const [dischargeSaving, setDischargeSaving] = useState(false);
   const [dischargeError, setDischargeError] = useState<string | null>(null);
-  const [dischargeResult, setDischargeResult] = useState<{ amount: number } | null>(null);
+  const [dischargeDone, setDischargeDone] = useState(false);
 
   // QR Scan
   const [qrInput, setQrInput] = useState('');
@@ -107,29 +190,48 @@ export default function AmbulatoryPage() {
   const [qrResult, setQrResult] = useState<{ success: boolean; message: string } | null>(null);
   const qrInputRef = useRef<HTMLInputElement>(null);
 
-  // ─── Fetch ────────────────────────────────────────────────────────────────
+  // --- Fetch ----------------------------------------------------------------
 
   const fetchAdmissions = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      const url = statusFilter === 'ACTIVE'
-        ? '/api/ambulatory?status=ACTIVE'
-        : '/api/ambulatory';
-      const res = await fetch(url);
+      const res = await fetch('/api/ambulatory');
       if (!res.ok) throw new Error(t.common.error);
       const json = await res.json();
-      setAdmissions(json.data ?? []);
+      setAllAdmissions(json.data ?? []);
     } catch {
       setError(t.common.error);
     } finally {
       setLoading(false);
     }
-  }, [statusFilter, t.common.error]);
+  }, [t.common.error]);
 
-  useEffect(() => { fetchAdmissions(); }, [fetchAdmissions]);
+  const fetchAmbRooms = useCallback(async () => {
+    setAmbRoomsLoading(true);
+    try {
+      const res = await fetch('/api/rooms?isAmbulatory=true&include=beds');
+      if (!res.ok) return;
+      const json = await res.json();
+      setAmbRooms(Array.isArray(json) ? json : (json.data ?? []));
+    } catch { /* ignore */ } finally {
+      setAmbRoomsLoading(false);
+    }
+  }, []);
 
-  // ─── Patient search ───────────────────────────────────────────────────────
+  useEffect(() => {
+    fetchAdmissions();
+    fetchAmbRooms();
+  }, [fetchAdmissions, fetchAmbRooms]);
+
+  // Split admissions
+  const activeAdmissions = allAdmissions.filter(a => a.status !== 'DISCHARGED');
+  const dischargedAdmissions = allAdmissions.filter(a => a.status === 'DISCHARGED');
+
+  // Displayed active list (filter by showAll)
+  const displayedActive = showAll ? activeAdmissions : activeAdmissions.filter(a => a.status === 'ACTIVE');
+
+  // --- Patient search -------------------------------------------------------
 
   useEffect(() => {
     if (!patientSearch.trim()) { setPatientOptions([]); return; }
@@ -158,7 +260,7 @@ export default function AmbulatoryPage() {
     return () => document.removeEventListener('mousedown', handler);
   }, []);
 
-  // ─── Load beds when modal opens ───────────────────────────────────────────
+  // --- Load beds when modal opens -------------------------------------------
 
   useEffect(() => {
     if (!showAdd) return;
@@ -170,7 +272,7 @@ export default function AmbulatoryPage() {
       .finally(() => setBedLoading(false));
   }, [showAdd]);
 
-  // ─── Open/reset add modal ─────────────────────────────────────────────────
+  // --- Open/reset add modal -------------------------------------------------
 
   const openAdd = () => {
     setSelectedPatient(null);
@@ -182,7 +284,7 @@ export default function AmbulatoryPage() {
     setShowAdd(true);
   };
 
-  // ─── Submit new ambulatory ────────────────────────────────────────────────
+  // --- Submit new ambulatory ------------------------------------------------
 
   const handleAddSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -206,6 +308,7 @@ export default function AmbulatoryPage() {
       }
       setShowAdd(false);
       fetchAdmissions();
+      fetchAmbRooms();
     } catch (err) {
       setAddError(err instanceof Error ? err.message : t.common.error);
     } finally {
@@ -213,15 +316,14 @@ export default function AmbulatoryPage() {
     }
   };
 
-  // ─── Discharge ────────────────────────────────────────────────────────────
+  // --- Discharge ------------------------------------------------------------
 
-  const openDischarge = (adm: AmbulatoryAdmission) => {
+  const openDischarge = (adm: AmbulatoryAdmission, e: React.MouseEvent) => {
+    e.stopPropagation();
     setDischargeAdm(adm);
-    setPayAmount('');
-    setPayMethod('CASH');
     setDischargeNotes('');
     setDischargeError(null);
-    setDischargeResult(null);
+    setDischargeDone(false);
   };
 
   const handleDischarge = async (e: React.FormEvent) => {
@@ -234,8 +336,6 @@ export default function AmbulatoryPage() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          paymentAmount: Number(payAmount) || 0,
-          paymentMethod: payMethod,
           notes: dischargeNotes.trim() || undefined,
         }),
       });
@@ -243,10 +343,9 @@ export default function AmbulatoryPage() {
         const err = await res.json();
         throw new Error(err.error ?? t.common.error);
       }
-      const json = await res.json();
-      if (json.payment) setDischargeResult({ amount: json.payment.amount });
-      else setDischargeResult({ amount: 0 });
+      setDischargeDone(true);
       fetchAdmissions();
+      fetchAmbRooms();
     } catch (err) {
       setDischargeError(err instanceof Error ? err.message : t.common.error);
     } finally {
@@ -254,7 +353,7 @@ export default function AmbulatoryPage() {
     }
   };
 
-  // ─── QR Scan ──────────────────────────────────────────────────────────────
+  // --- QR Scan --------------------------------------------------------------
 
   const handleQrScan = async (patientIdRaw: string) => {
     const patientId = patientIdRaw.trim();
@@ -271,6 +370,7 @@ export default function AmbulatoryPage() {
       if (res.ok) {
         setQrResult({ success: true, message: data.message ?? 'Muvaffaqiyatli' });
         fetchAdmissions();
+        fetchAmbRooms();
       } else {
         setQrResult({ success: false, message: data.error ?? 'Xatolik' });
       }
@@ -289,7 +389,13 @@ export default function AmbulatoryPage() {
     }
   };
 
-  // ─── Render ───────────────────────────────────────────────────────────────
+  // --- Navigate to patient nurse-notes --------------------------------------
+
+  const goToPatientNotes = (patientId: string) => {
+    router.push(`/patients/${patientId}?tab=nurse-notes&noteType=AMBULATORY`);
+  };
+
+  // --- Render ---------------------------------------------------------------
 
   return (
     <div className="p-6">
@@ -303,14 +409,15 @@ export default function AmbulatoryPage() {
           <p className="text-sm text-slate-500 mt-1">3-qavat — qisqa muddatli muolaja (ukol, infuziya)</p>
         </div>
         <div className="flex items-center gap-3">
-          <select
-            value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value as 'ACTIVE' | 'ALL')}
-            className="border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
-          >
-            <option value="ACTIVE">Faol</option>
-            <option value="ALL">Barchasi</option>
-          </select>
+          <label className="flex items-center gap-2 text-sm text-slate-600 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={showAll}
+              onChange={e => setShowAll(e.target.checked)}
+              className="rounded border-slate-300 text-teal-600 focus:ring-teal-500"
+            />
+            Kutayotganlar ham
+          </label>
           {canManage && (
             <button
               onClick={openAdd}
@@ -321,6 +428,71 @@ export default function AmbulatoryPage() {
             </button>
           )}
         </div>
+      </div>
+
+      {/* Room Map */}
+      <div className="mb-6">
+        <div className="flex items-center gap-2 mb-3">
+          <Building2 className="w-4 h-4 text-teal-600" />
+          <h2 className="text-sm font-semibold text-slate-700">3-qavat xona xaritasi</h2>
+          {ambRoomsLoading && <Loader2 className="w-3.5 h-3.5 animate-spin text-slate-400" />}
+        </div>
+        {ambRooms.length === 0 && !ambRoomsLoading ? (
+          <div className="text-center py-6 text-slate-400 text-sm bg-white rounded-xl border border-slate-200">
+            {t.rooms.noRooms}
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
+            {ambRooms.map(room => {
+              const avail = room.beds.filter(b => b.status === 'AVAILABLE').length;
+              const occ = room.beds.filter(b => b.status === 'OCCUPIED').length;
+              return (
+                <div key={room.id} className="bg-white rounded-xl border border-slate-200 p-3">
+                  <div className="flex items-center justify-between mb-2">
+                    <div className="flex items-center gap-1.5">
+                      <Building2 className="w-3.5 h-3.5 text-teal-500" />
+                      <span className="text-sm font-semibold text-slate-800">
+                        {t.rooms.number} {room.roomNumber}
+                      </span>
+                    </div>
+                    <span className="text-[10px] font-medium bg-teal-100 text-teal-700 px-1.5 py-0.5 rounded-full">
+                      {room.type}
+                    </span>
+                  </div>
+                  {room.beds.length > 0 && (
+                    <div className="flex items-center gap-2 mb-2 text-xs text-slate-400">
+                      <span className="flex items-center gap-1">
+                        <span className="w-1.5 h-1.5 rounded-full bg-green-500 inline-block" />
+                        {avail}
+                      </span>
+                      <span className="flex items-center gap-1">
+                        <span className="w-1.5 h-1.5 rounded-full bg-red-500 inline-block" />
+                        {occ}
+                      </span>
+                    </div>
+                  )}
+                  {room.beds.length > 0 ? (
+                    <div className="flex flex-wrap gap-1.5">
+                      {room.beds.map(bed => (
+                        <AmbBedCard
+                          key={bed.id}
+                          bed={bed}
+                          onOccupiedClick={(patientId) =>
+                            router.push(`/patients/${patientId}?tab=nurse&noteType=AMBULATORY`)
+                          }
+                        />
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="text-xs text-slate-400 text-center py-2">
+                      {t.rooms.beds}: 0
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
       </div>
 
       {/* QR Skaner */}
@@ -371,8 +543,12 @@ export default function AmbulatoryPage() {
         </div>
       )}
 
-      {/* Table */}
-      <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+      {/* Active patients table */}
+      <div className="bg-white rounded-xl border border-slate-200 overflow-hidden mb-8">
+        <div className="px-4 py-3 bg-teal-50 border-b border-teal-100">
+          <h2 className="text-sm font-semibold text-teal-800">Faol bemorlar ({activeAdmissions.length})</h2>
+          <p className="text-xs text-teal-600 mt-0.5">Qatorni bosib bemorning hamshira qaydlariga o&apos;tishingiz mumkin</p>
+        </div>
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
@@ -392,7 +568,7 @@ export default function AmbulatoryPage() {
                     <Loader2 className="w-6 h-6 animate-spin mx-auto text-teal-500" />
                   </td>
                 </tr>
-              ) : admissions.length === 0 ? (
+              ) : displayedActive.length === 0 ? (
                 <tr>
                   <td colSpan={6} className="text-center py-12">
                     <BedDouble className="w-10 h-10 mx-auto mb-2 text-slate-300" />
@@ -400,15 +576,24 @@ export default function AmbulatoryPage() {
                   </td>
                 </tr>
               ) : (
-                admissions.map((adm) => (
-                  <tr key={adm.id} className={`border-b border-slate-100 hover:bg-slate-50 transition-colors ${
-                    adm.status === 'PENDING' ? 'bg-amber-50/50' : ''
-                  }`}>
+                displayedActive.map((adm) => (
+                  <tr
+                    key={adm.id}
+                    onClick={() => goToPatientNotes(adm.patient.id)}
+                    className={`border-b border-slate-100 hover:bg-teal-50 transition-colors cursor-pointer ${
+                      adm.status === 'PENDING' ? 'bg-amber-50/50' : ''
+                    }`}
+                  >
                     <td className="px-4 py-3">
-                      <p className="font-medium text-slate-800">
-                        {adm.patient.lastName} {adm.patient.firstName} {adm.patient.fatherName}
-                      </p>
-                      <p className="text-xs text-slate-400">{adm.patient.phone}</p>
+                      <div className="flex items-center gap-2">
+                        <div>
+                          <p className="font-medium text-slate-800">
+                            {adm.patient.lastName} {adm.patient.firstName} {adm.patient.fatherName}
+                          </p>
+                          <p className="text-xs text-slate-400">{adm.patient.phone}</p>
+                        </div>
+                        <ChevronRight className="w-3.5 h-3.5 text-slate-300 ml-auto" />
+                      </div>
                     </td>
                     <td className="px-4 py-3 text-slate-600">
                       <span className="font-medium">Xona {adm.bed.room.roomNumber}</span>
@@ -427,24 +612,20 @@ export default function AmbulatoryPage() {
                         <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-800">
                           <Clock className="w-3 h-3" /> Kutmoqda
                         </span>
-                      ) : adm.status === 'ACTIVE' ? (
+                      ) : (
                         <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-teal-100 text-teal-800">
                           Muolajada
-                        </span>
-                      ) : (
-                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-slate-100 text-slate-600">
-                          Chiqarilgan
                         </span>
                       )}
                     </td>
                     <td className="px-4 py-3 text-right">
                       {canManage && adm.status === 'ACTIVE' && (
                         <button
-                          onClick={() => openDischarge(adm)}
+                          onClick={(e) => openDischarge(adm, e)}
                           className="flex items-center gap-1.5 text-xs font-medium text-orange-600 hover:text-orange-700 hover:bg-orange-50 px-3 py-1.5 rounded-lg transition-colors ml-auto"
                         >
                           <LogOut className="w-3.5 h-3.5" />
-                          Chiqarish + To&apos;lov
+                          Chiqarish
                         </button>
                       )}
                     </td>
@@ -456,7 +637,63 @@ export default function AmbulatoryPage() {
         </div>
       </div>
 
-      {/* ── Add Modal ─────────────────────────────────────────────────────── */}
+      {/* Activity Log */}
+      <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+        <div className="px-4 py-3 bg-slate-50 border-b border-slate-200 flex items-center gap-2">
+          <History className="w-4 h-4 text-slate-500" />
+          <h2 className="text-sm font-semibold text-slate-700">Faoliyat tarixi</h2>
+          <span className="ml-auto text-xs text-slate-400">{dischargedAdmissions.length} ta yozuv</span>
+        </div>
+        {dischargedAdmissions.length === 0 ? (
+          <div className="text-center py-8 text-slate-400 text-sm">
+            Hali chiqarilgan bemorlar yo&apos;q
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="bg-slate-50 border-b border-slate-200">
+                  <th className="text-left px-4 py-2.5 font-semibold text-slate-600 text-xs">Bemor</th>
+                  <th className="text-left px-4 py-2.5 font-semibold text-slate-600 text-xs">Xizmat / Izoh</th>
+                  <th className="text-left px-4 py-2.5 font-semibold text-slate-600 text-xs">Keldi</th>
+                  <th className="text-left px-4 py-2.5 font-semibold text-slate-600 text-xs">Chiqdi</th>
+                  <th className="text-left px-4 py-2.5 font-semibold text-slate-600 text-xs">Xona</th>
+                </tr>
+              </thead>
+              <tbody>
+                {dischargedAdmissions.map((adm) => (
+                  <tr
+                    key={adm.id}
+                    onClick={() => goToPatientNotes(adm.patient.id)}
+                    className="border-b border-slate-100 hover:bg-slate-50 transition-colors cursor-pointer"
+                  >
+                    <td className="px-4 py-2.5">
+                      <p className="font-medium text-slate-700 text-xs">
+                        {adm.patient.lastName} {adm.patient.firstName}
+                      </p>
+                      <p className="text-xs text-slate-400">{adm.patient.phone}</p>
+                    </td>
+                    <td className="px-4 py-2.5 text-xs text-slate-500 max-w-[200px] truncate">
+                      {adm.diagnosis ?? '—'}
+                    </td>
+                    <td className="px-4 py-2.5 text-xs text-slate-500 whitespace-nowrap">
+                      {formatDateShort(adm.admittedAt)}
+                    </td>
+                    <td className="px-4 py-2.5 text-xs text-slate-500 whitespace-nowrap">
+                      {adm.dischargedAt ? formatDateShort(adm.dischargedAt) : '—'}
+                    </td>
+                    <td className="px-4 py-2.5 text-xs text-slate-500">
+                      {adm.bed.room.roomNumber}/{adm.bed.bedNumber}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
+      {/* -- Add Modal ------------------------------------------------------- */}
       {showAdd && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
           <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
@@ -574,12 +811,12 @@ export default function AmbulatoryPage() {
         </div>
       )}
 
-      {/* ── Discharge Modal ───────────────────────────────────────────────── */}
+      {/* -- Discharge Modal ------------------------------------------------- */}
       {dischargeAdm && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
           <div className="bg-white rounded-2xl shadow-xl w-full max-w-md">
             <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100">
-              <h2 className="text-lg font-semibold text-slate-800">Chiqarish va To&apos;lov</h2>
+              <h2 className="text-lg font-semibold text-slate-800">Bemorni chiqarish</h2>
               <button onClick={() => setDischargeAdm(null)} className="p-1.5 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-md">
                 <X className="w-5 h-5" />
               </button>
@@ -593,13 +830,14 @@ export default function AmbulatoryPage() {
                 <p className="text-xs text-slate-500 mt-0.5">
                   Xona {dischargeAdm.bed.room.roomNumber} / To&apos;shak {dischargeAdm.bed.bedNumber}
                 </p>
+                <p className="text-xs text-slate-400 mt-0.5">
+                  Keldi: {formatDate(dischargeAdm.admittedAt)}
+                </p>
               </div>
 
-              {dischargeResult ? (
+              {dischargeDone ? (
                 <div className="bg-green-50 border border-green-200 rounded-lg px-4 py-3 mb-4 text-sm text-green-800">
-                  {dischargeResult.amount > 0
-                    ? `To'lov: ${formatCurrency(dischargeResult.amount)} qabul qilindi. Bemor chiqarildi.`
-                    : 'Bemor muvaffaqiyatli chiqarildi (to\'lovsiz).'}
+                  Bemor muvaffaqiyatli chiqarildi.
                 </div>
               ) : (
                 <form onSubmit={handleDischarge} className="flex flex-col gap-4">
@@ -611,38 +849,12 @@ export default function AmbulatoryPage() {
                   )}
 
                   <div className="flex flex-col gap-1">
-                    <label className="text-sm font-medium text-slate-700">To&apos;lov miqdori (so&apos;m)</label>
-                    <input
-                      type="number"
-                      min={0}
-                      value={payAmount}
-                      onChange={(e) => setPayAmount(e.target.value)}
-                      placeholder="0 (bepul)"
-                      className="border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
-                    />
-                  </div>
-
-                  <div className="flex flex-col gap-1">
-                    <label className="text-sm font-medium text-slate-700">To&apos;lov usuli</label>
-                    <select
-                      value={payMethod}
-                      onChange={(e) => setPayMethod(e.target.value)}
-                      className="border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
-                    >
-                      <option value="CASH">Naqd pul</option>
-                      <option value="CARD">Karta</option>
-                      <option value="CLICK">Click</option>
-                      <option value="PAYME">Payme</option>
-                      <option value="BANK_TRANSFER">Bank o&apos;tkazmasi</option>
-                    </select>
-                  </div>
-
-                  <div className="flex flex-col gap-1">
-                    <label className="text-sm font-medium text-slate-700">Izoh</label>
+                    <label className="text-sm font-medium text-slate-700">Izoh (ixtiyoriy)</label>
                     <textarea
                       value={dischargeNotes}
                       onChange={(e) => setDischargeNotes(e.target.value)}
-                      rows={2}
+                      rows={3}
+                      placeholder="Muolaja natijalari, tavsiyalar..."
                       className="border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 resize-none"
                     />
                   </div>
@@ -662,7 +874,7 @@ export default function AmbulatoryPage() {
                 </form>
               )}
 
-              {dischargeResult && (
+              {dischargeDone && (
                 <div className="flex justify-end">
                   <button onClick={() => setDischargeAdm(null)} className="px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100 rounded-lg transition-colors">
                     {t.common.close}

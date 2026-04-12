@@ -13,7 +13,7 @@ import {
   Trash2,
 } from "lucide-react";
 
-// ─── Types ───────────────────────────────────────────────────────────────────
+// --- Types -------------------------------------------------------------------
 
 interface StaffMember {
   id: string;
@@ -39,7 +39,7 @@ interface Salary {
   staff: StaffMember;
 }
 
-// ─── Helpers ─────────────────────────────────────────────────────────────────
+// --- Helpers -----------------------------------------------------------------
 
 function salaryStatusBadgeClass(status: string) {
   switch (status) {
@@ -51,7 +51,7 @@ function salaryStatusBadgeClass(status: string) {
   }
 }
 
-// ─── Page ────────────────────────────────────────────────────────────────────
+// --- Page --------------------------------------------------------------------
 
 export default function SchedulePage() {
   const { t } = useLanguage();
@@ -66,17 +66,17 @@ export default function SchedulePage() {
     "schedules"
   );
 
-  // ── Staff list (shared) ────────────────────────────────────────────────────
+  // -- Staff list (shared) ----------------------------------------------------
   const [staffList, setStaffList] = useState<StaffMember[]>([]);
 
-  // ── Schedules state ────────────────────────────────────────────────────────
+  // -- Schedules state --------------------------------------------------------
   const [schedules, setSchedules] = useState<Schedule[]>([]);
   const [schedulesLoading, setSchedulesLoading] = useState(false);
   const [schedulesError, setSchedulesError] = useState<string | null>(null);
   const [dayFilter, setDayFilter] = useState<string>("");
   const [scheduleStaffFilter, setScheduleStaffFilter] = useState<string>("");
 
-  // ── Add Schedule modal ─────────────────────────────────────────────────────
+  // -- Add Schedule modal -----------------------------------------------------
   const [showAddScheduleModal, setShowAddScheduleModal] = useState(false);
   const [schedStaffId, setSchedStaffId] = useState("");
   const [schedDate, setSchedDate] = useState("");
@@ -85,14 +85,14 @@ export default function SchedulePage() {
   const [schedSaving, setSchedSaving] = useState(false);
   const [schedError, setSchedError] = useState<string | null>(null);
 
-  // ── Salaries state ─────────────────────────────────────────────────────────
+  // -- Salaries state ---------------------------------------------------------
   const [salaries, setSalaries] = useState<Salary[]>([]);
   const [salariesLoading, setSalariesLoading] = useState(false);
   const [salariesError, setSalariesError] = useState<string | null>(null);
   const [monthFilter, setMonthFilter] = useState<string>("");
   const [salaryStaffFilter, setSalaryStaffFilter] = useState<string>("");
 
-  // ── Add Salary modal ───────────────────────────────────────────────────────
+  // -- Add Salary modal -------------------------------------------------------
   const [showAddSalaryModal, setShowAddSalaryModal] = useState(false);
   const [salStaffId, setSalStaffId] = useState("");
   const [salMonth, setSalMonth] = useState("");
@@ -100,7 +100,7 @@ export default function SchedulePage() {
   const [salSaving, setSalSaving] = useState(false);
   const [salError, setSalError] = useState<string | null>(null);
 
-  // ── Edit Salary modal ──────────────────────────────────────────────────────
+  // -- Edit Salary modal ------------------------------------------------------
   const [showEditSalaryModal, setShowEditSalaryModal] = useState(false);
   const [editingSalary, setEditingSalary] = useState<Salary | null>(null);
   const [editSalStatus, setEditSalStatus] = useState<"PENDING" | "PAID">(
@@ -109,7 +109,7 @@ export default function SchedulePage() {
   const [editSalSaving, setEditSalSaving] = useState(false);
   const [editSalError, setEditSalError] = useState<string | null>(null);
 
-  // ─── Fetch staff ───────────────────────────────────────────────────────────
+  // --- Fetch staff -----------------------------------------------------------
   const fetchStaff = useCallback(async () => {
     try {
       const res = await fetch("/api/staff");
@@ -122,7 +122,7 @@ export default function SchedulePage() {
     }
   }, []);
 
-  // ─── Fetch schedules ───────────────────────────────────────────────────────
+  // --- Fetch schedules -------------------------------------------------------
   const fetchSchedules = useCallback(async () => {
     setSchedulesLoading(true);
     setSchedulesError(null);
@@ -143,7 +143,7 @@ export default function SchedulePage() {
     }
   }, [dayFilter, scheduleStaffFilter, t.common.error]);
 
-  // ─── Fetch salaries ────────────────────────────────────────────────────────
+  // --- Fetch salaries --------------------------------------------------------
   const fetchSalaries = useCallback(async () => {
     setSalariesLoading(true);
     setSalariesError(null);
@@ -176,7 +176,7 @@ export default function SchedulePage() {
     }
   }, [activeTab, fetchSalaries]);
 
-  // ─── Schedule handlers ─────────────────────────────────────────────────────
+  // --- Schedule handlers -----------------------------------------------------
 
   function openAddScheduleModal() {
     setSchedStaffId("");
@@ -227,7 +227,7 @@ export default function SchedulePage() {
     }
   }
 
-  // ─── Salary handlers ───────────────────────────────────────────────────────
+  // --- Salary handlers -------------------------------------------------------
 
   function openAddSalaryModal() {
     setSalStaffId("");
@@ -296,7 +296,7 @@ export default function SchedulePage() {
     }
   }
 
-  // ─── Render ────────────────────────────────────────────────────────────────
+  // --- Render ----------------------------------------------------------------
 
   const days: Record<string, string> = t.schedule.days as unknown as Record<
     string,

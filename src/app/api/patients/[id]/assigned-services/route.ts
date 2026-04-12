@@ -17,6 +17,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
       where: { patientId },
       include: {
         assignedBy: { select: { name: true, role: true } },
+        doctor: { select: { name: true, role: true } },
       },
       orderBy: { assignedAt: 'desc' },
     });

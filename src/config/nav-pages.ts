@@ -15,7 +15,11 @@ export const MANAGED_PAGES: NavPage[] = [
     path: '/patients',
     label: 'Bemorlar',
     actions: [
-      { key: 'create', label: "Qo'shish" },
+      { key: 'tab:xizmatlar', label: 'Xizmatlar tab' },
+      { key: 'tab:tashxislar', label: 'Tashxislar tab' },
+      { key: 'tab:hamshira', label: 'Hamshira tab' },
+      { key: 'tab:laboratoriya', label: 'Laboratoriya tab' },
+      { key: 'create', label: "Bemor qo'shish" },
       { key: 'edit', label: 'Tahrirlash' },
       { key: 'delete', label: "O'chirish" },
     ],
@@ -81,6 +85,7 @@ export const MANAGED_PAGES: NavPage[] = [
   },
   { path: '/schedule', label: 'Jadval' },
   { path: '/attendance', label: 'Davomat' },
+  { path: '/tasks', label: 'Vazifalar' },
   { path: '/doctor-queue', label: 'Doktor navbati' },
   { path: '/reports', label: 'Hisobotlar' },
   { path: '/settings', label: 'Sozlamalar' },
@@ -88,4 +93,5 @@ export const MANAGED_PAGES: NavPage[] = [
   { path: '/settings/permissions', label: 'Ruxsatlar' },
   { path: '/medical-records', label: 'Tibbiy kartalar' },
   { path: '/services', label: 'Xizmatlar va narxlar' },
+  { path: '/expenses', label: 'Xarajatlar' },
 ];

@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useSession } from 'next-auth/react';
 import { useLanguage } from '@/hooks/useLanguage';
+import { useRouter } from 'next/navigation';
 import {
   Plus,
   Loader2,
@@ -11,9 +12,10 @@ import {
   BedDouble,
   Search,
   LogOut,
+  Building2,
 } from 'lucide-react';
 
-// ─── Types ───────────────────────────────────────────────────────────────────
+// --- Types -------------------------------------------------------------------
 
 interface PatientOption {
   id: string;
@@ -73,7 +75,80 @@ interface DischargeResult {
   free: boolean;
 }
 
-// ─── Helpers ─────────────────────────────────────────────────────────────────
+interface RoomBedPatient {
+  id: string;
+  firstName: string;
+  lastName: string;
+}
+
+interface RoomBed {
+  id: string;
+  bedNumber: string;
+  status: 'AVAILABLE' | 'OCCUPIED' | 'MAINTENANCE';
+  admissions: { id: string; patient: RoomBedPatient }[];
+}
+
+interface RoomWithBeds {
+  id: string;
+  roomNumber: string;
+  floor: number;
+  type: string;
+  isAmbulatory: boolean;
+  beds: RoomBed[];
+}
+
+// --- Bed Card (room map) ------------------------------------------------------
+
+function AdmissionBedCard({
+  bed,
+  onOccupiedClick,
+}: {
+  bed: RoomBed;
+  onOccupiedClick: (patientId: string) => void;
+}) {
+  const { t } = useLanguage();
+  const patient = bed.admissions?.[0]?.patient;
+
+  if (bed.status === 'AVAILABLE') {
+    return (
+      <div className="flex flex-col items-center gap-0.5 p-2 bg-green-50 border border-green-200 rounded-lg min-w-[68px]">
+        <BedDouble className="w-4 h-4 text-green-600" />
+        <span className="text-xs font-semibold text-green-700">{bed.bedNumber}</span>
+        <span className="text-[10px] font-medium text-green-600 bg-green-100 px-1.5 py-0.5 rounded-full whitespace-nowrap">
+          {t.rooms.available}
+        </span>
+      </div>
+    );
+  }
+
+  if (bed.status === 'OCCUPIED' && patient) {
+    return (
+      <button
+        onClick={() => onOccupiedClick(patient.id)}
+        className="flex flex-col items-center gap-0.5 p-2 bg-red-50 border border-red-200 rounded-lg min-w-[68px] hover:bg-red-100 hover:border-red-300 transition-colors cursor-pointer"
+        title={`${patient.firstName} ${patient.lastName}`}
+      >
+        <BedDouble className="w-4 h-4 text-red-600" />
+        <span className="text-xs font-semibold text-red-700">{bed.bedNumber}</span>
+        <span className="text-[10px] font-medium text-red-600 leading-tight max-w-[64px] truncate text-center">
+          {patient.firstName} {patient.lastName}
+        </span>
+      </button>
+    );
+  }
+
+  return (
+    <div className="flex flex-col items-center gap-0.5 p-2 bg-yellow-50 border border-yellow-200 rounded-lg min-w-[68px]">
+      <BedDouble className="w-4 h-4 text-yellow-600" />
+      <span className="text-xs font-semibold text-yellow-700">{bed.bedNumber}</span>
+      <span className="text-[10px] font-medium text-yellow-600 bg-yellow-100 px-1.5 py-0.5 rounded-full whitespace-nowrap">
+        {bed.status === 'MAINTENANCE' ? t.rooms.maintenance : t.rooms.occupied}
+      </span>
+    </div>
+  );
+}
+
+// --- Helpers -----------------------------------------------------------------
 
 function formatDate(iso: string): string {
   return new Date(iso).toLocaleDateString('uz-UZ', {
@@ -89,22 +164,27 @@ function formatCurrency(amount: number, sum: string): string {
   return new Intl.NumberFormat('uz-UZ').format(amount) + ' ' + sum;
 }
 
-// ─── Main Component ───────────────────────────────────────────────────────────
+// --- Main Component -----------------------------------------------------------
 
 const CAN_MANAGE_ROLES = ['ADMIN', 'HEAD_DOCTOR', 'HEAD_NURSE'];
 
 export default function AdmissionsPage() {
   const { t } = useLanguage();
   const { data: session } = useSession();
+  const router = useRouter();
 
   const canManage = CAN_MANAGE_ROLES.includes(session?.user?.role ?? '');
 
-  // ── List state ──
+  // -- List state --
   const [admissions, setAdmissions] = useState<Admission[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // ── Add Admission Modal ──
+  // -- Room map state --
+  const [rooms, setRooms] = useState<RoomWithBeds[]>([]);
+  const [roomsLoading, setRoomsLoading] = useState(false);
+
+  // -- Add Admission Modal --
   const [showAddModal, setShowAddModal] = useState(false);
   const [addSaving, setAddSaving] = useState(false);
   const [addError, setAddError] = useState<string | null>(null);
@@ -130,14 +210,14 @@ export default function AdmissionsPage() {
   const [diagnosis, setDiagnosis] = useState('');
   const [dailyRate, setDailyRate] = useState('');
 
-  // ── Discharge Modal ──
+  // -- Discharge Modal --
   const [dischargeAdmission, setDischargeAdmission] = useState<Admission | null>(null);
   const [dischargeNotes, setDischargeNotes] = useState('');
   const [dischargeSaving, setDischargeSaving] = useState(false);
   const [dischargeError, setDischargeError] = useState<string | null>(null);
   const [dischargeResult, setDischargeResult] = useState<DischargeResult | null>(null);
 
-  // ─── Fetch admissions ──────────────────────────────────────────────────────
+  // --- Fetch admissions ------------------------------------------------------
 
   const fetchAdmissions = useCallback(async () => {
     setLoading(true);
@@ -154,11 +234,24 @@ export default function AdmissionsPage() {
     }
   }, [t.common.error]);
 
+  const fetchRooms = useCallback(async () => {
+    setRoomsLoading(true);
+    try {
+      const res = await fetch('/api/rooms?isAmbulatory=false&include=beds');
+      if (!res.ok) return;
+      const json = await res.json();
+      setRooms(Array.isArray(json) ? json : (json.data ?? []));
+    } catch { /* ignore */ } finally {
+      setRoomsLoading(false);
+    }
+  }, []);
+
   useEffect(() => {
     fetchAdmissions();
-  }, [fetchAdmissions]);
+    fetchRooms();
+  }, [fetchAdmissions, fetchRooms]);
 
-  // ─── Patient search ────────────────────────────────────────────────────────
+  // --- Patient search --------------------------------------------------------
 
   useEffect(() => {
     if (!patientSearch.trim()) {
@@ -192,7 +285,7 @@ export default function AdmissionsPage() {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  // ─── Load beds & doctors when modal opens ─────────────────────────────────
+  // --- Load beds & doctors when modal opens ---------------------------------
 
   useEffect(() => {
     if (!showAddModal) return;
@@ -219,7 +312,7 @@ export default function AdmissionsPage() {
     })();
   }, [showAddModal]);
 
-  // ─── Open / reset add modal ───────────────────────────────────────────────
+  // --- Open / reset add modal -----------------------------------------------
 
   const openAddModal = () => {
     setSelectedPatient(null);
@@ -233,7 +326,7 @@ export default function AdmissionsPage() {
     setShowAddModal(true);
   };
 
-  // ─── Submit new admission ─────────────────────────────────────────────────
+  // --- Submit new admission -------------------------------------------------
 
   const handleAddSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -269,6 +362,7 @@ export default function AdmissionsPage() {
 
       setShowAddModal(false);
       fetchAdmissions();
+      fetchRooms();
     } catch (err) {
       setAddError(err instanceof Error ? err.message : t.common.error);
     } finally {
@@ -276,7 +370,7 @@ export default function AdmissionsPage() {
     }
   };
 
-  // ─── Discharge ────────────────────────────────────────────────────────────
+  // --- Discharge ------------------------------------------------------------
 
   const openDischarge = (admission: Admission) => {
     setDischargeAdmission(admission);
@@ -307,6 +401,7 @@ export default function AdmissionsPage() {
         free: json.free ?? false,
       });
       fetchAdmissions();
+      fetchRooms();
     } catch (err) {
       setDischargeError(err instanceof Error ? err.message : t.common.error);
     } finally {
@@ -314,7 +409,7 @@ export default function AdmissionsPage() {
     }
   };
 
-  // ─── Render ───────────────────────────────────────────────────────────────
+  // --- Render ---------------------------------------------------------------
 
   return (
     <div className="p-6">
@@ -339,6 +434,91 @@ export default function AdmissionsPage() {
           {error}
         </div>
       )}
+
+      {/* Room Map */}
+      <div className="mb-6">
+        <div className="flex items-center gap-2 mb-3">
+          <Building2 className="w-4 h-4 text-blue-600" />
+          <h2 className="text-sm font-semibold text-slate-700">Xona xaritasi</h2>
+          {roomsLoading && <Loader2 className="w-3.5 h-3.5 animate-spin text-slate-400" />}
+        </div>
+        {rooms.length === 0 && !roomsLoading ? (
+          <div className="text-center py-6 text-slate-400 text-sm bg-white rounded-xl border border-slate-200">
+            {t.rooms.noRooms}
+          </div>
+        ) : (
+          (() => {
+            const floors = [...new Set(rooms.map(r => r.floor))].sort();
+            return (
+              <div className="space-y-4">
+                {floors.map(floor => {
+                  const floorRooms = rooms.filter(r => r.floor === floor);
+                  return (
+                    <div key={floor}>
+                      <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2">
+                        {floor}{t.rooms.floorLabel}
+                      </p>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
+                        {floorRooms.map(room => {
+                          const avail = room.beds.filter(b => b.status === 'AVAILABLE').length;
+                          const occ = room.beds.filter(b => b.status === 'OCCUPIED').length;
+                          return (
+                            <div
+                              key={room.id}
+                              className="bg-white rounded-xl border border-slate-200 p-3"
+                            >
+                              <div className="flex items-center justify-between mb-2">
+                                <div className="flex items-center gap-1.5">
+                                  <Building2 className="w-3.5 h-3.5 text-blue-500" />
+                                  <span className="text-sm font-semibold text-slate-800">
+                                    {t.rooms.number} {room.roomNumber}
+                                  </span>
+                                </div>
+                                <span className="text-[10px] font-medium bg-violet-100 text-violet-700 px-1.5 py-0.5 rounded-full">
+                                  {room.type}
+                                </span>
+                              </div>
+                              {room.beds.length > 0 && (
+                                <div className="flex items-center gap-2 mb-2 text-xs text-slate-400">
+                                  <span className="flex items-center gap-1">
+                                    <span className="w-1.5 h-1.5 rounded-full bg-green-500 inline-block" />
+                                    {avail}
+                                  </span>
+                                  <span className="flex items-center gap-1">
+                                    <span className="w-1.5 h-1.5 rounded-full bg-red-500 inline-block" />
+                                    {occ}
+                                  </span>
+                                </div>
+                              )}
+                              {room.beds.length > 0 ? (
+                                <div className="flex flex-wrap gap-1.5">
+                                  {room.beds.map(bed => (
+                                    <AdmissionBedCard
+                                      key={bed.id}
+                                      bed={bed}
+                                      onOccupiedClick={(patientId) =>
+                                        router.push(`/patients/${patientId}?tab=nurse`)
+                                      }
+                                    />
+                                  ))}
+                                </div>
+                              ) : (
+                                <div className="text-xs text-slate-400 text-center py-2">
+                                  {t.rooms.beds}: 0
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            );
+          })()
+        )}
+      </div>
 
       {/* Table */}
       <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
@@ -433,7 +613,7 @@ export default function AdmissionsPage() {
         </div>
       </div>
 
-      {/* ── Add Admission Modal ────────────────────────────────────────────── */}
+      {/* -- Add Admission Modal ---------------------------------------------- */}
       {showAddModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
           <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
@@ -609,7 +789,7 @@ export default function AdmissionsPage() {
         </div>
       )}
 
-      {/* ── Discharge Modal ────────────────────────────────────────────────── */}
+      {/* -- Discharge Modal -------------------------------------------------- */}
       {dischargeAdmission !== null && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
           <div className="bg-white rounded-2xl shadow-xl w-full max-w-md">

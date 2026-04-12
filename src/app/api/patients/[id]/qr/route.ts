@@ -26,9 +26,9 @@ export async function GET(
     const qrContent = `${process.env.NEXTAUTH_URL ?? 'http://localhost:3000'}/patients/${patient.id}`;
 
     const dataUrl = await QRCode.toDataURL(qrContent, {
-      width: 300,
+      width: 400,
       margin: 2,
-      color: { dark: '#1e293b', light: '#ffffff' },
+      color: { dark: '#000000', light: '#ffffff' },
     });
 
     return NextResponse.json({ dataUrl, patientId: patient.id });

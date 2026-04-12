@@ -4,8 +4,12 @@ import { authOptions } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 import { LabTestStatus, Role, PaymentMethod } from '@prisma/client';
 
-const READ_ROLES: Role[] = [Role.ADMIN, Role.HEAD_DOCTOR, Role.DOCTOR, Role.HEAD_LAB_TECH, Role.LAB_TECH];
-const WRITE_ROLES: Role[] = [Role.ADMIN, Role.HEAD_DOCTOR, Role.DOCTOR, Role.HEAD_LAB_TECH, Role.LAB_TECH];
+const READ_ROLES: Role[] = [
+  Role.ADMIN, Role.HEAD_DOCTOR, Role.DOCTOR, Role.HEAD_NURSE, Role.NURSE,
+  Role.HEAD_LAB_TECH, Role.LAB_TECH, Role.RECEPTIONIST,
+  Role.SPEECH_THERAPIST, Role.MASSAGE_THERAPIST, Role.SANITARY_WORKER,
+];
+const ORDER_ROLES: Role[] = [Role.ADMIN, Role.HEAD_DOCTOR, Role.DOCTOR, Role.RECEPTIONIST];
 
 export async function GET(req: NextRequest) {
   const session = await getServerSession(authOptions);
@@ -57,7 +61,7 @@ export async function GET(req: NextRequest) {
             select: { id: true, firstName: true, lastName: true },
           },
           testType: {
-            select: { id: true, name: true, price: true },
+            select: { id: true, name: true, price: true, normalRange: true, unit: true, category: true },
           },
           labTech: {
             select: { id: true, name: true },
@@ -69,7 +73,18 @@ export async function GET(req: NextRequest) {
 
     const totalPages = Math.ceil(total / limit);
 
-    return NextResponse.json({ data, total, page, limit, totalPages });
+    // Normalize `results` JSON to a flat `result` string for frontend
+    const normalized = data.map((item) => {
+      const r = item.results as Record<string, unknown> | null;
+      const resultStr = r
+        ? typeof r.value === 'string' || typeof r.value === 'number'
+          ? String(r.value)
+          : JSON.stringify(r)
+        : null;
+      return { ...item, result: resultStr };
+    });
+
+    return NextResponse.json({ data: normalized, total, page, limit, totalPages });
   } catch (error) {
     console.error(error);
     return NextResponse.json({ error: 'Server error' }, { status: 500 });
@@ -79,7 +94,7 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   const session = await getServerSession(authOptions);
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  if (!WRITE_ROLES.includes(session.user.role as Role)) {
+  if (!ORDER_ROLES.includes(session.user.role as Role)) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
 
@@ -124,13 +139,14 @@ export async function POST(req: NextRequest) {
           labTechId: session.user.id,
           notes: notes ?? undefined,
           status: 'PENDING',
+          // results: null — natija kiritilganda to'ldiriladi
         },
         include: {
           patient: {
             select: { id: true, firstName: true, lastName: true },
           },
           testType: {
-            select: { id: true, name: true, price: true },
+            select: { id: true, name: true, price: true, normalRange: true, unit: true, category: true },
           },
           labTech: {
             select: { id: true, name: true },

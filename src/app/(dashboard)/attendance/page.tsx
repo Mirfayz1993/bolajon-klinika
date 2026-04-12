@@ -71,6 +71,35 @@ export default function AttendancePage() {
 
   const checkedInIds = new Set(records.map(r => r.userId));
 
+  // Tanlangan xodim rolini aniqlash
+  const selectedStaff = staff.find(s => s.id === selUser);
+  const selectedRole = selectedStaff?.role ?? '';
+
+  // Rolga qarab xonalarni filterlash
+  const filteredRooms = (() => {
+    if (selectedRole === 'DOCTOR' || selectedRole === 'HEAD_DOCTOR') {
+      return rooms.filter(r => r.floor === 2 && ['101', '102', '103'].includes(r.roomNumber));
+    }
+    return rooms;
+  })();
+
+  // Xodim tanlaganda rolga qarab xonani avtomatik tanlash
+  useEffect(() => {
+    if (!selUser) { setSelRoom(''); return; }
+    const user = staff.find(s => s.id === selUser);
+    if (!user) return;
+    if (user.role === 'RECEPTIONIST') {
+      // 2-qavatdagi qabulxona xonasini avtomatik tanlash
+      const receptionRoom = rooms.find(r =>
+        r.floor === 2 && r.type.toLowerCase().includes('reception')
+      ) ?? rooms.find(r => r.floor === 2);
+      if (receptionRoom) setSelRoom(receptionRoom.id);
+    } else if (user.role === 'DOCTOR' || user.role === 'HEAD_DOCTOR') {
+      // 101-103 xonalari filterlanganda avvalgi tanlov reset
+      setSelRoom('');
+    }
+  }, [selUser, staff, rooms]);
+
   const checkIn = async () => {
     if (!selUser) return;
     setBusy('in');
@@ -296,7 +325,7 @@ export default function AttendancePage() {
                   className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                 >
                   <option value="">Xona tanlanmagan</option>
-                  {rooms.map(r => (
+                  {filteredRooms.map(r => (
                     <option key={r.id} value={r.id}>{r.floor}-qavat, {r.roomNumber}-xona ({r.type})</option>
                   ))}
                 </select>

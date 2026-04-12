@@ -44,13 +44,14 @@
   "nav": {
     "dashboard": "Bosh sahifa",
     "patients": "Bemorlar",
-    "appointments": "Uchrashuvlar",
+    "appointments": "Qabullar",
     "queue": "Navbat",
     "rooms": "Xonalar",
     "admissions": "Statsionar",
     "payments": "To'lovlar",
     "lab": "Laboratoriya",
     "pharmacy": "Dorixona",
+    "expenses": "Xarajatlar",
     "staff": "Xodimlar",
     "schedule": "Ish jadvali",
     "reports": "Hisobotlar",
@@ -63,7 +64,8 @@
     "ambulatory": "Ambulator",
     "services": "Xizmatlar",
     "attendance": "Davomat",
-    "doctorQueue": "Doktor navbati"
+    "doctorQueue": "Mutaxassis navbati",
+    "tasks": "Vazifalar"
   },
   "dashboard": {
     "title": "Bosh sahifa",
@@ -101,11 +103,37 @@
     "fio": "F.I.O.",
     "totalPatients": "ta bemor",
     "deleteConfirm": "Ushbu bemorni o'chirishni tasdiqlaysizmi?",
-    "notFound": "Bemor topilmadi"
+    "notFound": "Bemor topilmadi",
+    "tabs": {
+      "general": "Umumiy",
+      "services": "Xizmatlar",
+      "records": "Tashxislar",
+      "nurse": "Hamshira",
+      "lab": "Laboratoriya"
+    },
+    "fields": {
+      "fullName": "To'liq ismi",
+      "birthYear": "Tug'ilgan yil",
+      "phone": "Telefon",
+      "district": "Tuman",
+      "age": "yosh",
+      "registered": "Ro'yxatdan o'tgan",
+      "totalPayment": "Jami to'lov",
+      "operations": "ta operatsiya"
+    },
+    "sections": {
+      "services": "Xizmatlar",
+      "records": "Tibbiy yozuvlar",
+      "nurseNotes": "Hamshira qaydlari",
+      "labTests": "Laboratoriya tahlillari",
+      "payments": "To'lovlar",
+      "admissions": "Statsionar",
+      "appointments": "Qabullar"
+    }
   },
   "appointments": {
-    "title": "Uchrashuvlar",
-    "addAppointment": "Uchrashuv qo'shish",
+    "title": "Qabullar",
+    "addAppointment": "Qabul qo'shish",
     "patient": "Bemor",
     "doctor": "Shifokor",
     "type": "Turi",
@@ -214,7 +242,8 @@
     "RECEPTIONIST": "Qabulxona",
     "SPEECH_THERAPIST": "Logoped",
     "MASSAGE_THERAPIST": "Massajchi",
-    "SANITARY_WORKER": "Sanitar"
+    "SANITARY_WORKER": "Sanitar",
+    "PHARMACIST": "Farmasevt"
   },
   "rooms": {
     "title": "Xonalar",
@@ -528,7 +557,8 @@
     "FOLLOW_UP": "Takroriy qabul",
     "SPEECH_THERAPY": "Logopediya",
     "MASSAGE": "Massaj",
-    "LAB_TEST": "Laboratoriya"
+    "LAB_TEST": "Laboratoriya",
+    "PHYSIOTHERAPY": "Fizioterapiya"
   },
   "queueDisplay": {
     "title": "Bolajon Klinikasi — Navbat",

@@ -7,6 +7,57 @@ import { Role } from '@prisma/client';
 const READ_ROLES: Role[] = [Role.ADMIN, Role.HEAD_DOCTOR, Role.DOCTOR, Role.HEAD_NURSE, Role.RECEPTIONIST, Role.HEAD_LAB_TECH, Role.LAB_TECH];
 const WRITE_ROLES: Role[] = [Role.ADMIN, Role.HEAD_DOCTOR, Role.RECEPTIONIST];
 
+// --- Transliteration helpers --------------------------------------------------
+
+const LAT_TO_CYR: [string, string][] = [
+  ["o'", 'ў'], ["g'", 'ғ'], ["sh", 'ш'], ["ch", 'ч'], ["ts", 'ц'],
+  ['a', 'а'], ['b', 'б'], ['d', 'д'], ['e', 'е'], ['f', 'ф'],
+  ['g', 'г'], ['h', 'х'], ['i', 'и'], ['j', 'ж'], ['k', 'к'],
+  ['l', 'л'], ['m', 'м'], ['n', 'н'], ['o', 'о'], ['p', 'п'],
+  ['q', 'к'], ['r', 'р'], ['s', 'с'], ['t', 'т'], ['u', 'у'],
+  ['v', 'в'], ['x', 'х'], ['y', 'й'], ['z', 'з'],
+];
+
+const CYR_TO_LAT: [string, string][] = [
+  ['ш', 'sh'], ['ч', 'ch'], ['ж', 'j'], ['ғ', "g'"], ['ў', "o'"],
+  ['ц', 'ts'], ['щ', 'sh'], ['ё', 'yo'], ['ю', 'yu'], ['я', 'ya'],
+  ['а', 'a'], ['б', 'b'], ['в', 'v'], ['г', 'g'], ['д', 'd'],
+  ['е', 'e'], ['з', 'z'], ['и', 'i'], ['й', 'y'], ['к', 'k'],
+  ['л', 'l'], ['м', 'm'], ['н', 'n'], ['о', 'o'], ['п', 'p'],
+  ['р', 'r'], ['с', 's'], ['т', 't'], ['у', 'u'], ['ф', 'f'],
+  ['х', 'x'], ['ъ', ''], ['ы', 'i'], ['ь', ''], ['э', 'e'],
+  ['қ', 'q'], ['ҳ', 'h'], ['ҷ', 'j'], ['ӯ', "o'"],
+];
+
+function latinToCyrillic(s: string): string {
+  let r = s.toLowerCase();
+  for (const [lat, cyr] of LAT_TO_CYR) r = r.split(lat).join(cyr);
+  return r;
+}
+
+function cyrillicToLatin(s: string): string {
+  let r = s.toLowerCase();
+  for (const [cyr, lat] of CYR_TO_LAT) r = r.split(cyr).join(lat);
+  return r;
+}
+
+function isCyrillic(s: string): boolean {
+  return /[\u0400-\u04FF]/.test(s);
+}
+
+function getSearchTerms(raw: string): string[] {
+  const terms = new Set<string>();
+  terms.add(raw);
+  if (isCyrillic(raw)) {
+    terms.add(cyrillicToLatin(raw));
+  } else {
+    terms.add(latinToCyrillic(raw));
+  }
+  return [...terms].filter(Boolean);
+}
+
+// ------------------------------------------------------------------------------
+
 export async function GET(req: NextRequest) {
   const session = await getServerSession(authOptions);
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
@@ -24,7 +75,7 @@ export async function GET(req: NextRequest) {
     const limit = Math.min(100, Math.max(1, parseInt(limitParam ?? '20', 10) || 20));
     const skip = (page - 1) * limit;
 
-    const where: {
+    type WhereClause = {
       deletedAt: null;
       OR?: Array<{
         firstName?: { contains: string; mode: 'insensitive' };
@@ -33,16 +84,19 @@ export async function GET(req: NextRequest) {
         phone?: { contains: string };
         jshshir?: { contains: string };
       }>;
-    } = { deletedAt: null }; // Faqat faol bemorlar
+    };
+
+    const where: WhereClause = { deletedAt: null };
 
     if (search) {
-      where.OR = [
-        { firstName: { contains: search, mode: 'insensitive' } },
-        { lastName: { contains: search, mode: 'insensitive' } },
-        { fatherName: { contains: search, mode: 'insensitive' } },
-        { phone: { contains: search } },
-        { jshshir: { contains: search } },
-      ];
+      const terms = getSearchTerms(search.trim());
+      where.OR = terms.flatMap(term => [
+        { firstName: { contains: term, mode: 'insensitive' as const } },
+        { lastName: { contains: term, mode: 'insensitive' as const } },
+        { fatherName: { contains: term, mode: 'insensitive' as const } },
+        { phone: { contains: term } },
+        { jshshir: { contains: term } },
+      ]);
     }
 
     const [data, total] = await Promise.all([
@@ -50,7 +104,7 @@ export async function GET(req: NextRequest) {
         where,
         skip,
         take: limit,
-        orderBy: { createdAt: 'desc' },
+        orderBy: { updatedAt: 'desc' },
       }),
       prisma.patient.count({ where }),
     ]);
@@ -79,6 +133,7 @@ export async function POST(req: NextRequest) {
       phone?: string;
       jshshir?: string;
       birthDate?: string;
+      gender?: string;
       district?: string;
       houseNumber?: string;
       medicalHistory?: string;
@@ -93,6 +148,7 @@ export async function POST(req: NextRequest) {
       phone,
       jshshir,
       birthDate,
+      gender,
       district,
       houseNumber,
       medicalHistory,
@@ -135,6 +191,7 @@ export async function POST(req: NextRequest) {
         phone,
         jshshir,
         birthDate: parsedDate,
+        gender: gender ?? undefined,
         district: district ?? undefined,
         houseNumber: houseNumber ?? undefined,
         medicalHistory: medicalHistory ?? undefined,

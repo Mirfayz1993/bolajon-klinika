@@ -15,6 +15,7 @@ import {
   Hospital,
   CreditCard,
   Pill,
+  Receipt,
   FlaskConical,
   UserCog,
   CalendarRange,
@@ -33,6 +34,7 @@ import {
   Tag,
   Clock,
   PhoneCall,
+  ClipboardList,
 } from 'lucide-react';
 
 interface SidebarProps {
@@ -55,12 +57,25 @@ export default function Sidebar({ collapsed, onToggle, userName, userRole }: Sid
   const pathname = usePathname();
   const { t } = useLanguage();
   const [allowedPages, setAllowedPages] = useState<string[] | null>(null);
+  const [unreadTasks, setUnreadTasks] = useState(0);
 
   useEffect(() => {
     fetch('/api/permissions/my')
       .then((r) => r.json())
       .then((d) => setAllowedPages(d.allowedPages ?? null))
       .catch(() => setAllowedPages(null));
+  }, []);
+
+  useEffect(() => {
+    const fetchUnread = () => {
+      fetch('/api/tasks?unread=true')
+        .then((r) => r.json())
+        .then((d) => setUnreadTasks(d.count ?? 0))
+        .catch(() => {});
+    };
+    fetchUnread();
+    const iv = setInterval(fetchUnread, 30000);
+    return () => clearInterval(iv);
   }, []);
 
   const canAccess = (href: string) => {
@@ -145,6 +160,12 @@ export default function Sidebar({ collapsed, onToggle, userName, userRole }: Sid
           icon: <Pill size={20} />,
           labelKey: 'pharmacy',
         },
+        {
+          key: 'expenses',
+          href: '/expenses',
+          icon: <Receipt size={20} />,
+          labelKey: 'expenses',
+        },
       ],
     },
     {
@@ -170,6 +191,12 @@ export default function Sidebar({ collapsed, onToggle, userName, userRole }: Sid
       href: '/attendance',
       icon: <Clock size={20} />,
       labelKey: 'attendance',
+    },
+    {
+      key: 'tasks',
+      href: '/tasks',
+      icon: <ClipboardList size={20} />,
+      labelKey: 'tasks',
     },
     {
       key: 'doctor-queue',
@@ -270,6 +297,7 @@ export default function Sidebar({ collapsed, onToggle, userName, userRole }: Sid
     if (!item.href) return null;
     if (!canAccess(item.href)) return null;
     const active = isActive(item.href);
+    const isTasks = item.key === 'tasks';
 
     return (
       <Link
@@ -284,9 +312,21 @@ export default function Sidebar({ collapsed, onToggle, userName, userRole }: Sid
           }`}
         title={collapsed ? getLabel(item.labelKey) : undefined}
       >
-        <span className="flex-shrink-0">{item.icon}</span>
+        <span className="flex-shrink-0 relative">
+          {item.icon}
+          {isTasks && unreadTasks > 0 && (
+            <span className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 text-white text-[9px] font-bold rounded-full flex items-center justify-center">
+              {unreadTasks > 9 ? '9+' : unreadTasks}
+            </span>
+          )}
+        </span>
         {!collapsed && (
-          <span className="text-sm font-medium">{getLabel(item.labelKey)}</span>
+          <span className="flex-1 text-sm font-medium">{getLabel(item.labelKey)}</span>
+        )}
+        {!collapsed && isTasks && unreadTasks > 0 && (
+          <span className="ml-auto bg-red-500 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full leading-none">
+            {unreadTasks > 9 ? '9+' : unreadTasks}
+          </span>
         )}
       </Link>
     );

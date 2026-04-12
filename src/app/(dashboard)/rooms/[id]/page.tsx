@@ -10,7 +10,7 @@ import {
   User, RefreshCw, Building2
 } from 'lucide-react';
 
-// ─── Types ────────────────────────────────────────────────────────────────────
+// --- Types --------------------------------------------------------------------
 
 interface Bed {
   id: string;
@@ -74,7 +74,7 @@ interface StaffUser {
   role: string;
 }
 
-// ─── Helpers ─────────────────────────────────────────────────────────────────
+// --- Helpers -----------------------------------------------------------------
 
 function formatDate(dateStr: string) {
   return new Date(dateStr).toLocaleDateString('uz-UZ', {
@@ -86,7 +86,7 @@ function formatSum(amount: number) {
   return new Intl.NumberFormat('uz-UZ').format(amount);
 }
 
-// ─── Component ───────────────────────────────────────────────────────────────
+// --- Component ---------------------------------------------------------------
 
 export default function RoomDetailPage() {
   const { t } = useLanguage();
@@ -98,17 +98,17 @@ export default function RoomDetailPage() {
 
   const [tab, setTab] = useState<'beds' | 'inventory' | 'expenses' | 'settings'>('beds');
 
-  // ── Room ──────────────────────────────────────────────────────────────────
+  // -- Room ------------------------------------------------------------------
   const [room, setRoom] = useState<RoomDetail | null>(null);
   const [roomLoading, setRoomLoading] = useState(true);
 
-  // ── Beds ─────────────────────────────────────────────────────────────────
+  // -- Beds -----------------------------------------------------------------
   const [addBedMode, setAddBedMode] = useState(false);
   const [bedNumber, setBedNumber] = useState('');
   const [bedSaving, setBedSaving] = useState(false);
   const [bedError, setBedError] = useState<string | null>(null);
 
-  // ── Inventory ─────────────────────────────────────────────────────────────
+  // -- Inventory -------------------------------------------------------------
   const [inventory, setInventory] = useState<InventoryItem[]>([]);
   const [inventoryLoading, setInventoryLoading] = useState(false);
   const [showAddInventory, setShowAddInventory] = useState(false);
@@ -116,7 +116,7 @@ export default function RoomDetailPage() {
   const [invSaving, setInvSaving] = useState(false);
   const [invError, setInvError] = useState<string | null>(null);
 
-  // ── Expenses ──────────────────────────────────────────────────────────────
+  // -- Expenses --------------------------------------------------------------
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [expenseTotals, setExpenseTotals] = useState<ExpenseTotals>({ INVENTORY: 0, MEDICINE: 0, UTILITY: 0, all: 0 });
   const [expensesLoading, setExpensesLoading] = useState(false);
@@ -126,7 +126,7 @@ export default function RoomDetailPage() {
   const [expSaving, setExpSaving] = useState(false);
   const [expError, setExpError] = useState<string | null>(null);
 
-  // ── Responsible ───────────────────────────────────────────────────────────
+  // -- Responsible -----------------------------------------------------------
   const [responsible, setResponsible] = useState<Responsible | null>(null);
   const [respLoading, setRespLoading] = useState(false);
   const [staffList, setStaffList] = useState<StaffUser[]>([]);
@@ -135,10 +135,10 @@ export default function RoomDetailPage() {
   const [respError, setRespError] = useState<string | null>(null);
   const [showAssignForm, setShowAssignForm] = useState(false);
 
-  // ── Global error ──────────────────────────────────────────────────────────
+  // -- Global error ----------------------------------------------------------
   const [globalError, setGlobalError] = useState<string | null>(null);
 
-  // ── Fetch room ────────────────────────────────────────────────────────────
+  // -- Fetch room ------------------------------------------------------------
 
   const fetchRoom = useCallback(async () => {
     setRoomLoading(true);
@@ -154,7 +154,7 @@ export default function RoomDetailPage() {
     }
   }, [roomId, t.common.error]);
 
-  // ── Fetch inventory ───────────────────────────────────────────────────────
+  // -- Fetch inventory -------------------------------------------------------
 
   const fetchInventory = useCallback(async () => {
     setInventoryLoading(true);
@@ -170,7 +170,7 @@ export default function RoomDetailPage() {
     }
   }, [roomId, t.common.error]);
 
-  // ── Fetch expenses ────────────────────────────────────────────────────────
+  // -- Fetch expenses --------------------------------------------------------
 
   const fetchExpenses = useCallback(async (filter?: string) => {
     setExpensesLoading(true);
@@ -189,7 +189,7 @@ export default function RoomDetailPage() {
     }
   }, [roomId, t.common.error]);
 
-  // ── Fetch responsible ─────────────────────────────────────────────────────
+  // -- Fetch responsible -----------------------------------------------------
 
   const fetchResponsible = useCallback(async () => {
     setRespLoading(true);
@@ -205,7 +205,7 @@ export default function RoomDetailPage() {
     }
   }, [roomId]);
 
-  // ── Fetch staff list ──────────────────────────────────────────────────────
+  // -- Fetch staff list ------------------------------------------------------
 
   const fetchStaff = useCallback(async () => {
     try {
@@ -218,7 +218,7 @@ export default function RoomDetailPage() {
     }
   }, []);
 
-  // ── Initial load ──────────────────────────────────────────────────────────
+  // -- Initial load ----------------------------------------------------------
 
   useEffect(() => {
     fetchRoom();
@@ -232,7 +232,7 @@ export default function RoomDetailPage() {
     fetchExpenses(expenseFilter);
   }, [expenseFilter, fetchExpenses]);
 
-  // ── Bed handlers ──────────────────────────────────────────────────────────
+  // -- Bed handlers ----------------------------------------------------------
 
   const handleAddBed = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -283,7 +283,7 @@ export default function RoomDetailPage() {
     }
   };
 
-  // ── Inventory handlers ────────────────────────────────────────────────────
+  // -- Inventory handlers ----------------------------------------------------
 
   const handleAddInventory = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -341,7 +341,7 @@ export default function RoomDetailPage() {
     }
   };
 
-  // ── Expense handlers ──────────────────────────────────────────────────────
+  // -- Expense handlers ------------------------------------------------------
 
   const handleAddExpense = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -383,7 +383,7 @@ export default function RoomDetailPage() {
     }
   };
 
-  // ── Responsible handlers ──────────────────────────────────────────────────
+  // -- Responsible handlers --------------------------------------------------
 
   const handleAssignResponsible = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -410,7 +410,7 @@ export default function RoomDetailPage() {
     }
   };
 
-  // ── Expense type label ────────────────────────────────────────────────────
+  // -- Expense type label ----------------------------------------------------
 
   const expTypeLabel = (type: string) => {
     if (type === 'INVENTORY') return t.rooms.expenseINVENTORY;
@@ -424,7 +424,7 @@ export default function RoomDetailPage() {
     return 'bg-orange-100 text-orange-700';
   };
 
-  // ── Render ────────────────────────────────────────────────────────────────
+  // -- Render ----------------------------------------------------------------
 
   if (roomLoading) {
     return (
@@ -511,7 +511,7 @@ export default function RoomDetailPage() {
         ))}
       </div>
 
-      {/* ── TAB 1: Karavotlar ───────────────────────────────────────────────── */}
+      {/* -- TAB 1: Karavotlar ------------------------------------------------- */}
       {tab === 'beds' && (
         <section className="bg-white rounded-xl shadow-sm border border-slate-100">
           <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between">
@@ -612,7 +612,7 @@ export default function RoomDetailPage() {
         </section>
       )}
 
-      {/* ── TAB 2: Inventar ─────────────────────────────────────────────────── */}
+      {/* -- TAB 2: Inventar --------------------------------------------------- */}
       {tab === 'inventory' && (
         <section className="bg-white rounded-xl shadow-sm border border-slate-100">
           <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between">
@@ -773,7 +773,7 @@ export default function RoomDetailPage() {
         </section>
       )}
 
-      {/* ── TAB 3: Xarajatlar ───────────────────────────────────────────────── */}
+      {/* -- TAB 3: Xarajatlar ------------------------------------------------- */}
       {tab === 'expenses' && (
         <div className="space-y-4">
           {/* Summary cards */}
@@ -869,7 +869,7 @@ export default function RoomDetailPage() {
         </div>
       )}
 
-      {/* ── TAB 4: Sozlamalar (Javobgar) ────────────────────────────────────── */}
+      {/* -- TAB 4: Sozlamalar (Javobgar) -------------------------------------- */}
       {tab === 'settings' && (
         <section className="bg-white rounded-xl shadow-sm border border-slate-100">
           <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between">
@@ -958,7 +958,7 @@ export default function RoomDetailPage() {
         </section>
       )}
 
-      {/* ── Add Expense Modal ────────────────────────────────────────────────── */}
+      {/* -- Add Expense Modal -------------------------------------------------- */}
       {showAddExpense && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
           <div className="bg-white rounded-2xl shadow-xl w-full max-w-md">

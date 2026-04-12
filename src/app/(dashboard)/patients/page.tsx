@@ -50,6 +50,7 @@ interface NewPatientForm {
   phone: string;
   jshshir: string;
   birthDate: string;
+  gender: string;
   district: string;
   houseNumber: string;
   medicalHistory: string;
@@ -75,6 +76,7 @@ const emptyForm: NewPatientForm = {
   phone: '+998',
   jshshir: '',
   birthDate: '',
+  gender: '',
   district: '',
   houseNumber: '',
   medicalHistory: '',
@@ -172,7 +174,7 @@ export default function PatientsPage() {
   }
 
   const handleFormChange = (
-    e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>
+    e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>
   ) => {
     if (e.target.name === 'phone') {
       setForm((prev) => ({ ...prev, phone: handlePhoneInputChange(e.target.value) }));
@@ -196,6 +198,7 @@ export default function PatientsPage() {
         phone: form.phone || undefined,
         jshshir: form.jshshir || undefined,
         birthDate: isoDate,
+        gender: form.gender || undefined,
       };
       if (form.district) body.district = form.district;
       if (form.houseNumber) body.houseNumber = form.houseNumber;
@@ -542,7 +545,7 @@ export default function PatientsPage() {
                 </div>
 
                 {/* Birth Year */}
-                <div className="flex flex-col gap-1 col-span-2">
+                <div className="flex flex-col gap-1">
                   <label className="text-sm font-medium text-slate-700">
                     Tug&apos;ilgan yil <span className="text-red-500">*</span>
                   </label>
@@ -557,6 +560,21 @@ export default function PatientsPage() {
                     pattern="[0-9]{4}"
                     className="border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                   />
+                </div>
+
+                {/* Gender */}
+                <div className="flex flex-col gap-1">
+                  <label className="text-sm font-medium text-slate-700">Jins</label>
+                  <select
+                    name="gender"
+                    value={form.gender}
+                    onChange={handleFormChange}
+                    className="border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  >
+                    <option value="">— Tanlang —</option>
+                    <option value="MALE">Erkak</option>
+                    <option value="FEMALE">Qiz</option>
+                  </select>
                 </div>
 
                 {/* District */}

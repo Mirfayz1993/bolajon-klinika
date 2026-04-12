@@ -15,7 +15,7 @@ import {
   DoorOpen,
 } from 'lucide-react';
 
-// ─── Types ────────────────────────────────────────────────────────────────────
+// --- Types --------------------------------------------------------------------
 
 interface Specialization {
   id: string;
@@ -30,14 +30,14 @@ interface RoomType {
   createdAt: string;
 }
 
-// ─── Component ────────────────────────────────────────────────────────────────
+// --- Component ----------------------------------------------------------------
 
 export default function SettingsPage() {
   const { data: session } = useSession();
   const { t } = useLanguage();
   const isAdmin = session?.user?.role === 'ADMIN';
 
-  // ── Specializations state ──────────────────────────────────────────────────
+  // -- Specializations state --------------------------------------------------
   const [specializations, setSpecializations] = useState<Specialization[]>([]);
   const [loadingSpecs, setLoadingSpecs] = useState(true);
   const [specsError, setSpecsError] = useState('');
@@ -54,7 +54,7 @@ export default function SettingsPage() {
   const [editingSpecName, setEditingSpecName] = useState('');
   const [savingEdit, setSavingEdit] = useState(false);
 
-  // ── Room Types state ───────────────────────────────────────────────────────
+  // -- Room Types state -------------------------------------------------------
   const [roomTypes, setRoomTypes] = useState<RoomType[]>([]);
   const [loadingRoomTypes, setLoadingRoomTypes] = useState(true);
   const [roomTypesError, setRoomTypesError] = useState('');
@@ -69,7 +69,7 @@ export default function SettingsPage() {
 
   const [roomTypeActionError, setRoomTypeActionError] = useState('');
 
-  // ── Fetch specializations ──────────────────────────────────────────────────
+  // -- Fetch specializations --------------------------------------------------
 
   const fetchSpecializations = useCallback(async () => {
     setLoadingSpecs(true);
@@ -90,7 +90,7 @@ export default function SettingsPage() {
     fetchSpecializations();
   }, [fetchSpecializations]);
 
-  // ── Fetch room types ───────────────────────────────────────────────────────
+  // -- Fetch room types -------------------------------------------------------
 
   const fetchRoomTypes = useCallback(async () => {
     setLoadingRoomTypes(true);
@@ -111,7 +111,7 @@ export default function SettingsPage() {
     fetchRoomTypes();
   }, [fetchRoomTypes]);
 
-  // ── Room Type CRUD ─────────────────────────────────────────────────────────
+  // -- Room Type CRUD ---------------------------------------------------------
 
   async function handleAddRoomType(e: React.FormEvent) {
     e.preventDefault();
@@ -171,7 +171,7 @@ export default function SettingsPage() {
     }
   }
 
-  // ── Specialization CRUD ────────────────────────────────────────────────────
+  // -- Specialization CRUD ----------------------------------------------------
 
   async function handleAddSpec(e: React.FormEvent) {
     e.preventDefault();
@@ -237,7 +237,7 @@ export default function SettingsPage() {
     }
   }
 
-  // ── Render ─────────────────────────────────────────────────────────────────
+  // -- Render -----------------------------------------------------------------
 
   return (
     <div className="p-6 max-w-4xl">
@@ -254,7 +254,7 @@ export default function SettingsPage() {
 
       <div className="space-y-6">
 
-        {/* ── Mutaxassisliklar ────────────────────────────────────────────── */}
+        {/* -- Mutaxassisliklar ---------------------------------------------- */}
         <section className="bg-white rounded-xl shadow-sm border border-slate-100">
           <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between">
             <div className="flex items-center gap-2">
@@ -417,7 +417,7 @@ export default function SettingsPage() {
           )}
         </section>
 
-        {/* ── Xona turlari ────────────────────────────────────────────────── */}
+        {/* -- Xona turlari -------------------------------------------------- */}
         <section className="bg-white rounded-xl shadow-sm border border-slate-100">
           <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between">
             <div className="flex items-center gap-2">
@@ -573,7 +573,7 @@ export default function SettingsPage() {
           )}
         </section>
 
-        {/* ── Klinika ma'lumotlari (placeholder) ──────────────────────────── */}
+        {/* -- Klinika ma'lumotlari (placeholder) ---------------------------- */}
         <section className="bg-white rounded-xl shadow-sm border border-slate-100">
           <div className="px-6 py-4 border-b border-slate-100 flex items-center gap-2">
             <Building2 size={18} className="text-slate-500" />

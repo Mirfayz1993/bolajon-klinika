@@ -61,7 +61,7 @@ export default function DoctorQueuePage() {
   const [qrResult, setQrResult] = useState<{ success: boolean; message: string } | null>(null);
   const qrInputRef = useRef<HTMLInputElement>(null);
 
-  const isDoctor = ['DOCTOR', 'HEAD_DOCTOR'].includes(session?.user?.role ?? '');
+  const isDoctor = ['DOCTOR', 'HEAD_DOCTOR', 'SPEECH_THERAPIST', 'MASSAGE_THERAPIST'].includes(session?.user?.role ?? '');
   const canManage = ['ADMIN', 'RECEPTIONIST', 'HEAD_DOCTOR', 'HEAD_NURSE'].includes(session?.user?.role ?? '');
 
   const doctorId = isDoctor ? session?.user?.id : selDoctor;
@@ -97,6 +97,11 @@ export default function DoctorQueuePage() {
     return () => { if (intervalRef.current) clearInterval(intervalRef.current); };
   }, [load]);
 
+  // QR input avtomatik fokus
+  useEffect(() => {
+    if (roomId) qrInputRef.current?.focus();
+  }, [roomId]);
+
   // Room status polling
   const pollRoomStatus = useCallback(async () => {
     if (!roomId) return;
@@ -126,7 +131,7 @@ export default function DoctorQueuePage() {
       const patientId = data.patientId ?? data.appointment?.patient?.id;
       pollRoomStatus();
       load();
-      if (patientId) router.push(`/patients/${patientId}?tab=records`);
+      if (patientId) router.push(`/patients/${patientId}?tab=records&from=queue`);
       return;
     }
     load();
@@ -135,8 +140,11 @@ export default function DoctorQueuePage() {
 
   // QR scan handler
   const handleQrScan = async (patientIdRaw: string) => {
-    const patientId = patientIdRaw.trim();
+    let patientId = patientIdRaw.trim();
     if (!patientId || !roomId) return;
+    // QR kod to'liq URL bo'lishi mumkin: https://.../patients/{id}
+    const urlMatch = patientId.match(/\/patients\/([a-zA-Z0-9]+)/);
+    if (urlMatch) patientId = urlMatch[1];
     setQrBusy(true);
     setQrResult(null);
     try {
@@ -158,6 +166,7 @@ export default function DoctorQueuePage() {
     } finally {
       setQrBusy(false);
       setQrInput('');
+      qrInputRef.current?.focus();
       // Auto-clear message after 5s
       setTimeout(() => setQrResult(null), 5000);
     }
@@ -178,7 +187,7 @@ export default function DoctorQueuePage() {
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
           <h1 className="text-2xl font-bold text-slate-900 flex items-center gap-2">
-            <PhoneCall className="w-6 h-6 text-blue-600" /> Doktor navbati
+            <PhoneCall className="w-6 h-6 text-blue-600" /> Mutaxassis navbati
           </h1>
           <p className="text-sm text-slate-500 mt-0.5">Bugungi bemorlar navbati</p>
         </div>

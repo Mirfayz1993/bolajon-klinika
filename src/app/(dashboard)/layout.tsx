@@ -7,12 +7,14 @@ import { useEffect } from 'react';
 import Sidebar from '@/components/layout/Sidebar';
 import Header from '@/components/layout/Header';
 import { useLanguage } from '@/hooks/useLanguage';
+import { useQRScanner } from '@/hooks/useQRScanner';
 
 function DashboardContent({ children }: { children: React.ReactNode }) {
   const { data: session, status } = useSession();
   const router = useRouter();
   const { t } = useLanguage();
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  useQRScanner();
 
   useEffect(() => {
     if (status === 'unauthenticated') {

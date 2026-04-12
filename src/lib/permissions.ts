@@ -14,9 +14,10 @@ export const ROLES_HIERARCHY: Record<Role, number> = {
   SPEECH_THERAPIST: 55,
   MASSAGE_THERAPIST: 55,
   SANITARY_WORKER: 20,
+  PHARMACIST: 50,
 };
 
-// ─── Dinamik permissions cache (60 soniya) ───────────────────────────────────
+// --- Dinamik permissions cache (60 soniya) -----------------------------------
 
 let cache: Map<string, boolean> | null = null;
 let cacheTime = 0;
@@ -49,7 +50,7 @@ export function invalidatePermissionsCache(): void {
   cache = null;
 }
 
-// ─── Statik yordamchi funksiyalar (mavjud kod bilan backward compatibility) ──
+// --- Statik yordamchi funksiyalar (mavjud kod bilan backward compatibility) --
 
 export function isAdmin(role: Role): boolean {
   return role === 'ADMIN';

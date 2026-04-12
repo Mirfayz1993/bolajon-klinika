@@ -1,8 +1,5 @@
 import type { NextConfig } from "next";
 
-const nextConfig: NextConfig = {
-  // Docker deployment uchun standalone output
-  output: 'standalone',
-};
+const nextConfig: NextConfig = {};
 
 export default nextConfig;

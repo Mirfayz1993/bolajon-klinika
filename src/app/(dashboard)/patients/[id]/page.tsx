@@ -9,9 +9,10 @@ import {
   User, Phone, Calendar, MapPin, FileText, AlertTriangle,
   MessageCircle, Hash, Plus, Printer, Droplets,
   Stethoscope, CreditCard, FlaskConical, BedDouble, ClipboardList, QrCode,
+  Activity,
 } from 'lucide-react';
 
-// ─── Types ────────────────────────────────────────────────────────────────────
+// --- Types --------------------------------------------------------------------
 
 interface Patient {
   id: string; firstName: string; lastName: string; fatherName: string;
@@ -68,6 +69,7 @@ interface Appointment {
 interface NurseNote {
   id: string; procedure: string; notes?: string | null;
   medicines?: { name: string; quantity: number; unit: string }[] | null;
+  noteType?: string | null;
   createdAt: string;
   nurse: { name: string; role: string };
   admission?: {
@@ -85,6 +87,7 @@ interface AssignedService {
   paymentId: string | null;
   assignedAt: string;
   assignedBy: { name: string; role: string };
+  doctor?: { name: string; role: string } | null;
 }
 
 interface ServiceCategoryItem {
@@ -106,7 +109,7 @@ interface ProfileData {
   nurseNotes: NurseNote[];
 }
 
-// ─── Helpers ──────────────────────────────────────────────────────────────────
+// --- Helpers ------------------------------------------------------------------
 
 function calcAge(birthDate: string): number {
   const today = new Date(); const birth = new Date(birthDate);
@@ -159,7 +162,7 @@ const APPT_STATUS_COLORS: Record<string, string> = {
   CANCELLED: 'bg-red-100 text-red-800', NO_SHOW: 'bg-slate-100 text-slate-700',
 };
 
-// ─── Page ─────────────────────────────────────────────────────────────────────
+// --- Page ---------------------------------------------------------------------
 
 type Tab = 'info' | 'services' | 'records' | 'nurse' | 'lab';
 
@@ -191,20 +194,31 @@ export default function PatientDetailPage({ params }: PageProps) {
   const [qrLoading, setQrLoading] = useState(false);
   const [showQr, setShowQr] = useState(false);
 
+  // Timeline
+  type TimelineEvent = { id: string; time: string; type: string; title: string; detail?: string; color: string };
+  const [timeline, setTimeline] = useState<TimelineEvent[]>([]);
+  const [timelineLoading, setTimelineLoading] = useState(false);
+
   // Medical record modal
   const [showRecordModal, setShowRecordModal] = useState(false);
-  const [recordForm, setRecordForm] = useState({ diagnosis: '', treatment: '', notes: '' });
+  const [recordForm, setRecordForm] = useState({
+    diagnosis: '',
+    treatment: '',
+    notes: '',
+    prescriptions: [] as { medicineName: string; dosage: string; duration: string; instructions: string }[],
+  });
   const [savingRecord, setSavingRecord] = useState(false);
 
   // Nurse note modal
   const [showNurseModal, setShowNurseModal] = useState(false);
   const [nurseForm, setNurseForm] = useState({
-    procedure: '', notes: '', admissionId: '',
+    procedure: '', notes: '', admissionId: '', noteType: '',
     medicines: [] as { name: string; quantity: number; unit: string }[],
   });
   const [savingNote, setSavingNote] = useState(false);
 
   const isAdmin = session?.user?.role === 'ADMIN';
+  const canSeePrices = ['ADMIN', 'RECEPTIONIST'].includes(session?.user?.role ?? '');
   const canManageServices = ['ADMIN', 'RECEPTIONIST', 'HEAD_DOCTOR', 'HEAD_NURSE'].includes(
     session?.user?.role ?? ''
   );
@@ -212,6 +226,7 @@ export default function PatientDetailPage({ params }: PageProps) {
     session?.user?.role ?? ''
   );
   const isDoctor = ['ADMIN', 'HEAD_DOCTOR', 'DOCTOR'].includes(session?.user?.role ?? '');
+  const canOrderLabTest = ['ADMIN', 'HEAD_DOCTOR', 'DOCTOR', 'RECEPTIONIST'].includes(session?.user?.role ?? '');
 
   // Assigned services
   const [assignedServices, setAssignedServices] = useState<AssignedService[]>([]);
@@ -223,7 +238,9 @@ export default function PatientDetailPage({ params }: PageProps) {
   const [assignSaving, setAssignSaving] = useState(false);
   const [assignDoctorId, setAssignDoctorId] = useState('');
   const [assignIsUrgent, setAssignIsUrgent] = useState(false);
-  const [doctorList, setDoctorList] = useState<{ id: string; name: string }[]>([]);
+  const [assignStaffId, setAssignStaffId] = useState('');
+  const [doctorList, setDoctorList] = useState<{ id: string; name: string; role: string }[]>([]);
+  const [allStaffList, setAllStaffList] = useState<{ id: string; name: string; role: string }[]>([]);
   const [payingId, setPayingId] = useState<string | null>(null);
   const [payMethod, setPayMethod] = useState('CASH');
   // To'lov modal (single)
@@ -244,6 +261,9 @@ export default function PatientDetailPage({ params }: PageProps) {
     if (tab) setActiveTab(tab);
   }, [searchParams]);
 
+  const fromQueue = searchParams.get('from') === 'queue';
+  const urlNoteType = searchParams.get('noteType') ?? '';
+
   const fetchProfile = useCallback(async () => {
     if (!patientId) return;
     setLoading(true);
@@ -260,6 +280,20 @@ export default function PatientDetailPage({ params }: PageProps) {
   }, [patientId, t.common.error]);
 
   useEffect(() => { fetchProfile(); }, [fetchProfile]);
+
+  const fetchTimeline = useCallback(async () => {
+    if (!patientId) return;
+    setTimelineLoading(true);
+    try {
+      const res = await fetch(`/api/patients/${patientId}/timeline`);
+      if (res.ok) {
+        const d = await res.json();
+        setTimeline(d.events ?? []);
+      }
+    } finally { setTimelineLoading(false); }
+  }, [patientId]);
+
+  useEffect(() => { fetchTimeline(); }, [fetchTimeline]);
 
   const fetchAssigned = useCallback(async () => {
     if (!patientId) return;
@@ -304,6 +338,51 @@ export default function PatientDetailPage({ params }: PageProps) {
       .catch(() => setLabTestTypes([]));
   }, [isLabCat]);
 
+  // Lab order modal (from lab tab)
+  interface LabOrderType { id: string; name: string; price: number; category: string | null; }
+  const [showPatientLabOrderModal, setShowPatientLabOrderModal] = useState(false);
+  const [patientLabAllTypes, setPatientLabAllTypes] = useState<LabOrderType[]>([]);
+  const [patientLabSelectedIds, setPatientLabSelectedIds] = useState<string[]>([]);
+  const [patientLabOpenGroups, setPatientLabOpenGroups] = useState<Set<string>>(new Set());
+  const [patientLabOrderSaving, setPatientLabOrderSaving] = useState(false);
+  const [patientLabOrderError, setPatientLabOrderError] = useState<string | null>(null);
+
+  function openPatientLabOrderModal() {
+    setPatientLabSelectedIds([]);
+    setPatientLabOpenGroups(new Set());
+    setPatientLabOrderError(null);
+    setShowPatientLabOrderModal(true);
+    fetch('/api/lab-test-types')
+      .then(r => r.json())
+      .then(d => setPatientLabAllTypes(Array.isArray(d) ? d : (d.data ?? [])))
+      .catch(() => {});
+  }
+
+  async function handlePatientLabOrderSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!patient || patientLabSelectedIds.length === 0) return;
+    setPatientLabOrderSaving(true);
+    setPatientLabOrderError(null);
+    try {
+      await Promise.all(
+        patientLabSelectedIds.map(id =>
+          fetch('/api/lab-tests', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ patientId: patient.id, testTypeId: id }),
+          })
+        )
+      );
+      setShowPatientLabOrderModal(false);
+      // Reload profile to show new lab tests
+      window.location.reload();
+    } catch {
+      setPatientLabOrderError('Xatolik yuz berdi');
+    } finally {
+      setPatientLabOrderSaving(false);
+    }
+  }
+
   useEffect(() => {
     if (!isDoctorCat) return;
     if (doctorList.length > 0) return;
@@ -312,6 +391,14 @@ export default function PatientDetailPage({ params }: PageProps) {
       .then(d => setDoctorList((d.data ?? d).filter((u: { isActive: boolean }) => u.isActive)))
       .catch(() => null);
   }, [isDoctorCat, doctorList.length]);
+
+  useEffect(() => {
+    if (!showAssignModal || allStaffList.length > 0) return;
+    fetch('/api/staff')
+      .then(r => r.json())
+      .then(d => setAllStaffList((d.data ?? d).filter((u: { isActive: boolean }) => u.isActive)))
+      .catch(() => null);
+  }, [showAssignModal, allStaffList.length]);
 
   // Ambulatory rooms
   useEffect(() => {
@@ -352,13 +439,14 @@ export default function PatientDetailPage({ params }: PageProps) {
           price: assignItem.price,
           itemId: assignItem.id,
           ...(isDoctorCat && assignDoctorId ? { doctorId: assignDoctorId, isUrgent: assignIsUrgent } : {}),
+          ...(!isDoctorCat && assignStaffId ? { doctorId: assignStaffId } : {}),
           ...(isAmbulatoryCat && ambBedId ? { bedId: ambBedId } : {}),
         }),
       });
       if (!res.ok) { const d = await res.json(); alert(d.error); return; }
       setShowAssignModal(false);
       setAssignCatId(''); setAssignItemId(''); setAssignDoctorId(''); setAssignIsUrgent(false);
-      setAmbRoomId(''); setAmbBedId(''); setAmbBeds([]);
+      setAssignStaffId(''); setAmbRoomId(''); setAmbBedId(''); setAmbBeds([]);
       fetchAssigned();
     } finally { setAssignSaving(false); }
   };
@@ -397,7 +485,7 @@ export default function PatientDetailPage({ params }: PageProps) {
     } finally { setPayingId(null); }
   };
 
-  // ── Edit ──────────────────────────────────────────────────────────────────
+  // -- Edit ------------------------------------------------------------------
   const startEdit = () => {
     if (!profile) return;
     const p = profile.patient;
@@ -429,7 +517,7 @@ export default function PatientDetailPage({ params }: PageProps) {
     } finally { setSaving(false); }
   };
 
-  // ── QR ────────────────────────────────────────────────────────────────────
+  // -- QR --------------------------------------------------------------------
   const openQr = async () => {
     setShowQr(true);
     if (qrDataUrl) return;
@@ -463,7 +551,7 @@ export default function PatientDetailPage({ params }: PageProps) {
     win.document.close();
   };
 
-  // ── Nurse note ─────────────────────────────────────────────────────────────
+  // -- Nurse note -------------------------------------------------------------
   const addMedicineRow = () =>
     setNurseForm(f => ({ ...f, medicines: [...f.medicines, { name: '', quantity: 1, unit: 'ml' }] }));
 
@@ -492,8 +580,25 @@ export default function PatientDetailPage({ params }: PageProps) {
         }),
       });
       if (!res.ok) throw new Error();
+      const record = await res.json();
+
+      // Prescriptions saqlash
+      const rxList = recordForm.prescriptions.filter(rx => rx.medicineName.trim() && rx.dosage.trim() && rx.duration.trim());
+      for (const rx of rxList) {
+        await fetch(`/api/medical-records/${record.id}/prescriptions`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(rx),
+        });
+      }
+
+      // Agar prescription bor bo'lsa, print qil
+      if (rxList.length > 0 && profile) {
+        printPrescriptions(profile.patient, rxList);
+      }
+
       setShowRecordModal(false);
-      setRecordForm({ diagnosis: '', treatment: '', notes: '' });
+      setRecordForm({ diagnosis: '', treatment: '', notes: '', prescriptions: [] });
       fetchProfile();
     } catch { /* ignore */ } finally {
       setSavingRecord(false);
@@ -507,18 +612,19 @@ export default function PatientDetailPage({ params }: PageProps) {
       const body: Record<string, unknown> = { procedure: nurseForm.procedure, notes: nurseForm.notes };
       if (nurseForm.admissionId) body.admissionId = nurseForm.admissionId;
       if (nurseForm.medicines.length) body.medicines = nurseForm.medicines.filter(m => m.name.trim());
+      if (nurseForm.noteType) body.noteType = nurseForm.noteType;
       const res = await fetch(`/api/patients/${patientId}/nurse-notes`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
       });
       if (!res.ok) throw new Error();
       setShowNurseModal(false);
-      setNurseForm({ procedure: '', notes: '', admissionId: '', medicines: [] });
+      setNurseForm({ procedure: '', notes: '', admissionId: '', noteType: '', medicines: [] });
       fetchProfile();
     } finally { setSavingNote(false); }
   };
 
-  // ── Bulk pay ──────────────────────────────────────────────────────────────
+  // -- Bulk pay --------------------------------------------------------------
   const toggleSelectForPay = (id: string) => {
     setSelectedForPay(prev => {
       const next = new Set(prev);
@@ -553,7 +659,7 @@ export default function PatientDetailPage({ params }: PageProps) {
     } finally { setBulkPaying(false); }
   };
 
-  // ── Print receipt ─────────────────────────────────────────────────────────
+  // -- Print receipt ---------------------------------------------------------
   const printReceipt = async (justPaidIds?: string[]) => {
     if (!profile) return;
     const p = profile.patient;
@@ -577,8 +683,11 @@ export default function PatientDetailPage({ params }: PageProps) {
       if (logoRes.ok) { const j = await logoRes.json(); logoDataUrl = j.dataUrl ?? ''; }
     } catch { /* fallback: logosiz */ }
 
-    const paid = assignedServices.filter(s => s.isPaid || (justPaidIds && justPaidIds.includes(s.id)));
-    const unpaid = assignedServices.filter(s => !s.isPaid && !(justPaidIds && justPaidIds.includes(s.id)));
+    // justPaidIds berilsa — faqat shular; aks holda barcha to'langan
+    const paid = justPaidIds
+      ? assignedServices.filter(s => justPaidIds.includes(s.id))
+      : assignedServices.filter(s => s.isPaid);
+    const unpaid = assignedServices.filter(s => !s.isPaid && !(justPaidIds?.includes(s.id)));
 
     // Medicines from nurse notes
     const allMedicines: { name: string; quantity: number; unit: string; date: string }[] = [];
@@ -596,45 +705,45 @@ export default function PatientDetailPage({ params }: PageProps) {
     const fmtM = (n: number) => n.toLocaleString('uz-UZ') + " so'm";
     const fmtD = (d: string) => new Date(d).toLocaleDateString('uz-UZ');
 
-    const paidRows = paid.map(sv =>
-      `<tr>
-        <td style="padding:6px 8px;border-bottom:1px solid #f1f5f9;">
-          <span style="background:#dcfce7;color:#166534;font-size:10px;padding:1px 6px;border-radius:10px;margin-right:6px;">✓ TO'LANDI</span>
-          <strong>${sv.categoryName}</strong> — ${sv.itemName}
+    const paidRows = paid.map(sv => {
+      // Faqat shifokor xizmatlarida "Doktor: To'liq Ism" ko'rsatiladi
+      const doctorName = sv.doctor?.name ?? '';
+      return `<tr>
+        <td colspan="2" style="padding:7px 8px;border-bottom:1px dashed #aaa;">
+          <div style="font-weight:900;font-size:14px;">${sv.categoryName}</div>
+          <div style="font-weight:900;font-size:14px;margin-top:1px;">${sv.itemName}</div>
+          ${doctorName ? `<div style="font-size:13px;font-weight:bold;margin-top:3px;">Doktor: ${doctorName}</div>` : ''}
         </td>
-        <td style="padding:6px 8px;border-bottom:1px solid #f1f5f9;text-align:right;font-weight:bold;color:#1d4ed8;">${fmtM(Number(sv.price))}</td>
-      </tr>`
-    ).join('');
+      </tr>`;
+    }).join('');
 
     const unpaidRows = unpaid.map(sv =>
       `<tr>
-        <td style="padding:5px 8px;color:#64748b;">
-          <span style="color:#94a3b8;margin-right:4px;">◦</span>
+        <td style="padding:5px 8px;">
           ${sv.categoryName} — ${sv.itemName}
         </td>
-        <td style="padding:5px 8px;text-align:right;color:#94a3b8;">${fmtM(Number(sv.price))}</td>
+        <td style="padding:5px 8px;text-align:right;">${fmtM(Number(sv.price))}</td>
       </tr>`
     ).join('');
 
     const medicineRows = allMedicines.map(m =>
       `<tr>
-        <td style="padding:5px 8px;color:#64748b;">
-          <span style="color:#94a3b8;margin-right:4px;">💊</span>
-          ${m.name} × ${m.quantity} ${m.unit}
+        <td style="padding:5px 8px;">
+          ${m.name} x ${m.quantity} ${m.unit}
         </td>
-        <td style="padding:5px 8px;text-align:right;color:#94a3b8;font-size:11px;">${fmtD(m.date)}</td>
+        <td style="padding:5px 8px;text-align:right;font-size:11px;">${fmtD(m.date)}</td>
       </tr>`
     ).join('');
 
     const reminderSection = (unpaid.length > 0 || allMedicines.length > 0) ? `
-      <tr><td colspan="2" style="height:24px;"></td></tr>
-      <tr><td colspan="2" style="padding:6px 8px;background:#fef9c3;font-size:11px;font-weight:bold;color:#854d0e;letter-spacing:0.5px;border-top:2px dashed #fde68a;border-bottom:1px solid #fde68a;">
-        ⚠ ESLATMA — To'lanmagan xizmatlar
+      <tr><td colspan="2" style="height:12px;"></td></tr>
+      <tr><td colspan="2" style="padding:6px 8px;font-size:11px;font-weight:bold;border-top:2px dashed #000;border-bottom:1px solid #000;">
+        ESLATMA — Tolanmagan xizmatlar
       </td></tr>
       ${unpaidRows}
       ${allMedicines.length > 0 ? `
-        <tr><td colspan="2" style="padding:4px 8px;font-size:11px;font-weight:bold;color:#7c3aed;background:#f5f3ff;border-top:1px solid #e9d5ff;">
-          💊 Belgilangan dorilar
+        <tr><td colspan="2" style="padding:4px 8px;font-size:11px;font-weight:bold;border-top:1px solid #000;">
+          Belgilangan dorilar
         </td></tr>
         ${medicineRows}
       ` : ''}
@@ -645,29 +754,31 @@ export default function PatientDetailPage({ params }: PageProps) {
       <meta charset="UTF-8"/>
       <title>Chek — ${p.lastName} ${p.firstName}</title>
       <style>
-        *{margin:0;padding:0;box-sizing:border-box}
-        body{font-family:'Times New Roman',Times,serif;font-size:13px;background:#fff;padding:0}
-        .wrap{max-width:380px;margin:0 auto;padding:16px}
-        .header{display:flex;align-items:center;gap:12px;padding-bottom:12px;border-bottom:2px solid #1e293b;margin-bottom:12px}
-        .header-logo{width:60px;height:60px;object-fit:contain;flex-shrink:0;border-radius:6px}
+        *{margin:0;padding:0;box-sizing:border-box;color:#000!important;background:transparent!important}
+        img{background:#fff!important}
+        body{font-family:'Times New Roman',Times,serif;font-size:16px;font-weight:bold;background:#fff!important;padding:0}
+        .wrap{max-width:380px;margin:0 auto;padding:12px}
+        .header{display:flex;align-items:center;gap:10px;padding-bottom:10px;border-bottom:2px solid #000;margin-bottom:10px}
+        .header-logo{width:52px;height:52px;object-fit:contain;flex-shrink:0}
         .header-text{flex:1}
-        .logo{font-size:18px;font-weight:900;letter-spacing:1px}
-        .sub{font-size:11px;color:#64748b}
-        .patient{background:#f8fafc;border-radius:8px;padding:10px 12px;margin-bottom:12px}
-        .patient .name{font-weight:bold;font-size:14px}
-        .patient .info{font-size:11px;color:#64748b;margin-top:3px}
+        .logo{font-size:20px;font-weight:900;letter-spacing:1px}
+        .sub{font-size:14px;font-weight:bold}
+        .patient{border:1px solid #000;padding:8px 10px;margin-top:10px;margin-bottom:10px}
+        .patient .name{font-weight:900;font-size:17px}
+        .patient .info{font-size:15px;font-weight:bold;margin-top:3px}
         table{width:100%;border-collapse:collapse;margin-bottom:8px}
-        .total-row{background:#eff6ff;font-weight:bold}
-        .total-row td{padding:10px 8px!important;font-size:14px;color:#1e40af}
-        .qr-section{text-align:center;margin-top:16px;padding-top:12px;border-top:2px solid #1e293b}
-        .qr-section img{width:120px;height:120px}
-        .qr-section .qr-label{font-size:10px;color:#94a3b8;margin-top:4px}
-        .date{text-align:right;font-size:11px;color:#94a3b8;margin-bottom:8px}
+        .total-row{border-top:2px solid #000;border-bottom:2px solid #000;font-weight:bold}
+        .total-row td{padding:8px!important;font-size:18px;font-weight:900}
+        .qr-section{text-align:center;margin-top:12px;padding-top:10px;border-top:2px solid #000}
+        .qr-section img{width:160px;height:160px;background:#fff!important;display:block;margin:0 auto;image-rendering:crisp-edges}
+        .qr-section .qr-label{font-size:13px;font-weight:bold;margin-top:4px}
+        .date{text-align:right;font-size:14px;font-weight:bold;margin-bottom:8px}
         @media print{
-          @page{margin:8mm;size:80mm auto}
+          @page{margin:4mm 3mm;size:80mm auto}
           .no-print{display:none}
-          body{font-size:12px}
+          body{font-size:16px}
           img{print-color-adjust:exact;-webkit-print-color-adjust:exact}
+          *{color:#000!important;background:transparent!important;-webkit-print-color-adjust:exact}
         }
       </style>
     </head><body>
@@ -683,28 +794,22 @@ export default function PatientDetailPage({ params }: PageProps) {
         </div>
       </div>
       <div class="date">${new Date().toLocaleString('uz-UZ')}</div>
-      <div class="patient">
-        <div class="name">${p.lastName} ${p.firstName} ${p.fatherName}</div>
-        <div class="info">${p.phone} · ${new Date(p.birthDate).getFullYear()}</div>
-      </div>
       <table>
-        <thead>
-          <tr style="background:#f1f5f9;">
-            <th style="padding:6px 8px;text-align:left;font-size:11px;color:#475569;">XIZMAT</th>
-            <th style="padding:6px 8px;text-align:right;font-size:11px;color:#475569;">NARXI</th>
-          </tr>
-        </thead>
+        <thead></thead>
         <tbody>
           ${paidRows}
           <tr class="total-row">
-            <td>JAMI TO'LANGAN</td>
-            <td style="text-align:right">${fmtM(totalPaidAmt)}</td>
+            <td colspan="2" style="text-align:center;letter-spacing:2px;">✓ TO'LANDI</td>
           </tr>
           ${reminderSection}
         </tbody>
       </table>
+      <div class="patient">
+        <div class="name">${p.lastName} ${p.firstName} ${p.fatherName}</div>
+        <div class="info">${new Date(p.birthDate).getFullYear()}</div>
+      </div>
       <div class="qr-section">
-        ${qr ? `<img src="${qr}" alt="QR"/>` : '<p style="color:#94a3b8">QR yuklanmadi</p>'}
+        ${qr ? `<img src="${qr}" alt="QR"/>` : '<p>QR yuklanmadi</p>'}
         <div class="qr-label">Bemor kartasini skanerlang</div>
       </div>
     </div>
@@ -712,14 +817,14 @@ export default function PatientDetailPage({ params }: PageProps) {
     win.document.close();
   };
 
-  // ── Delete patient ─────────────────────────────────────────────────────────
+  // -- Delete patient ---------------------------------------------------------
   const handleDelete = async () => {
     if (!confirm(t.patients.deleteConfirm)) return;
     const res = await fetch(`/api/patients/${patientId}`, { method: 'DELETE' });
     if (res.ok) router.push('/patients');
   };
 
-  // ─────────────────────────────────────────────────────────────────────────
+  // -------------------------------------------------------------------------
   if (loading) return (
     <div className="flex items-center justify-center h-64">
       <Loader2 className="w-8 h-8 animate-spin text-blue-500" />
@@ -737,12 +842,18 @@ export default function PatientDetailPage({ params }: PageProps) {
   const { patient, medicalRecords, payments, labTests, admissions, appointments, nurseNotes } = profile;
   const totalPaid = payments.filter(p => p.status === 'PAID').reduce((s, p) => s + p.amount, 0);
 
+  const pt = t.patients as typeof t.patients & {
+    tabs: { general: string; services: string; records: string; nurse: string; lab: string };
+    fields: { fullName: string; birthYear: string; phone: string; district: string; age: string; registered: string; totalPayment: string; operations: string };
+    sections: { services: string; records: string; nurseNotes: string; labTests: string; payments: string; admissions: string; appointments: string };
+  };
+
   const tabs: { key: Tab; label: string; icon: React.ReactNode; count?: number }[] = [
-    { key: 'info', label: 'Umumiy', icon: <User className="w-4 h-4" /> },
-    { key: 'services', label: 'Xizmatlar', icon: <CreditCard className="w-4 h-4" />, count: assignedServices.length },
-    { key: 'records', label: 'Tashxislar', icon: <Stethoscope className="w-4 h-4" />, count: medicalRecords.length },
-    { key: 'nurse', label: 'Hamshira', icon: <ClipboardList className="w-4 h-4" />, count: nurseNotes.length },
-    { key: 'lab', label: 'Laboratoriya', icon: <FlaskConical className="w-4 h-4" />, count: labTests.length },
+    { key: 'info', label: pt.tabs?.general ?? 'Umumiy', icon: <User className="w-4 h-4" /> },
+    { key: 'services', label: pt.tabs?.services ?? 'Xizmatlar', icon: <CreditCard className="w-4 h-4" />, count: assignedServices.length },
+    { key: 'records', label: pt.tabs?.records ?? 'Tashxislar', icon: <Stethoscope className="w-4 h-4" />, count: medicalRecords.length },
+    { key: 'nurse', label: pt.tabs?.nurse ?? 'Hamshira', icon: <ClipboardList className="w-4 h-4" />, count: nurseNotes.length },
+    { key: 'lab', label: pt.tabs?.lab ?? 'Laboratoriya', icon: <FlaskConical className="w-4 h-4" />, count: labTests.length },
   ];
 
   return (
@@ -754,6 +865,14 @@ export default function PatientDetailPage({ params }: PageProps) {
           <ArrowLeft className="w-4 h-4" /> {t.common.back}
         </button>
         <div className="flex items-center gap-2">
+          {fromQueue && (
+            <button
+              onClick={() => router.push('/doctor-queue')}
+              className="flex items-center gap-2 px-3 py-2 text-sm bg-green-600 text-white rounded-lg hover:bg-green-700"
+            >
+              <ArrowLeft className="w-4 h-4" /> Navbatga qaytish
+            </button>
+          )}
           <button onClick={openQr}
             className="flex items-center gap-2 px-3 py-2 text-sm border border-slate-200 rounded-lg hover:bg-slate-50 text-slate-700">
             <QrCode className="w-4 h-4" /> QR
@@ -782,7 +901,7 @@ export default function PatientDetailPage({ params }: PageProps) {
               {patient.lastName} {patient.firstName} {patient.fatherName}
             </h1>
             <p className="text-sm text-slate-500 mt-0.5">
-              {calcAge(patient.birthDate)} yosh • Ro'yxatdan o'tgan: {fmtDate(patient.createdAt)}
+              {calcAge(patient.birthDate)} {pt.fields?.age ?? 'yosh'} • {pt.fields?.registered ?? "Ro'yxatdan o'tgan"}: {fmtDate(patient.createdAt)}
             </p>
             <div className="flex flex-wrap gap-4 mt-3 text-sm text-slate-600">
               <span className="flex items-center gap-1.5"><Phone className="w-3.5 h-3.5" />{patient.phone}</span>
@@ -790,11 +909,13 @@ export default function PatientDetailPage({ params }: PageProps) {
               {patient.district && <span className="flex items-center gap-1.5"><MapPin className="w-3.5 h-3.5" />{patient.district}</span>}
             </div>
           </div>
-          <div className="text-right flex-shrink-0">
-            <div className="text-xs text-slate-500">Jami to&apos;lov</div>
-            <div className="text-lg font-bold text-green-700">{fmtMoney(totalPaid)}</div>
-            <div className="text-xs text-slate-400 mt-0.5">{payments.length} ta operatsiya</div>
-          </div>
+          {canSeePrices && (
+            <div className="text-right flex-shrink-0">
+              <div className="text-xs text-slate-500">{pt.fields?.totalPayment ?? "Jami to'lov"}</div>
+              <div className="text-lg font-bold text-green-700">{fmtMoney(totalPaid)}</div>
+              <div className="text-xs text-slate-400 mt-0.5">{payments.length} {pt.fields?.operations ?? 'ta operatsiya'}</div>
+            </div>
+          )}
         </div>
       </div>
 
@@ -817,17 +938,17 @@ export default function PatientDetailPage({ params }: PageProps) {
         ))}
       </div>
 
-      {/* ── TAB: UMUMIY ──────────────────────────────────────────────────── */}
+      {/* -- TAB: UMUMIY ---------------------------------------------------- */}
       {activeTab === 'info' && (
         <div className="space-y-4">
           <div className="bg-white rounded-xl border border-slate-200 divide-y divide-slate-100">
-            <InfoRow icon={<User className="w-4 h-4 text-slate-400" />} label="To'liq ismi"
+            <InfoRow icon={<User className="w-4 h-4 text-slate-400" />} label={pt.fields?.fullName ?? "To'liq ismi"}
               value={`${patient.lastName} ${patient.firstName} ${patient.fatherName}`} />
-            <InfoRow icon={<Calendar className="w-4 h-4 text-slate-400" />} label="Tug'ilgan yil"
-              value={`${new Date(patient.birthDate).getFullYear()} (${calcAge(patient.birthDate)} yosh)`} />
-            <InfoRow icon={<Phone className="w-4 h-4 text-slate-400" />} label="Telefon" value={patient.phone} />
+            <InfoRow icon={<Calendar className="w-4 h-4 text-slate-400" />} label={pt.fields?.birthYear ?? "Tug'ilgan yil"}
+              value={`${new Date(patient.birthDate).getFullYear()} (${calcAge(patient.birthDate)} ${pt.fields?.age ?? 'yosh'})`} />
+            <InfoRow icon={<Phone className="w-4 h-4 text-slate-400" />} label={pt.fields?.phone ?? 'Telefon'} value={patient.phone} />
             {patient.jshshir && <InfoRow icon={<Hash className="w-4 h-4 text-slate-400" />} label="JSHSHIR" value={patient.jshshir} />}
-            {patient.district && <InfoRow icon={<MapPin className="w-4 h-4 text-slate-400" />} label="Tuman" value={patient.district} />}
+            {patient.district && <InfoRow icon={<MapPin className="w-4 h-4 text-slate-400" />} label={pt.fields?.district ?? 'Tuman'} value={patient.district} />}
             {patient.houseNumber && <InfoRow icon={<MapPin className="w-4 h-4 text-slate-400" />} label="Uy raqami" value={patient.houseNumber} />}
             {patient.telegramChatId && <InfoRow icon={<MessageCircle className="w-4 h-4 text-slate-400" />} label="Telegram" value={patient.telegramChatId} />}
           </div>
@@ -871,10 +992,58 @@ export default function PatientDetailPage({ params }: PageProps) {
               </div>
             </div>
           )}
+
+          {/* -- FAOLIYAT TARIXI (TIMELINE) -- */}
+          <div className="bg-white rounded-xl border border-slate-200 p-4">
+            <div className="flex items-center gap-2 text-slate-700 font-medium mb-4">
+              <Activity className="w-4 h-4 text-slate-400" /> Faoliyat tarixi
+            </div>
+            {timelineLoading ? (
+              <div className="flex justify-center py-6"><Loader2 className="w-5 h-5 animate-spin text-blue-400" /></div>
+            ) : timeline.length === 0 ? (
+              <p className="text-sm text-slate-400 text-center py-4">Hali hech qanday faoliyat yo&apos;q</p>
+            ) : (
+              <div className="relative">
+                <div className="absolute left-3 top-0 bottom-0 w-0.5 bg-slate-100" />
+                <div className="space-y-3">
+                  {timeline.map(ev => {
+                    const dotColors: Record<string, string> = {
+                      blue: 'bg-blue-500', slate: 'bg-slate-400', yellow: 'bg-yellow-500',
+                      green: 'bg-green-500', indigo: 'bg-indigo-500', purple: 'bg-purple-500',
+                      teal: 'bg-teal-500', pink: 'bg-pink-500', orange: 'bg-orange-500',
+                      cyan: 'bg-cyan-500',
+                    };
+                    const dot = dotColors[ev.color] ?? 'bg-slate-400';
+                    const d = new Date(ev.time);
+                    const timeStr = d.toLocaleString('uz-UZ', {
+                      day: '2-digit', month: '2-digit', year: 'numeric',
+                      hour: '2-digit', minute: '2-digit',
+                    });
+                    return (
+                      <div key={ev.id} className="flex gap-4 pl-1">
+                        <div className="flex-shrink-0 w-6 flex items-start justify-center pt-1">
+                          <span className={`w-2.5 h-2.5 rounded-full ${dot} ring-2 ring-white z-10`} />
+                        </div>
+                        <div className="flex-1 pb-3">
+                          <div className="flex items-start justify-between gap-2">
+                            <span className="text-sm font-medium text-slate-800">{ev.title}</span>
+                            <span className="text-xs text-slate-400 whitespace-nowrap flex-shrink-0">{timeStr}</span>
+                          </div>
+                          {ev.detail && (
+                            <p className="text-xs text-slate-500 mt-0.5 leading-relaxed">{ev.detail}</p>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+          </div>
         </div>
       )}
 
-      {/* ── TAB: XIZMATLAR ───────────────────────────────────────────────── */}
+      {/* -- TAB: XIZMATLAR ------------------------------------------------- */}
       {activeTab === 'services' && (
         <div className="flex gap-4">
         {/* Left: main list */}
@@ -917,7 +1086,13 @@ export default function PatientDetailPage({ params }: PageProps) {
                       </p>
                     </div>
                     <div className="flex items-center gap-2 ml-3">
-                      <span className="text-sm font-semibold text-slate-800">{fmtMoney(Number(svc.price))}</span>
+                      {canSeePrices ? (
+                        <span className="text-sm font-semibold text-slate-800">{fmtMoney(Number(svc.price))}</span>
+                      ) : (
+                        <span className="text-xs font-medium bg-green-100 text-green-700 px-2 py-0.5 rounded-full">
+                          {svc.isPaid ? "To'langan" : "Kutilmoqda"}
+                        </span>
+                      )}
                       {!svc.isPaid && canManageServices && (
                         <button
                           type="button"
@@ -941,7 +1116,7 @@ export default function PatientDetailPage({ params }: PageProps) {
                   </div>
                 ))}
                 {/* Jami */}
-                {assignedServices.some(s => s.isPaid) && (
+                {canSeePrices && assignedServices.some(s => s.isPaid) && (
                   <div className="flex justify-between text-sm font-semibold pt-3 border-t border-slate-200">
                     <span className="text-slate-600">Jami to&apos;langan:</span>
                     <span className="text-green-700">
@@ -978,7 +1153,8 @@ export default function PatientDetailPage({ params }: PageProps) {
           )}
         </div>{/* end left */}
 
-        {/* ── Right panel: To'lov tayyorlash ─────────────────────────── */}
+        {/* -- Right panel: To'lov tayyorlash (faqat ADMIN/RECEPTIONIST) -- */}
+        {canSeePrices && (
         <div className="w-72 flex-shrink-0 flex flex-col gap-3">
           {/* Chek chiqarish */}
           <button
@@ -1057,10 +1233,11 @@ export default function PatientDetailPage({ params }: PageProps) {
             </button>
           )}
         </div>
-        </div>
+        )}
+      </div>
       )}
 
-      {/* ── PAY MODAL ───────────────────────────────────────────────────── */}
+      {/* -- PAY MODAL ----------------------------------------------------- */}
       {showPayModal && payModalService && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
           <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm p-6">
@@ -1122,7 +1299,7 @@ export default function PatientDetailPage({ params }: PageProps) {
         </div>
       )}
 
-      {/* ── BULK PAY MODAL ──────────────────────────────────────────────── */}
+      {/* -- BULK PAY MODAL ------------------------------------------------ */}
       {showBulkPayModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
           <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm p-6">
@@ -1174,9 +1351,9 @@ export default function PatientDetailPage({ params }: PageProps) {
             </div>
           </div>
         </div>
-      )}
+        )}
 
-      {/* ── ASSIGN SERVICE MODAL ─────────────────────────────────────────── */}
+      {/* -- ASSIGN SERVICE MODAL ------------------------------------------- */}
       {showAssignModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
           <div className="bg-white rounded-2xl shadow-xl w-full max-w-md p-6">
@@ -1193,7 +1370,7 @@ export default function PatientDetailPage({ params }: PageProps) {
               <select
                 value={assignCatId}
                 onChange={e => { setAssignCatId(e.target.value); setAssignItemId(''); }}
-                className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
+                className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm text-slate-900 bg-white focus:outline-none focus:ring-2 focus:ring-blue-400"
               >
                 <option value="">— Bo&apos;lim tanlang —</option>
                 {serviceCategories.map(c => (
@@ -1209,7 +1386,7 @@ export default function PatientDetailPage({ params }: PageProps) {
                 <select
                   value={assignItemId}
                   onChange={e => setAssignItemId(e.target.value)}
-                  className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
+                  className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm text-slate-900 bg-white focus:outline-none focus:ring-2 focus:ring-blue-400"
                 >
                   <option value="">— Xizmat tanlang —</option>
                   {visibleItems.map(i => (
@@ -1226,11 +1403,28 @@ export default function PatientDetailPage({ params }: PageProps) {
                 <select
                   value={assignDoctorId}
                   onChange={e => setAssignDoctorId(e.target.value)}
-                  className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
+                  className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm text-slate-900 bg-white focus:outline-none focus:ring-2 focus:ring-blue-400"
                 >
                   <option value="">— Shifokorni tanlang —</option>
                   {doctorList.map(d => (
                     <option key={d.id} value={d.id}>{d.name}</option>
+                  ))}
+                </select>
+              </div>
+            )}
+
+            {/* Barcha kategoriyalar uchun xodim tanlash (doktor/ambulator emas) */}
+            {!isDoctorCat && !isAmbulatoryCat && assignCat && (
+              <div className="mb-3">
+                <label className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1 block">Xodim (ixtiyoriy)</label>
+                <select
+                  value={assignStaffId}
+                  onChange={e => setAssignStaffId(e.target.value)}
+                  className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm text-slate-900 bg-white focus:outline-none focus:ring-2 focus:ring-blue-400"
+                >
+                  <option value="">— Xodimni tanlang —</option>
+                  {allStaffList.map(s => (
+                    <option key={s.id} value={s.id}>{s.name}</option>
                   ))}
                 </select>
               </div>
@@ -1259,7 +1453,7 @@ export default function PatientDetailPage({ params }: PageProps) {
                   <select
                     value={ambRoomId}
                     onChange={e => { setAmbRoomId(e.target.value); setAmbBedId(''); }}
-                    className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
+                    className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm text-slate-900 bg-white focus:outline-none focus:ring-2 focus:ring-teal-500"
                   >
                     <option value="">— Xona tanlang —</option>
                     {ambRooms.map(r => (
@@ -1286,7 +1480,7 @@ export default function PatientDetailPage({ params }: PageProps) {
                       <select
                         value={ambBedId}
                         onChange={e => setAmbBedId(e.target.value)}
-                        className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
+                        className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm text-slate-900 bg-white focus:outline-none focus:ring-2 focus:ring-teal-500"
                       >
                         <option value="">— To&apos;shak tanlang —</option>
                         {ambBeds.map(b => (
@@ -1330,7 +1524,7 @@ export default function PatientDetailPage({ params }: PageProps) {
         </div>
       )}
 
-      {/* ── TAB: TASHXISLAR ──────────────────────────────────────────────── */}
+      {/* -- TAB: TASHXISLAR ------------------------------------------------ */}
       {activeTab === 'records' && (
         <div className="space-y-4">
           {isDoctor && (
@@ -1399,14 +1593,24 @@ export default function PatientDetailPage({ params }: PageProps) {
         </div>
       )}
 
-      {/* ── TAB: HAMSHIRA QAYDLARI ────────────────────────────────────────── */}
+      {/* -- TAB: HAMSHIRA QAYDLARI ------------------------------------------ */}
       {activeTab === 'nurse' && (
         <div className="space-y-4">
           {isNurse && (
-            <div className="flex justify-end">
-              <button onClick={() => setShowNurseModal(true)}
-                className="flex items-center gap-2 px-4 py-2 bg-teal-600 hover:bg-teal-700 text-white text-sm rounded-lg">
-                <Plus className="w-4 h-4" /> Qayд qo&apos;shish
+            <div className="flex items-center justify-between">
+              {urlNoteType === 'AMBULATORY' && (
+                <span className="text-xs font-medium bg-teal-100 text-teal-800 px-3 py-1.5 rounded-full flex items-center gap-1.5">
+                  <span className="w-1.5 h-1.5 rounded-full bg-teal-500 inline-block" />
+                  Ambulator bo&apos;limdan kirildi
+                </span>
+              )}
+              <button
+                onClick={() => {
+                  setNurseForm(f => ({ ...f, noteType: urlNoteType }));
+                  setShowNurseModal(true);
+                }}
+                className="ml-auto flex items-center gap-2 px-4 py-2 bg-teal-600 hover:bg-teal-700 text-white text-sm rounded-lg">
+                <Plus className="w-4 h-4" /> Qayd qo&apos;shish
               </button>
             </div>
           )}
@@ -1414,10 +1618,13 @@ export default function PatientDetailPage({ params }: PageProps) {
           {nurseNotes.length === 0 ? <Empty text="Hamshira qaydlari yo'q" /> : nurseNotes.map(n => (
             <div key={n.id} className="bg-white rounded-xl border border-slate-200 p-4">
               <div className="flex justify-between items-start mb-2">
-                <div>
+                <div className="flex items-center gap-2 flex-wrap">
                   <span className="text-sm font-semibold text-slate-800">{n.procedure}</span>
+                  {n.noteType === 'AMBULATORY' && (
+                    <span className="text-xs font-medium bg-teal-100 text-teal-700 px-2 py-0.5 rounded-full">Ambulator</span>
+                  )}
                   {n.admission && (
-                    <span className="text-xs text-slate-500 ml-2">
+                    <span className="text-xs text-slate-500">
                       ({n.admission.bed.room.floor}-qavat, {n.admission.bed.room.roomNumber}-xona)
                     </span>
                   )}
@@ -1445,9 +1652,20 @@ export default function PatientDetailPage({ params }: PageProps) {
         </div>
       )}
 
-      {/* ── TAB: LABORATORIYA ─────────────────────────────────────────────── */}
+      {/* -- TAB: LABORATORIYA ----------------------------------------------- */}
       {activeTab === 'lab' && (
         <div className="space-y-4">
+          {canOrderLabTest && (
+            <div className="flex justify-end">
+              <button
+                onClick={openPatientLabOrderModal}
+                className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors"
+              >
+                <Plus className="w-4 h-4" />
+                Tahlil buyurtma
+              </button>
+            </div>
+          )}
           {labTests.length === 0 ? <Empty text="Laboratoriya tahlillari yo'q" /> : labTests.map(lt => (
             <div key={lt.id} className="bg-white rounded-xl border border-slate-200 overflow-hidden">
               <div className="px-4 py-3 bg-slate-50 border-b border-slate-100 flex justify-between items-center">
@@ -1501,7 +1719,120 @@ export default function PatientDetailPage({ params }: PageProps) {
         </div>
       )}
 
-      {/* ── QR Modal ──────────────────────────────────────────────────────── */}
+      {/* -- Lab Order Modal ------------------------------------------------- */}
+      {showPatientLabOrderModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-3xl flex flex-col" style={{ maxHeight: '90vh' }}>
+            <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 flex-shrink-0">
+              <h2 className="text-lg font-semibold text-slate-800">Tahlil buyurtma</h2>
+              <button onClick={() => setShowPatientLabOrderModal(false)} className="p-1.5 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-md transition-colors">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <form onSubmit={handlePatientLabOrderSubmit} className="flex flex-col flex-1 min-h-0">
+              <div className="px-6 py-3 border-b border-slate-100 flex-shrink-0 bg-blue-50">
+                <p className="text-sm font-medium text-slate-700">
+                  Bemor: <span className="font-bold text-slate-900">{patient?.lastName} {patient?.firstName} {patient?.fatherName}</span>
+                </p>
+              </div>
+              {patientLabOrderError && (
+                <div className="px-6 pt-3 flex-shrink-0">
+                  <div className="flex items-center gap-2 text-red-600 bg-red-50 border border-red-200 rounded-lg px-4 py-3 text-sm">
+                    <AlertCircle className="w-4 h-4 flex-shrink-0" />
+                    {patientLabOrderError}
+                  </div>
+                </div>
+              )}
+              <div className="overflow-y-auto flex-1 px-6 py-4">
+                <div className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-3">
+                  Tahlil turini tanlang <span className="text-red-500">*</span>
+                  {patientLabSelectedIds.length > 0 && (
+                    <span className="ml-2 normal-case font-normal text-blue-600">({patientLabSelectedIds.length} ta tanlandi)</span>
+                  )}
+                </div>
+                {patientLabAllTypes.length === 0 ? (
+                  <div className="flex justify-center py-8"><Loader2 className="w-6 h-6 animate-spin text-blue-500" /></div>
+                ) : (() => {
+                  const groups: Record<string, LabOrderType[]> = {};
+                  for (const tt of patientLabAllTypes) {
+                    const cat = tt.category ?? 'Boshqalar';
+                    if (!groups[cat]) groups[cat] = [];
+                    groups[cat].push(tt);
+                  }
+                  return Object.entries(groups).map(([cat, items]) => {
+                    const isOpen = patientLabOpenGroups.has(cat);
+                    const groupSelected = items.filter(it => patientLabSelectedIds.includes(it.id));
+                    return (
+                      <div key={cat} className="mb-2 border border-slate-200 rounded-xl overflow-hidden">
+                        <button type="button" onClick={() => setPatientLabOpenGroups(prev => { const n = new Set(prev); if (n.has(cat)) n.delete(cat); else n.add(cat); return n; })} className="w-full flex items-center justify-between px-4 py-3 bg-slate-50 hover:bg-slate-100 transition-colors text-left">
+                          <div className="flex items-center gap-3">
+                            <span className="font-bold text-slate-800 text-sm uppercase tracking-wide">{cat}</span>
+                            {groupSelected.length > 0 && <span className="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full font-semibold">{groupSelected.length} ta</span>}
+                          </div>
+                          <svg className={`w-4 h-4 text-slate-400 transition-transform ${isOpen ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
+                        </button>
+                        {isOpen && (
+                          <div className="divide-y divide-slate-50">
+                            {items.map(tt => {
+                              const checked = patientLabSelectedIds.includes(tt.id);
+                              return (
+                                <label key={tt.id} className={`flex items-center gap-3 px-4 py-2.5 cursor-pointer hover:bg-slate-50 transition-colors ${checked ? 'bg-blue-50/50' : ''}`}>
+                                  <input type="checkbox" checked={checked} onChange={() => setPatientLabSelectedIds(prev => prev.includes(tt.id) ? prev.filter(x => x !== tt.id) : [...prev, tt.id])} className="w-4 h-4 accent-blue-600 flex-shrink-0" />
+                                  <span className="flex-1 text-sm text-slate-800">{tt.name}</span>
+                                  <span className="text-sm text-slate-500 font-medium">{tt.price.toLocaleString()} so&apos;m</span>
+                                </label>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  });
+                })()}
+              </div>
+              <div className="px-6 py-4 border-t border-slate-100 flex-shrink-0">
+                {patientLabSelectedIds.length > 0 && (() => {
+                  const groups: Record<string, { name: string; total: number }> = {};
+                  for (const id of patientLabSelectedIds) {
+                    const tt = patientLabAllTypes.find(x => x.id === id);
+                    if (!tt) continue;
+                    const cat = tt.category ?? 'Boshqalar';
+                    if (!groups[cat]) groups[cat] = { name: cat, total: 0 };
+                    groups[cat].total += Number(tt.price);
+                  }
+                  const grandTotal = Object.values(groups).reduce((s, g) => s + g.total, 0);
+                  const groupEntries = Object.values(groups);
+                  return (
+                    <div className="mb-4 bg-slate-50 rounded-xl px-4 py-3 space-y-1.5">
+                      {groupEntries.map(g => (
+                        <div key={g.name} className="flex justify-between text-sm text-slate-600">
+                          <span>{g.name}</span>
+                          <span className="font-medium">{g.total.toLocaleString()} so&apos;m</span>
+                        </div>
+                      ))}
+                      {groupEntries.length > 1 && (
+                        <div className="flex justify-between text-sm font-bold text-slate-800 pt-1.5 border-t border-slate-200">
+                          <span>Jami</span>
+                          <span>{grandTotal.toLocaleString()} so&apos;m</span>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })()}
+                <div className="flex items-center justify-end gap-3">
+                  <button type="button" onClick={() => setShowPatientLabOrderModal(false)} className="px-4 py-2 text-sm font-medium text-slate-600 hover:text-slate-800 hover:bg-slate-100 rounded-lg transition-colors">Bekor</button>
+                  <button type="submit" disabled={patientLabOrderSaving || patientLabSelectedIds.length === 0} className="flex items-center gap-2 px-5 py-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-60 disabled:cursor-not-allowed text-white text-sm font-medium rounded-lg transition-colors">
+                    {patientLabOrderSaving && <Loader2 className="w-4 h-4 animate-spin" />}
+                    Buyurtma berish ({patientLabSelectedIds.length})
+                  </button>
+                </div>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* -- QR Modal -------------------------------------------------------- */}
       {showQr && (
         <Modal title="Bemor QR Kodi" onClose={() => setShowQr(false)}>
           <div className="flex flex-col items-center gap-4 py-4">
@@ -1522,7 +1853,7 @@ export default function PatientDetailPage({ params }: PageProps) {
         </Modal>
       )}
 
-      {/* ── Edit Modal ────────────────────────────────────────────────────── */}
+      {/* -- Edit Modal ------------------------------------------------------ */}
       {editing && editForm && (
         <Modal title={t.patients.editPatient} onClose={() => setEditing(false)}>
           <div className="grid grid-cols-2 gap-4">
@@ -1573,7 +1904,7 @@ export default function PatientDetailPage({ params }: PageProps) {
         </Modal>
       )}
 
-      {/* ── Medical Record Modal ──────────────────────────────────────────── */}
+      {/* -- Medical Record Modal -------------------------------------------- */}
       {showRecordModal && (
         <Modal title="Tashxis qo'shish" onClose={() => setShowRecordModal(false)}>
           <div className="space-y-4">
@@ -1596,6 +1927,77 @@ export default function PatientDetailPage({ params }: PageProps) {
                 className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-900 bg-white focus:outline-none focus:ring-2 focus:ring-blue-400 resize-none" />
             </div>
           </div>
+          {/* Dori yozish */}
+          <div className="border-t border-slate-100 pt-4">
+            <div className="flex items-center justify-between mb-3">
+              <span className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Retsept — Dorilar</span>
+              <button
+                type="button"
+                onClick={() => setRecordForm(f => ({
+                  ...f,
+                  prescriptions: [...f.prescriptions, { medicineName: '', dosage: '', duration: '', instructions: '' }]
+                }))}
+                className="flex items-center gap-1 text-xs text-blue-600 hover:text-blue-800"
+              >
+                <Plus className="w-3.5 h-3.5" /> Dori qo&apos;shish
+              </button>
+            </div>
+            {recordForm.prescriptions.map((rx, idx) => (
+              <div key={idx} className="mb-3 p-3 border border-slate-200 rounded-lg space-y-2 bg-blue-50/40">
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    placeholder="Dori nomi *"
+                    value={rx.medicineName}
+                    onChange={e => setRecordForm(f => ({
+                      ...f,
+                      prescriptions: f.prescriptions.map((r, i) => i === idx ? { ...r, medicineName: e.target.value } : r)
+                    }))}
+                    className="flex-1 border border-slate-200 rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-blue-400"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setRecordForm(f => ({ ...f, prescriptions: f.prescriptions.filter((_, i) => i !== idx) }))}
+                    className="text-red-400 hover:text-red-600 px-2"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <input
+                    type="text"
+                    placeholder="Dozasi * (masalan: 1 x 3)"
+                    value={rx.dosage}
+                    onChange={e => setRecordForm(f => ({
+                      ...f,
+                      prescriptions: f.prescriptions.map((r, i) => i === idx ? { ...r, dosage: e.target.value } : r)
+                    }))}
+                    className="border border-slate-200 rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-blue-400"
+                  />
+                  <input
+                    type="text"
+                    placeholder="Muddat * (masalan: 5 kun)"
+                    value={rx.duration}
+                    onChange={e => setRecordForm(f => ({
+                      ...f,
+                      prescriptions: f.prescriptions.map((r, i) => i === idx ? { ...r, duration: e.target.value } : r)
+                    }))}
+                    className="border border-slate-200 rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-blue-400"
+                  />
+                </div>
+                <input
+                  type="text"
+                  placeholder="Ko'rsatma (ixtiyoriy)"
+                  value={rx.instructions}
+                  onChange={e => setRecordForm(f => ({
+                    ...f,
+                    prescriptions: f.prescriptions.map((r, i) => i === idx ? { ...r, instructions: e.target.value } : r)
+                  }))}
+                  className="w-full border border-slate-200 rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-blue-400"
+                />
+              </div>
+            ))}
+          </div>
           <div className="flex justify-end gap-3 mt-6">
             <button onClick={() => setShowRecordModal(false)}
               className="px-4 py-2 border border-slate-200 text-slate-600 rounded-lg text-sm">
@@ -1610,9 +2012,9 @@ export default function PatientDetailPage({ params }: PageProps) {
         </Modal>
       )}
 
-      {/* ── Nurse Note Modal ──────────────────────────────────────────────── */}
+      {/* -- Nurse Note Modal ------------------------------------------------ */}
       {showNurseModal && (
-        <Modal title="Hamshira qaydini qo'shish" onClose={() => setShowNurseModal(false)}>
+        <Modal title={nurseForm.noteType === 'AMBULATORY' ? "Ambulator qayd qo'shish" : "Hamshira qaydini qo'shish"} onClose={() => setShowNurseModal(false)}>
           <div className="space-y-4">
             <div>
               <label className="block text-xs font-medium text-slate-600 mb-1">Muolaja nomi *</label>
@@ -1621,57 +2023,12 @@ export default function PatientDetailPage({ params }: PageProps) {
                 className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500" />
             </div>
 
-            {admissions.filter(a => !a.dischargeDate).length > 0 && (
-              <div>
-                <label className="block text-xs font-medium text-slate-600 mb-1">Qaysi xona (ixtiyoriy)</label>
-                <select value={nurseForm.admissionId}
-                  onChange={e => setNurseForm(f => ({ ...f, admissionId: e.target.value }))}
-                  className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500">
-                  <option value="">— Tanlamang —</option>
-                  {admissions.filter(a => !a.dischargeDate).map(a => (
-                    <option key={a.id} value={a.id}>
-                      {a.admissionType === 'AMBULATORY' ? 'Ambulator' : 'Statsionar'} —{' '}
-                      {a.bed.room.floor}-qavat, {a.bed.room.roomNumber}-xona
-                    </option>
-                  ))}
-                </select>
-              </div>
-            )}
-
             <div>
               <label className="block text-xs font-medium text-slate-600 mb-1">Izoh</label>
-              <textarea value={nurseForm.notes} rows={2}
+              <textarea value={nurseForm.notes} rows={3}
                 onChange={e => setNurseForm(f => ({ ...f, notes: e.target.value }))}
                 placeholder="Muolaja haqida qo'shimcha ma'lumot..."
                 className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500" />
-            </div>
-
-            {/* Dorilar */}
-            <div>
-              <div className="flex justify-between items-center mb-2">
-                <label className="text-xs font-medium text-slate-600">Ishlatilgan dorilar</label>
-                <button onClick={addMedicineRow}
-                  className="text-xs text-teal-600 hover:text-teal-700 flex items-center gap-1">
-                  <Plus className="w-3 h-3" /> Qo&apos;shish
-                </button>
-              </div>
-              {nurseForm.medicines.map((m, i) => (
-                <div key={i} className="flex gap-2 mb-2">
-                  <input type="text" value={m.name} placeholder="Dori nomi"
-                    onChange={e => updateMedicine(i, 'name', e.target.value)}
-                    className="flex-1 border border-slate-200 rounded-lg px-2 py-1.5 text-sm" />
-                  <input type="number" value={m.quantity} min={1}
-                    onChange={e => updateMedicine(i, 'quantity', Number(e.target.value))}
-                    className="w-16 border border-slate-200 rounded-lg px-2 py-1.5 text-sm" />
-                  <input type="text" value={m.unit} placeholder="ml"
-                    onChange={e => updateMedicine(i, 'unit', e.target.value)}
-                    className="w-16 border border-slate-200 rounded-lg px-2 py-1.5 text-sm" />
-                  <button onClick={() => removeMedicine(i)}
-                    className="p-1.5 text-red-400 hover:text-red-600">
-                    <X className="w-3.5 h-3.5" />
-                  </button>
-                </div>
-              ))}
             </div>
           </div>
 
@@ -1692,7 +2049,7 @@ export default function PatientDetailPage({ params }: PageProps) {
   );
 }
 
-// ─── UI helpers ───────────────────────────────────────────────────────────────
+// --- UI helpers ---------------------------------------------------------------
 
 function InfoRow({ icon, label, value }: { icon: React.ReactNode; label: string; value: string }) {
   return (
@@ -1758,4 +2115,50 @@ function printPrescription(rx: { medicineName: string; dosage: string; duration:
     <p style="margin-top:24px;color:#888;font-size:12px">Sana: ${new Date(rx.createdAt).toLocaleDateString('uz-UZ')}</p>
     </body></html>`);
   win.print(); win.close();
+}
+
+function printPrescriptions(
+  patient: { firstName: string; lastName: string; fatherName: string; birthDate: string },
+  rxList: { medicineName: string; dosage: string; duration: string; instructions: string }[]
+) {
+  const win = window.open('', '_blank', 'width=400,height=600');
+  if (!win) return;
+  const today = new Date().toLocaleDateString('uz-UZ');
+  const patientName = `${patient.lastName} ${patient.firstName} ${patient.fatherName}`;
+  const age = new Date().getFullYear() - new Date(patient.birthDate).getFullYear();
+
+  const rows = rxList.map((rx, i) => `
+    <div style="margin-bottom:10px;padding-bottom:10px;border-bottom:1px dashed #000;">
+      <b>${i + 1}. ${rx.medicineName}</b><br/>
+      Dozasi: ${rx.dosage}<br/>
+      Muddat: ${rx.duration}<br/>
+      ${rx.instructions ? `Ko'rsatma: ${rx.instructions}<br/>` : ''}
+    </div>
+  `).join('');
+
+  win.document.write(`<!DOCTYPE html><html><head>
+    <meta charset="utf-8"/>
+    <style>
+      * { color: #000 !important; background: transparent !important; }
+      body { font-family: 'Courier New', monospace; font-size: 12px; padding: 8px; margin: 0; width: 72mm; }
+      h2 { font-size: 14px; text-align: center; margin: 0 0 8px; }
+      .center { text-align: center; }
+      .line { border-top: 1px dashed #000; margin: 6px 0; }
+      @media print { body { width: 72mm; } }
+    </style>
+  </head><body>
+    <h2>BOLAJON KLINIKASI</h2>
+    <div class="center" style="font-size:11px;">RETSEPT</div>
+    <div class="line"></div>
+    <div>Bemor: <b>${patientName}</b></div>
+    <div>Yosh: ${age}</div>
+    <div>Sana: ${today}</div>
+    <div class="line"></div>
+    ${rows}
+    <div class="line"></div>
+    <div class="center" style="font-size:10px;">Shifokor imzosi: ___________</div>
+  </body></html>`);
+  win.document.close();
+  win.focus();
+  setTimeout(() => { win.print(); win.close(); }, 300);
 }

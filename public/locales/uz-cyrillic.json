@@ -44,13 +44,14 @@
   "nav": {
     "dashboard": "Бош саҳифа",
     "patients": "Беморлар",
-    "appointments": "Учрашувлар",
+    "appointments": "Қабуллар",
     "queue": "Навбат",
     "rooms": "Хоналар",
     "admissions": "Стационар",
     "payments": "Тўловлар",
     "lab": "Лаборатория",
     "pharmacy": "Дорихона",
+    "expenses": "Харажатлар",
     "staff": "Ходимлар",
     "schedule": "Иш жадвали",
     "reports": "Ҳисоботлар",
@@ -63,7 +64,8 @@
     "ambulatory": "Амбулатор",
     "services": "Хизматлар",
     "attendance": "Даvomat",
-    "doctorQueue": "Doktor navbati"
+    "doctorQueue": "Mutaxassis navbati",
+    "tasks": "Vazifalar"
   },
   "dashboard": {
     "title": "Бош саҳифа",
@@ -101,11 +103,37 @@
     "fio": "Ф.И.О.",
     "totalPatients": "та бемор",
     "deleteConfirm": "Ушбу беморни ўчиришни тасдиқлайсизми?",
-    "notFound": "Бемор топилмади"
+    "notFound": "Бемор топилмади",
+    "tabs": {
+      "general": "Умумий",
+      "services": "Хизматлар",
+      "records": "Ташхислар",
+      "nurse": "Ҳамшира",
+      "lab": "Лаборатория"
+    },
+    "fields": {
+      "fullName": "Тўлиқ исми",
+      "birthYear": "Туғилган йил",
+      "phone": "Телефон",
+      "district": "Туман",
+      "age": "ёш",
+      "registered": "Рўйхатдан ўтган",
+      "totalPayment": "Жами тўлов",
+      "operations": "та операция"
+    },
+    "sections": {
+      "services": "Хизматлар",
+      "records": "Тиббий ёзувлар",
+      "nurseNotes": "Ҳамшира қайдлари",
+      "labTests": "Лаборатория таҳлиллари",
+      "payments": "Тўловлар",
+      "admissions": "Стационар",
+      "appointments": "Қабуллар"
+    }
   },
   "appointments": {
-    "title": "Учрашувлар",
-    "addAppointment": "Учрашув қўшиш",
+    "title": "Қабуллар",
+    "addAppointment": "Қабул қўшиш",
     "patient": "Бемор",
     "doctor": "Шифокор",
     "type": "Тури",
@@ -214,7 +242,8 @@
     "RECEPTIONIST": "Қабулхона",
     "SPEECH_THERAPIST": "Логопед",
     "MASSAGE_THERAPIST": "Массажчи",
-    "SANITARY_WORKER": "Санитар"
+    "SANITARY_WORKER": "Санитар",
+    "PHARMACIST": "Фармасевт"
   },
   "rooms": {
     "title": "Хоналар",
@@ -528,7 +557,8 @@
     "FOLLOW_UP": "Такрорий қабул",
     "SPEECH_THERAPY": "Логопедия",
     "MASSAGE": "Массаж",
-    "LAB_TEST": "Лаборатория"
+    "LAB_TEST": "Лаборатория",
+    "PHYSIOTHERAPY": "Физиотерапия"
   },
   "queueDisplay": {
     "title": "Болажон Клиникаси — Навбат",

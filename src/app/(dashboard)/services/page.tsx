@@ -16,7 +16,7 @@ import {
   FlaskConical,
 } from 'lucide-react';
 
-// ─── Types ────────────────────────────────────────────────────────────────────
+// --- Types --------------------------------------------------------------------
 
 interface ServiceItem {
   id: string;
@@ -51,13 +51,13 @@ function isLabLinked(name: string) {
   return LAB_KEYWORDS.some((k) => lower.includes(k));
 }
 
-// ─── Helpers ──────────────────────────────────────────────────────────────────
+// --- Helpers ------------------------------------------------------------------
 
 function fmt(n: number) {
   return n.toLocaleString('uz-UZ') + ' so\'m';
 }
 
-// ─── Simple Select Dropdown ───────────────────────────────────────────────────
+// --- Simple Select Dropdown ---------------------------------------------------
 
 function Dropdown({
   label,
@@ -94,7 +94,7 @@ function Dropdown({
   );
 }
 
-// ─── Confirm Modal ────────────────────────────────────────────────────────────
+// --- Confirm Modal ------------------------------------------------------------
 
 function ConfirmModal({
   message,
@@ -133,7 +133,7 @@ function ConfirmModal({
   );
 }
 
-// ─── Main ─────────────────────────────────────────────────────────────────────
+// --- Main ---------------------------------------------------------------------
 
 export default function ServicesPage() {
   const { data: session } = useSession();
@@ -141,14 +141,14 @@ export default function ServicesPage() {
 
   const [tab, setTab] = useState<'calculator' | 'manage'>('calculator');
 
-  // ── Confirm dialog ───────────────────────────────────────────────────────────
+  // -- Confirm dialog -----------------------------------------------------------
   const [confirmState, setConfirmState] = useState<{ message: string; onConfirm: () => void } | null>(null);
 
   function showConfirm(message: string, onConfirm: () => void) {
     setConfirmState({ message, onConfirm });
   }
 
-  // ── Data ────────────────────────────────────────────────────────────────────
+  // -- Data --------------------------------------------------------------------
   const [categories, setCategories] = useState<ServiceCategory[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -167,17 +167,17 @@ export default function ServicesPage() {
 
   useEffect(() => { loadCategories(); }, [loadCategories]);
 
-  // ── Lab test types (loaded when lab category selected) ───────────────────────
+  // -- Lab test types (loaded when lab category selected) -----------------------
   const [labTestTypes, setLabTestTypes] = useState<LabTestType[]>([]);
   const [labLoading, setLabLoading] = useState(false);
 
-  // ── Calculator state ─────────────────────────────────────────────────────────
+  // -- Calculator state ---------------------------------------------------------
   const [selCategoryId, setSelCategoryId] = useState('');
   const [selectedItems, setSelectedItems] = useState<ServiceItem[]>([]);
 
   const selCategory = categories.find((c) => c.id === selCategoryId);
   const selIsLab = selCategory ? isLabLinked(selCategory.name) : false;
-  const total = selectedItems.reduce((s, i) => s + i.price, 0);
+  const total = selectedItems.reduce((s, i) => s + Number(i.price), 0);
 
   // Lab test types ni yuklash
   useEffect(() => {
@@ -216,7 +216,7 @@ export default function ServicesPage() {
     setSelCategoryId('');
   }
 
-  // ── Manage state ─────────────────────────────────────────────────────────────
+  // -- Manage state -------------------------------------------------------------
 
   // Category form
   const [newCatName, setNewCatName] = useState('');
@@ -234,7 +234,7 @@ export default function ServicesPage() {
   const [editItemName, setEditItemName] = useState('');
   const [editItemPrice, setEditItemPrice] = useState('');
 
-  // ── Category CRUD ─────────────────────────────────────────────────────────
+  // -- Category CRUD ---------------------------------------------------------
 
   async function addCategory() {
     if (!newCatName.trim()) return;
@@ -278,7 +278,7 @@ export default function ServicesPage() {
     });
   }
 
-  // ── Item CRUD ────────────────────────────────────────────────────────────
+  // -- Item CRUD ------------------------------------------------------------
 
   async function addItem() {
     if (!selCatForItem || !newItemName.trim() || !newItemPrice) return;
@@ -327,7 +327,7 @@ export default function ServicesPage() {
     });
   }
 
-  // ── Render ───────────────────────────────────────────────────────────────
+  // -- Render ---------------------------------------------------------------
 
   return (
     <div className="p-6 flex flex-col gap-6 h-full">
@@ -383,7 +383,7 @@ export default function ServicesPage() {
           <div className="w-8 h-8 border-4 border-blue-200 border-t-blue-600 rounded-full animate-spin" />
         </div>
       ) : tab === 'calculator' ? (
-        /* ──────────────── CALCULATOR TAB ──────────────── */
+        /* ---------------- CALCULATOR TAB ---------------- */
         <div className="flex gap-5 flex-1 min-h-0">
           {/* Left: selectors */}
           <div className="w-96 flex-shrink-0 flex flex-col gap-4">
@@ -539,7 +539,7 @@ export default function ServicesPage() {
           </div>
         </div>
       ) : (
-        /* ──────────────── MANAGE TAB ──────────────── */
+        /* ---------------- MANAGE TAB ---------------- */
         <div className="flex gap-5 flex-1 min-h-0">
           {/* Left: Categories */}
           <div className="w-80 flex-shrink-0 flex flex-col gap-4">

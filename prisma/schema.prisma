@@ -19,6 +19,7 @@ enum Role {
   SPEECH_THERAPIST
   MASSAGE_THERAPIST
   SANITARY_WORKER
+  PHARMACIST
 }
 
 enum AppointmentType {
@@ -27,6 +28,7 @@ enum AppointmentType {
   SPEECH_THERAPY
   MASSAGE
   LAB_TEST
+  PHYSIOTHERAPY
 }
 
 enum AppointmentStatus {
@@ -109,6 +111,12 @@ enum QueueStatus {
   DONE
 }
 
+enum TaskStatus {
+  PENDING
+  IN_PROGRESS
+  COMPLETED
+}
+
 enum NotificationStatus {
   PENDING
   SENT
@@ -142,9 +150,16 @@ model User {
   roomsAssigned    RoomResponsible[]   @relation("RoomResponsibleAssignedBy")
   roomExpenses     RoomExpense[]       @relation("ExpenseCreatedBy")
   nurseNotes        NurseNote[]         @relation("NurseNoteUser")
-  assignedServices  AssignedService[]   @relation("AssignedServices")
-  receivedPayments  Payment[]           @relation("ReceivedPayments")
+  assignedServices      AssignedService[]   @relation("AssignedServices")
+  assignedServiceDoctor AssignedService[]   @relation("AssignedServiceDoctor")
+  receivedPayments      Payment[]           @relation("ReceivedPayments")
   attendances       Attendance[]
+  generalExpenses   GeneralExpense[]
+  tasksAssigned        Task[]                @relation("TasksAssigned")
+  tasksReceived        Task[]                @relation("TasksReceived")
+  taskPermsAssigner    TaskAssignPermission[] @relation("TaskAssignPermAssigner")
+  taskPermsTarget      TaskAssignPermission[] @relation("TaskAssignPermTarget")
+  taskPermsGrantedBy   TaskAssignPermission[] @relation("PermGrantedBy")
 
   @@map("users")
 }
@@ -159,6 +174,7 @@ model Patient {
   birthDate      DateTime
   district       String?
   houseNumber    String?
+  gender         String? // "MALE" | "FEMALE"
   medicalHistory String?
   allergies      String?
   telegramChatId String?
@@ -309,6 +325,7 @@ model LabTest {
   patientId   String
   testTypeId  String
   labTechId   String
+  reagentId   String?
   status      LabTestStatus @default(PENDING)
   results     Json?
   notes       String?
@@ -319,6 +336,7 @@ model LabTest {
   patient  Patient     @relation(fields: [patientId], references: [id])
   testType LabTestType @relation(fields: [testTypeId], references: [id])
   labTech  User        @relation(fields: [labTechId], references: [id])
+  reagent  Reagent?    @relation(fields: [reagentId], references: [id])
 
   @@map("lab_tests")
 }
@@ -381,12 +399,13 @@ model Room {
   isAmbulatory Boolean  @default(false)
   createdAt    DateTime @default(now())
 
-  beds         Bed[]
-  appointments Appointment[]
-  inventory    RoomInventoryItem[]
-  responsible  RoomResponsible?
-  expenses     RoomExpense[]
-  attendances  Attendance[]
+  beds            Bed[]
+  appointments    Appointment[]
+  inventory       RoomInventoryItem[]
+  responsible     RoomResponsible?
+  expenses        RoomExpense[]
+  attendances     Attendance[]
+  generalExpenses GeneralExpense[]
 
   @@unique([floor, roomNumber])
   @@map("rooms")
@@ -467,6 +486,7 @@ model NurseNote {
   procedure   String
   notes       String?
   medicines   Json?     // [{name, quantity, unit}]
+  noteType    String?   // AMBULATORY | INPATIENT | null
   createdAt   DateTime  @default(now())
 
   patient   Patient    @relation(fields: [patientId], references: [id])
@@ -571,6 +591,7 @@ model AssignedService {
 
   patient    Patient    @relation(fields: [patientId], references: [id], onDelete: Cascade)
   assignedBy User       @relation("AssignedServices", fields: [assignedById], references: [id])
+  doctor     User?      @relation("AssignedServiceDoctor", fields: [doctorId], references: [id])
   admission  Admission? @relation(fields: [admissionId], references: [id])
 
   @@map("assigned_services")
@@ -618,6 +639,7 @@ model UserPermission {
   userId    String
   page      String   // e.g. "/patients", "/patients:create"
   canAccess Boolean  @default(true)
+  level     String   @default("EDIT") // "VIEW" | "EDIT" (canAccess=true bo'lganda)
   updatedAt DateTime @updatedAt
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -640,4 +662,89 @@ model Attendance {
   room Room? @relation(fields: [roomId], references: [id])
 
   @@map("attendances")
+}
+
+model Reagent {
+  id           String   @id @default(cuid())
+  name         String
+  unit         String   // ml, dona, g, l, mg
+  quantity     Float    @default(0)
+  minQuantity  Float    @default(10)
+  expiryDate   DateTime?
+  pricePerUnit Decimal  @default(0) @db.Decimal(12, 2)
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  transactions ReagentTransaction[]
+  labTests     LabTest[]
+
+  @@map("reagents")
+}
+
+model ReagentTransaction {
+  id         String   @id @default(cuid())
+  reagentId  String
+  type       String   // "IN" | "OUT"
+  quantity   Float
+  note       String?
+  userId     String?
+  createdAt  DateTime @default(now())
+
+  reagent Reagent @relation(fields: [reagentId], references: [id])
+
+  @@map("reagent_transactions")
+}
+
+model GeneralExpense {
+  id          String   @id @default(cuid())
+  category    String   // INVENTORY | MEDICINE | UTILITY | REAGENT | SALARY | OTHER
+  amount      Decimal  @db.Decimal(12, 2)
+  description String
+  date        DateTime @default(now())
+  roomId      String?
+  createdById String?
+  createdAt   DateTime @default(now())
+
+  room      Room? @relation(fields: [roomId], references: [id])
+  createdBy User? @relation(fields: [createdById], references: [id])
+
+  @@map("general_expenses")
+}
+
+model Task {
+  id             String     @id @default(cuid())
+  title          String
+  description    String?
+  deadline       DateTime
+  status         TaskStatus @default(PENDING)
+  assignerId     String
+  assigneeId     String
+  progressNote   String?
+  startedAt      DateTime?
+  completedAt    DateTime?
+  seenByAssignee Boolean    @default(false)
+  seenByAssigner Boolean    @default(true)
+  createdAt      DateTime   @default(now())
+  updatedAt      DateTime   @updatedAt
+
+  assigner User @relation("TasksAssigned", fields: [assignerId], references: [id])
+  assignee User @relation("TasksReceived", fields: [assigneeId], references: [id])
+
+  @@map("tasks")
+}
+
+model TaskAssignPermission {
+  id           String   @id @default(cuid())
+  grantedById  String
+  assignerId   String
+  targetUserId String
+  createdAt    DateTime @default(now())
+
+  grantedBy  User @relation("PermGrantedBy", fields: [grantedById], references: [id])
+  assigner   User @relation("TaskAssignPermAssigner", fields: [assignerId], references: [id])
+  targetUser User @relation("TaskAssignPermTarget", fields: [targetUserId], references: [id])
+
+  @@unique([assignerId, targetUserId])
+  @@map("task_assign_permissions")
 }

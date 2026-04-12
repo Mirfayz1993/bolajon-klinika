@@ -57,9 +57,9 @@ export async function GET(req: NextRequest) {
     orderBy: { doneAt: 'desc' },
   });
 
-  // Doktorlar ro'yxati (admin/receptionist uchun)
+  // Mutaxassislar ro'yxati (admin/receptionist uchun)
   const doctors = await prisma.user.findMany({
-    where: { role: { in: ['DOCTOR', 'HEAD_DOCTOR'] }, isActive: true, deletedAt: null },
+    where: { role: { in: ['DOCTOR', 'HEAD_DOCTOR', 'SPEECH_THERAPIST', 'MASSAGE_THERAPIST'] }, isActive: true, deletedAt: null },
     select: { id: true, name: true, role: true },
     orderBy: { name: 'asc' },
   });

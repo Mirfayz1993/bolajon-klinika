@@ -13,7 +13,9 @@ export async function GET() {
 
   // ADMIN hamma sahifaga kira oladi
   if (role === 'ADMIN') {
-    return NextResponse.json({ allowedPages: MANAGED_PAGES.map((p) => p.path) });
+    const allPaths = MANAGED_PAGES.map((p) => p.path);
+    const permissions = allPaths.map((page) => ({ page, level: 'EDIT' }));
+    return NextResponse.json({ permissions, allowedPages: allPaths });
   }
 
   const allPaths = MANAGED_PAGES.map((p) => p.path);
@@ -28,16 +30,28 @@ export async function GET() {
   const userPerms = await prisma.userPermission.findMany({
     where: { userId, page: { in: allPaths } },
   });
-  const userMap = new Map(userPerms.map((p) => [p.page, p.canAccess]));
+  const userMap = new Map(userPerms.map((p) => [p.page, { canAccess: p.canAccess, level: p.level }]));
 
-  const allowedPages = allPaths.filter((path) => {
-    // UserPermission ustunlik qiladi
-    if (userMap.has(path)) return userMap.get(path);
-    // RolePermission
-    if (roleMap.has(path)) return roleMap.get(path);
+  const permissions: { page: string; level: string }[] = [];
+  const allowedPages: string[] = [];
+
+  for (const path of allPaths) {
+    const userEntry = userMap.get(path);
+    if (userEntry !== undefined) {
+      // UserPermission ustunlik qiladi
+      if (userEntry.canAccess) {
+        permissions.push({ page: path, level: userEntry.level });
+        allowedPages.push(path);
+      }
+    } else if (roleMap.has(path)) {
+      // RolePermission
+      if (roleMap.get(path)) {
+        permissions.push({ page: path, level: 'EDIT' });
+        allowedPages.push(path);
+      }
+    }
     // Default: ruxsat yo'q
-    return false;
-  });
+  }
 
-  return NextResponse.json({ allowedPages });
+  return NextResponse.json({ permissions, allowedPages });
 }

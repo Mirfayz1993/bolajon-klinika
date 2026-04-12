@@ -11,10 +11,11 @@ import {
   Save,
   RotateCcw,
   CheckCircle2,
+  Copy,
 } from 'lucide-react';
 import { MANAGED_PAGES } from '@/config/nav-pages';
 
-// ─── Types ────────────────────────────────────────────────────────────────────
+// --- Types --------------------------------------------------------------------
 
 interface StaffUser {
   id: string;
@@ -27,15 +28,10 @@ interface PermData {
   userId: string;
   name: string;
   role: string;
-  roleMap: Record<string, boolean>;
-  userMap: Record<string, boolean>;
+  userMap: Record<string, { canAccess: boolean; level: string }>;
 }
 
-// Effective state for UI
-// null = no override (use role default), true/false = override
-type Override = boolean | null;
-
-// ─── Role label ───────────────────────────────────────────────────────────────
+type Level = 'VIEW' | 'EDIT' | 'HIDDEN';
 
 const ROLE_LABELS: Record<string, string> = {
   ADMIN: 'Administrator',
@@ -51,105 +47,81 @@ const ROLE_LABELS: Record<string, string> = {
   SANITARY_WORKER: 'Sanitar',
 };
 
-// ─── Permission Toggle ────────────────────────────────────────────────────────
+// --- Radio square -------------------------------------------------------------
 
-function PermToggle({
-  override,
-  roleDefault,
-  onChange,
+function RadioSquare({
+  checked,
+  color,
+  onClick,
   disabled,
 }: {
-  override: Override;
-  roleDefault: boolean;
-  onChange: (val: Override) => void;
+  checked: boolean;
+  color: 'blue' | 'green' | 'red';
+  onClick: () => void;
   disabled?: boolean;
 }) {
-  const effective = override !== null ? override : roleDefault;
-
-  // State label
-  const isInherited = override === null;
-  const label = isInherited
-    ? roleDefault
-      ? "Rol: ruxsat bor"
-      : "Rol: ruxsat yo'q"
-    : override
-    ? "Xususiy: ruxsat bor"
-    : "Xususiy: ruxsat yo'q";
-
-  function cycle() {
-    if (disabled) return;
-    // 3-state cycle: null → true → false → null
-    if (override === null) onChange(true);
-    else if (override === true) onChange(false);
-    else onChange(null);
-  }
+  const colors = {
+    blue: checked
+      ? 'bg-blue-500 border-blue-500'
+      : 'bg-white border-slate-300 hover:border-blue-400',
+    green: checked
+      ? 'bg-green-500 border-green-500'
+      : 'bg-white border-slate-300 hover:border-green-400',
+    red: checked
+      ? 'bg-red-500 border-red-500'
+      : 'bg-white border-slate-300 hover:border-red-400',
+  };
 
   return (
-    <div className="flex flex-col items-center gap-1">
-      <button
-        type="button"
-        disabled={disabled}
-        onClick={cycle}
-        title={label}
-        className={`relative inline-flex h-6 w-11 items-center rounded-full transition-all focus:outline-none focus:ring-2 focus:ring-offset-1 ${
-          disabled
-            ? 'cursor-not-allowed opacity-60 bg-blue-400 focus:ring-blue-300'
-            : effective
-            ? isInherited
-              ? 'bg-emerald-400 cursor-pointer focus:ring-emerald-300'
-              : 'bg-green-600 cursor-pointer focus:ring-green-400'
-            : isInherited
-            ? 'bg-slate-300 cursor-pointer focus:ring-slate-300'
-            : 'bg-red-400 cursor-pointer focus:ring-red-300'
-        }`}
-      >
-        <span
-          className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform ${
-            effective ? 'translate-x-6' : 'translate-x-1'
-          }`}
-        />
-      </button>
-      <span
-        className={`text-[9px] font-semibold px-1.5 py-0.5 rounded-full leading-none ${
-          isInherited
-            ? 'text-slate-400 bg-slate-100'
-            : override
-            ? 'text-green-700 bg-green-100'
-            : 'text-red-600 bg-red-100'
-        }`}
-      >
-        {isInherited ? 'Rol' : override ? 'ON' : 'OFF'}
-      </span>
-    </div>
+    <button
+      type="button"
+      disabled={disabled}
+      onClick={onClick}
+      className={`w-5 h-5 rounded border-2 flex items-center justify-center transition-all ${colors[color]} ${disabled ? 'opacity-40 cursor-not-allowed' : 'cursor-pointer'}`}
+    >
+      {checked && (
+        <svg viewBox="0 0 10 10" className="w-3 h-3 text-white" fill="none" stroke="currentColor" strokeWidth="2">
+          <polyline points="1.5,5 4,7.5 8.5,2.5" />
+        </svg>
+      )}
+    </button>
   );
 }
 
-// ─── Main Component ───────────────────────────────────────────────────────────
+// --- Helper -------------------------------------------------------------------
+
+function getLevel(
+  page: string,
+  selections: Record<string, Level>,
+): Level {
+  return selections[page] ?? 'HIDDEN';
+}
+
+// --- Main Component -----------------------------------------------------------
 
 export default function PermissionsPage() {
   const { data: session } = useSession();
   const isAdmin = session?.user?.role === 'ADMIN';
 
-  // Staff list
   const [staff, setStaff] = useState<StaffUser[]>([]);
   const [staffLoading, setStaffLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
-  // Permissions for selected user
   const [permData, setPermData] = useState<PermData | null>(null);
   const [permLoading, setPermLoading] = useState(false);
 
-  // Overrides: page → override value
-  const [overrides, setOverrides] = useState<Record<string, Override>>({});
+  // selections: page/actionKey → Level
+  const [selections, setSelections] = useState<Record<string, Level>>({});
   const [dirty, setDirty] = useState(false);
   const [saving, setSaving] = useState(false);
   const [savedAt, setSavedAt] = useState<Date | null>(null);
 
-  // Expanded sections
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
+  const [showTemplateMenu, setShowTemplateMenu] = useState(false);
+  const [templateLoading, setTemplateLoading] = useState(false);
 
-  // ── Fetch staff list ──────────────────────────────────────────────────────
+  // -- Staff list --------------------------------------------------------------
 
   useEffect(() => {
     if (!isAdmin) return;
@@ -161,24 +133,31 @@ export default function PermissionsPage() {
       .finally(() => setStaffLoading(false));
   }, [isAdmin]);
 
-  // ── Fetch permissions for selected user ───────────────────────────────────
+  // -- Fetch permissions -------------------------------------------------------
+
+  const buildSelections = (userMap: Record<string, { canAccess: boolean; level: string }>): Record<string, Level> => {
+    const s: Record<string, Level> = {};
+    for (const [page, entry] of Object.entries(userMap)) {
+      if (!entry.canAccess) {
+        s[page] = 'HIDDEN';
+      } else {
+        s[page] = entry.level === 'VIEW' ? 'VIEW' : 'EDIT';
+      }
+    }
+    return s;
+  };
 
   const fetchPerms = useCallback(async (userId: string) => {
     setPermLoading(true);
     setPermData(null);
-    setOverrides({});
+    setSelections({});
     setDirty(false);
     try {
       const res = await fetch(`/api/staff/${userId}/permissions`);
       if (!res.ok) throw new Error();
       const data: PermData = await res.json();
       setPermData(data);
-      // Build overrides from userMap
-      const init: Record<string, Override> = {};
-      for (const page of Object.keys(data.userMap)) {
-        init[page] = data.userMap[page];
-      }
-      setOverrides(init);
+      setSelections(buildSelections(data.userMap));
     } catch {
       setPermData(null);
     } finally {
@@ -190,30 +169,36 @@ export default function PermissionsPage() {
     if (selectedId) fetchPerms(selectedId);
   }, [selectedId, fetchPerms]);
 
-  // ── Override toggle ───────────────────────────────────────────────────────
+  // -- Select ------------------------------------------------------------------
 
-  function setOverride(page: string, val: Override) {
-    setOverrides((prev) => ({ ...prev, [page]: val }));
+  function select(key: string, level: Level) {
+    setSelections((prev) => ({ ...prev, [key]: level }));
     setDirty(true);
+    setSavedAt(null);
   }
 
-  // ── Save ──────────────────────────────────────────────────────────────────
+  // -- Save --------------------------------------------------------------------
 
   async function save() {
     if (!selectedId || !permData) return;
     setSaving(true);
     try {
-      // Collect all pages + actions that have been touched
-      const permissions: { page: string; canAccess: boolean | null }[] = [];
-
+      // Collect all keys that exist in selections or in userMap
       const allKeys = new Set([
         ...Object.keys(permData.userMap),
-        ...Object.keys(overrides),
+        ...Object.keys(selections),
       ]);
 
-      for (const page of allKeys) {
-        const override = overrides[page] ?? null;
-        permissions.push({ page, canAccess: override });
+      const permissions: { page: string; canAccess: boolean | null; level?: string }[] = [];
+
+      for (const key of allKeys) {
+        const level = selections[key] ?? 'HIDDEN';
+        if (level === 'HIDDEN') {
+          // Ko'rinmasin = override o'chir (null → rol default)
+          permissions.push({ page: key, canAccess: null });
+        } else {
+          permissions.push({ page: key, canAccess: true, level });
+        }
       }
 
       const res = await fetch(`/api/staff/${selectedId}/permissions/batch`, {
@@ -223,10 +208,8 @@ export default function PermissionsPage() {
       });
 
       if (!res.ok) throw new Error();
-
       setDirty(false);
       setSavedAt(new Date());
-      // Re-fetch to sync
       await fetchPerms(selectedId);
     } catch {
       // keep dirty
@@ -235,19 +218,32 @@ export default function PermissionsPage() {
     }
   }
 
-  // ── Reset ─────────────────────────────────────────────────────────────────
+  // -- Reset -------------------------------------------------------------------
 
-  function resetOverrides() {
+  function resetSelections() {
     if (!permData) return;
-    const init: Record<string, Override> = {};
-    for (const page of Object.keys(permData.userMap)) {
-      init[page] = permData.userMap[page];
-    }
-    setOverrides(init);
+    setSelections(buildSelections(permData.userMap));
     setDirty(false);
   }
 
-  // ── Access guard ──────────────────────────────────────────────────────────
+  // -- Template ----------------------------------------------------------------
+
+  async function loadTemplate(templateUserId: string) {
+    setTemplateLoading(true);
+    setShowTemplateMenu(false);
+    try {
+      const res = await fetch(`/api/staff/${templateUserId}/permissions`);
+      if (!res.ok) return;
+      const data: PermData = await res.json();
+      setSelections(buildSelections(data.userMap));
+      setDirty(true);
+      setSavedAt(null);
+    } finally {
+      setTemplateLoading(false);
+    }
+  }
+
+  // -- Guard -------------------------------------------------------------------
 
   if (!isAdmin) {
     return (
@@ -262,8 +258,6 @@ export default function PermissionsPage() {
     );
   }
 
-  // ── Filter staff ──────────────────────────────────────────────────────────
-
   const filteredStaff = staff.filter((s) => {
     const q = search.toLowerCase();
     return (
@@ -272,9 +266,9 @@ export default function PermissionsPage() {
     );
   });
 
-  const selectedUser = staff.find((s) => s.id === selectedId);
+  const isAdminUser = permData?.role === 'ADMIN';
 
-  // ── Render ────────────────────────────────────────────────────────────────
+  // -- Render ------------------------------------------------------------------
 
   return (
     <div className="p-6 flex flex-col h-full gap-6">
@@ -286,9 +280,7 @@ export default function PermissionsPage() {
           </div>
           <div>
             <h1 className="text-2xl font-bold text-slate-800">Ruxsatlar boshqaruvi</h1>
-            <p className="text-sm text-slate-500 mt-0.5">
-              Xodim tanlang va uning ruxsatlarini sozlang
-            </p>
+            <p className="text-sm text-slate-500 mt-0.5">Xodim tanlang va ruxsatlarini sozlang</p>
           </div>
         </div>
 
@@ -296,7 +288,7 @@ export default function PermissionsPage() {
           <div className="flex items-center gap-2">
             <button
               type="button"
-              onClick={resetOverrides}
+              onClick={resetSelections}
               className="flex items-center gap-1.5 px-3 py-2 text-sm text-slate-600 border border-slate-200 rounded-lg hover:bg-slate-50 transition-colors"
             >
               <RotateCcw size={14} />
@@ -323,9 +315,8 @@ export default function PermissionsPage() {
       </div>
 
       <div className="flex gap-5 flex-1 min-h-0">
-        {/* ── Left: Staff list ─────────────────────────────────────────────── */}
+        {/* -- Left: Staff list ------------------------------------------------ */}
         <div className="w-72 flex-shrink-0 flex flex-col bg-white rounded-xl border border-slate-100 shadow-sm overflow-hidden">
-          {/* Search */}
           <div className="p-3 border-b border-slate-100">
             <div className="relative">
               <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
@@ -339,7 +330,6 @@ export default function PermissionsPage() {
             </div>
           </div>
 
-          {/* List */}
           <div className="flex-1 overflow-y-auto divide-y divide-slate-50">
             {staffLoading ? (
               <div className="flex justify-center py-8">
@@ -350,30 +340,19 @@ export default function PermissionsPage() {
             ) : (
               filteredStaff.map((s) => {
                 const isSelected = s.id === selectedId;
-                const initials = s.name
-                  .split(' ')
-                  .slice(0, 2)
-                  .map((w) => w[0])
-                  .join('')
-                  .toUpperCase();
+                const initials = s.name.split(' ').slice(0, 2).map((w) => w[0]).join('').toUpperCase();
                 return (
                   <button
                     key={s.id}
                     type="button"
-                    onClick={() => setSelectedId(s.id)}
+                    onClick={() => { setSelectedId(s.id); setShowTemplateMenu(false); }}
                     className={`w-full flex items-center gap-3 px-3 py-3 text-left transition-colors ${
                       isSelected
                         ? 'bg-blue-50 border-l-2 border-l-blue-500'
                         : 'hover:bg-slate-50 border-l-2 border-l-transparent'
                     }`}
                   >
-                    <div
-                      className={`w-9 h-9 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0 ${
-                        isSelected
-                          ? 'bg-blue-600 text-white'
-                          : 'bg-slate-100 text-slate-600'
-                      }`}
-                    >
+                    <div className={`w-9 h-9 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0 ${isSelected ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-600'}`}>
                       {initials || <User size={14} />}
                     </div>
                     <div className="min-w-0">
@@ -382,9 +361,7 @@ export default function PermissionsPage() {
                       </p>
                       <p className="text-xs text-slate-400 truncate">
                         {ROLE_LABELS[s.role] ?? s.role}
-                        {!s.isActive && (
-                          <span className="ml-1 text-red-400">(nofaol)</span>
-                        )}
+                        {!s.isActive && <span className="ml-1 text-red-400">(nofaol)</span>}
                       </p>
                     </div>
                   </button>
@@ -394,7 +371,7 @@ export default function PermissionsPage() {
           </div>
         </div>
 
-        {/* ── Right: Permission grid ───────────────────────────────────────── */}
+        {/* -- Right: Permission table ----------------------------------------- */}
         <div className="flex-1 min-w-0 bg-white rounded-xl border border-slate-100 shadow-sm overflow-hidden flex flex-col">
           {!selectedId ? (
             <div className="flex-1 flex items-center justify-center">
@@ -403,9 +380,7 @@ export default function PermissionsPage() {
                   <User size={28} className="text-slate-400" />
                 </div>
                 <p className="text-slate-500 font-medium">Xodimni tanlang</p>
-                <p className="text-sm text-slate-400 mt-1">
-                  Chapdan xodim tanlang — ruxsatlar ko&apos;rinadi
-                </p>
+                <p className="text-sm text-slate-400 mt-1">Chapdan xodim tanlang — ruxsatlar ko&apos;rinadi</p>
               </div>
             </div>
           ) : permLoading ? (
@@ -418,46 +393,86 @@ export default function PermissionsPage() {
             </div>
           ) : (
             <>
-              {/* User info header */}
-              <div className="px-5 py-4 border-b border-slate-100 bg-slate-50 flex items-center gap-3">
-                <div className="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center text-sm font-bold text-blue-700">
-                  {permData.name
-                    .split(' ')
-                    .slice(0, 2)
-                    .map((w) => w[0])
-                    .join('')
-                    .toUpperCase()}
+              {/* User info bar */}
+              <div className="px-5 py-3 border-b border-slate-100 bg-slate-50 flex items-center gap-3">
+                <div className="w-9 h-9 rounded-full bg-blue-100 flex items-center justify-center text-sm font-bold text-blue-700 flex-shrink-0">
+                  {permData.name.split(' ').slice(0, 2).map((w) => w[0]).join('').toUpperCase()}
                 </div>
-                <div>
-                  <p className="font-semibold text-slate-800">{permData.name}</p>
-                  <p className="text-xs text-slate-500">
-                    {ROLE_LABELS[permData.role] ?? permData.role} — rol ruxsatlari asos,
-                    <span className="text-blue-600 ml-1">xususiy o&apos;zgarishlar ustiga qo&apos;shiladi</span>
-                  </p>
+                <div className="flex-1 min-w-0">
+                  <p className="font-semibold text-slate-800 text-sm">{permData.name}</p>
+                  <p className="text-xs text-slate-500">{ROLE_LABELS[permData.role] ?? permData.role}</p>
                 </div>
+
+                {/* Shablon olish */}
+                {!isAdminUser && (
+                  <div className="relative flex-shrink-0">
+                    <button
+                      type="button"
+                      onClick={() => setShowTemplateMenu((v) => !v)}
+                      disabled={templateLoading}
+                      className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-purple-700 border border-purple-200 bg-purple-50 rounded-lg hover:bg-purple-100 transition-colors disabled:opacity-60"
+                    >
+                      <Copy size={12} />
+                      {templateLoading ? 'Yuklanmoqda...' : 'Shablon olish'}
+                    </button>
+
+                    {showTemplateMenu && (
+                      <>
+                        <div className="fixed inset-0 z-10" onClick={() => setShowTemplateMenu(false)} />
+                        <div className="absolute right-0 top-full mt-1 w-64 bg-white border border-slate-200 rounded-xl shadow-lg z-20 overflow-hidden">
+                          <div className="px-3 py-2 bg-purple-50 border-b border-purple-100 text-xs font-semibold text-purple-700">
+                            Xuddi shu lavozim
+                          </div>
+                          <div className="max-h-48 overflow-y-auto">
+                            {staff.filter((s) => s.id !== selectedId && s.role === permData.role).length === 0 ? (
+                              <p className="text-sm text-slate-400 px-3 py-3 text-center">Xuddi shu lavozimdagi boshqa xodim yo&apos;q</p>
+                            ) : (
+                              staff.filter((s) => s.id !== selectedId && s.role === permData.role).map((s) => (
+                                <button
+                                  key={s.id}
+                                  type="button"
+                                  onClick={() => loadTemplate(s.id)}
+                                  className="w-full flex items-center gap-2 px-3 py-2.5 text-left hover:bg-purple-50 transition-colors border-b border-slate-50"
+                                >
+                                  <div className="w-7 h-7 rounded-full bg-purple-100 flex items-center justify-center text-xs font-bold text-purple-700 flex-shrink-0">
+                                    {s.name.split(' ').slice(0, 2).map((w) => w[0]).join('').toUpperCase()}
+                                  </div>
+                                  <div className="min-w-0">
+                                    <p className="text-sm text-slate-700 font-medium truncate">{s.name}</p>
+                                  </div>
+                                </button>
+                              ))
+                            )}
+                          </div>
+                          <div className="px-3 py-1.5 bg-slate-50 border-t border-slate-100 text-[10px] text-slate-400 font-semibold uppercase tracking-wide">
+                            Boshqa lavozimlar
+                          </div>
+                          <div className="max-h-36 overflow-y-auto">
+                            {staff.filter((s) => s.id !== selectedId && s.role !== permData.role).map((s) => (
+                              <button
+                                key={s.id}
+                                type="button"
+                                onClick={() => loadTemplate(s.id)}
+                                className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-slate-50 transition-colors border-b border-slate-50"
+                              >
+                                <div className="w-6 h-6 rounded-full bg-slate-100 flex items-center justify-center text-xs font-bold text-slate-600 flex-shrink-0">
+                                  {s.name.split(' ').slice(0, 2).map((w) => w[0]).join('').toUpperCase()}
+                                </div>
+                                <div className="min-w-0">
+                                  <p className="text-xs text-slate-600 truncate">{s.name}</p>
+                                  <p className="text-[10px] text-slate-400">{ROLE_LABELS[s.role] ?? s.role}</p>
+                                </div>
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      </>
+                    )}
+                  </div>
+                )}
               </div>
 
-              {/* Legend */}
-              <div className="px-5 py-2 border-b border-slate-100 flex items-center gap-4 text-xs text-slate-500 bg-white flex-wrap">
-                <div className="flex items-center gap-1.5">
-                  <span className="inline-flex items-center justify-center w-6 h-3.5 rounded-full bg-emerald-400 text-[8px] font-bold text-white">Rol</span>
-                  <span>Rol orqali ruxsat bor (o&apos;zgartirilmagan)</span>
-                </div>
-                <div className="flex items-center gap-1.5">
-                  <span className="inline-flex items-center justify-center w-6 h-3.5 rounded-full bg-slate-300 text-[8px] font-bold text-white">Rol</span>
-                  <span>Rol orqali ruxsat yo&apos;q</span>
-                </div>
-                <div className="flex items-center gap-1.5">
-                  <span className="inline-flex items-center justify-center w-6 h-3.5 rounded-full bg-green-600 text-[8px] font-bold text-white">ON</span>
-                  <span>Xususiy: yoqilgan</span>
-                </div>
-                <div className="flex items-center gap-1.5">
-                  <span className="inline-flex items-center justify-center w-6 h-3.5 rounded-full bg-red-400 text-[8px] font-bold text-white">OFF</span>
-                  <span>Xususiy: o&apos;chirilgan</span>
-                </div>
-              </div>
-
-              {/* Permissions table */}
+              {/* Table */}
               <div className="flex-1 overflow-y-auto">
                 <table className="w-full text-sm border-collapse">
                   <thead className="sticky top-0 z-10 bg-slate-50 border-b border-slate-200">
@@ -465,11 +480,14 @@ export default function PermissionsPage() {
                       <th className="px-5 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">
                         Bo&apos;lim / Amal
                       </th>
-                      <th className="px-4 py-3 text-center text-xs font-semibold text-slate-500 uppercase tracking-wide w-32">
-                        Rol (asos)
+                      <th className="px-4 py-3 text-center text-xs font-semibold text-blue-600 uppercase tracking-wide w-28">
+                        Ko&apos;rinsin
                       </th>
-                      <th className="px-4 py-3 text-center text-xs font-semibold text-slate-500 uppercase tracking-wide w-36">
-                        Xususiy ruxsat
+                      <th className="px-4 py-3 text-center text-xs font-semibold text-green-600 uppercase tracking-wide w-28">
+                        Tahrirlasin
+                      </th>
+                      <th className="px-4 py-3 text-center text-xs font-semibold text-red-500 uppercase tracking-wide w-28">
+                        Ko&apos;rinmasin
                       </th>
                     </tr>
                   </thead>
@@ -478,30 +496,21 @@ export default function PermissionsPage() {
                       const isExpanded = expanded[page.path] ?? false;
                       const hasActions = (page.actions?.length ?? 0) > 0;
                       const rowBg = idx % 2 === 0 ? 'bg-white' : 'bg-slate-50/40';
-
-                      const roleDefault = permData.roleMap[page.path] ?? false;
-                      const override = overrides[page.path] ?? null;
-                      const effective = override !== null ? override : roleDefault;
+                      const level = getLevel(page.path, selections);
 
                       return (
                         <Fragment key={page.path}>
                           {/* Page row */}
                           <tr className={`border-b border-slate-100 ${rowBg} hover:bg-blue-50/20 transition-colors`}>
-                            <td className={`px-5 py-3 ${rowBg}`}>
+                            <td className="px-5 py-3">
                               <div className="flex items-center gap-2">
                                 {hasActions ? (
                                   <button
                                     type="button"
-                                    onClick={() =>
-                                      setExpanded((prev) => ({ ...prev, [page.path]: !prev[page.path] }))
-                                    }
+                                    onClick={() => setExpanded((prev) => ({ ...prev, [page.path]: !prev[page.path] }))}
                                     className="text-slate-400 hover:text-slate-600 transition-colors"
                                   >
-                                    {isExpanded ? (
-                                      <ChevronDown size={14} />
-                                    ) : (
-                                      <ChevronRight size={14} />
-                                    )}
+                                    {isExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
                                   </button>
                                 ) : (
                                   <span className="w-[14px]" />
@@ -510,71 +519,88 @@ export default function PermissionsPage() {
                                 <span className="text-xs text-slate-400 font-mono">{page.path}</span>
                               </div>
                             </td>
-                            {/* Role default badge */}
                             <td className="px-4 py-3 text-center">
-                              <span
-                                className={`inline-block px-2 py-0.5 rounded-full text-xs font-semibold ${
-                                  roleDefault
-                                    ? 'bg-emerald-100 text-emerald-700'
-                                    : 'bg-slate-100 text-slate-500'
-                                }`}
-                              >
-                                {roleDefault ? "Ha" : "Yo'q"}
-                              </span>
+                              <div className="flex justify-center">
+                                <RadioSquare
+                                  checked={level === 'VIEW'}
+                                  color="blue"
+                                  disabled={isAdminUser}
+                                  onClick={() => select(page.path, level === 'VIEW' ? 'HIDDEN' : 'VIEW')}
+                                />
+                              </div>
                             </td>
-                            {/* Custom override toggle */}
                             <td className="px-4 py-3 text-center">
-                              <PermToggle
-                                override={override}
-                                roleDefault={roleDefault}
-                                onChange={(val) => setOverride(page.path, val)}
-                                disabled={permData.role === 'ADMIN'}
-                              />
+                              <div className="flex justify-center">
+                                <RadioSquare
+                                  checked={level === 'EDIT'}
+                                  color="green"
+                                  disabled={isAdminUser}
+                                  onClick={() => select(page.path, level === 'EDIT' ? 'HIDDEN' : 'EDIT')}
+                                />
+                              </div>
+                            </td>
+                            <td className="px-4 py-3 text-center">
+                              <div className="flex justify-center">
+                                <RadioSquare
+                                  checked={level === 'HIDDEN'}
+                                  color="red"
+                                  disabled={isAdminUser}
+                                  onClick={() => select(page.path, 'HIDDEN')}
+                                />
+                              </div>
                             </td>
                           </tr>
 
                           {/* Action rows */}
-                          {hasActions &&
-                            isExpanded &&
-                            page.actions!.map((action) => {
-                              const actionKey = `${page.path}:${action.key}`;
-                              const actionRoleDefault = permData.roleMap[actionKey] ?? effective;
-                              const actionOverride = overrides[actionKey] ?? null;
+                          {hasActions && isExpanded && page.actions!.map((action) => {
+                            const actionKey = `${page.path}:${action.key}`;
+                            const actionLevel = getLevel(actionKey, selections);
 
-                              return (
-                                <tr
-                                  key={actionKey}
-                                  className="border-b border-slate-100 bg-blue-50/10 hover:bg-blue-50/30 transition-colors"
-                                >
-                                  <td className="px-5 py-2.5">
-                                    <div className="flex items-center gap-2 pl-8">
-                                      <span className="w-1.5 h-1.5 rounded-full bg-blue-400 flex-shrink-0" />
-                                      <span className="text-slate-600">{action.label}</span>
-                                      <span className="text-xs text-slate-400 font-mono">{action.key}</span>
-                                    </div>
-                                  </td>
-                                  <td className="px-4 py-2.5 text-center">
-                                    <span
-                                      className={`inline-block px-2 py-0.5 rounded-full text-xs font-semibold ${
-                                        actionRoleDefault
-                                          ? 'bg-emerald-100 text-emerald-700'
-                                          : 'bg-slate-100 text-slate-500'
-                                      }`}
-                                    >
-                                      {actionRoleDefault ? "Ha" : "Yo'q"}
-                                    </span>
-                                  </td>
-                                  <td className="px-4 py-2.5 text-center">
-                                    <PermToggle
-                                      override={actionOverride}
-                                      roleDefault={actionRoleDefault}
-                                      onChange={(val) => setOverride(actionKey, val)}
-                                      disabled={permData.role === 'ADMIN'}
+                            return (
+                              <tr
+                                key={actionKey}
+                                className="border-b border-slate-100 bg-blue-50/10 hover:bg-blue-50/30 transition-colors"
+                              >
+                                <td className="px-5 py-2.5">
+                                  <div className="flex items-center gap-2 pl-8">
+                                    <span className="w-1.5 h-1.5 rounded-full bg-blue-400 flex-shrink-0" />
+                                    <span className="text-slate-600">{action.label}</span>
+                                    <span className="text-xs text-slate-400 font-mono">{action.key}</span>
+                                  </div>
+                                </td>
+                                <td className="px-4 py-2.5 text-center">
+                                  <div className="flex justify-center">
+                                    <RadioSquare
+                                      checked={actionLevel === 'VIEW'}
+                                      color="blue"
+                                      disabled={isAdminUser}
+                                      onClick={() => select(actionKey, actionLevel === 'VIEW' ? 'HIDDEN' : 'VIEW')}
                                     />
-                                  </td>
-                                </tr>
-                              );
-                            })}
+                                  </div>
+                                </td>
+                                <td className="px-4 py-2.5 text-center">
+                                  <div className="flex justify-center">
+                                    <RadioSquare
+                                      checked={actionLevel === 'EDIT'}
+                                      color="green"
+                                      disabled={isAdminUser}
+                                      onClick={() => select(actionKey, actionLevel === 'EDIT' ? 'HIDDEN' : 'EDIT')}
+                                    />
+                                  </div>
+                                </td>
+                                <td className="px-4 py-2.5 text-center">
+                                  <div className="flex justify-center">
+                                    <RadioSquare
+                                      checked={actionLevel === 'HIDDEN'}
+                                      color="red"
+                                      disabled={isAdminUser}
+                                      onClick={() => select(actionKey, 'HIDDEN')}
+                                    />
+                                  </div>
+                                </td>
+                              </tr>
+                            );
+                          })}
                         </Fragment>
                       );
                     })}
@@ -582,16 +608,14 @@ export default function PermissionsPage() {
                 </table>
               </div>
 
-              {/* Save bar (sticky bottom) */}
+              {/* Save bar */}
               {dirty && (
                 <div className="px-5 py-3 border-t border-slate-200 bg-amber-50 flex items-center justify-between">
-                  <p className="text-sm text-amber-700 font-medium">
-                    O&apos;zgarishlar saqlanmagan
-                  </p>
+                  <p className="text-sm text-amber-700 font-medium">O&apos;zgarishlar saqlanmagan</p>
                   <div className="flex gap-2">
                     <button
                       type="button"
-                      onClick={resetOverrides}
+                      onClick={resetSelections}
                       className="px-3 py-1.5 text-sm text-slate-600 border border-slate-200 rounded-lg hover:bg-white transition-colors"
                     >
                       Bekor qilish

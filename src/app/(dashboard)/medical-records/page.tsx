@@ -16,7 +16,7 @@ import {
   ExternalLink,
 } from 'lucide-react';
 
-// ─── Types ───────────────────────────────────────────────────────────────────
+// --- Types -------------------------------------------------------------------
 
 interface PatientSuggestion {
   id: string;
@@ -53,7 +53,7 @@ interface ApiResponse {
   totalPages: number;
 }
 
-// ─── Status badge helper ──────────────────────────────────────────────────────
+// --- Status badge helper ------------------------------------------------------
 
 function DiagnosisBadge({ diagnosis }: { diagnosis: string | null }) {
   if (!diagnosis) {
@@ -70,7 +70,7 @@ function DiagnosisBadge({ diagnosis }: { diagnosis: string | null }) {
   );
 }
 
-// ─── Main Page ────────────────────────────────────────────────────────────────
+// --- Main Page ----------------------------------------------------------------
 
 export default function MedicalRecordsPage() {
   const { data: session } = useSession();
@@ -94,7 +94,7 @@ export default function MedicalRecordsPage() {
 
   const LIMIT = 20;
 
-  // ─── Load medical records ─────────────────────────────────────────────────
+  // --- Load medical records -------------------------------------------------
 
   const loadRecords = useCallback(async (currentPage: number, patientId?: string | null) => {
     setLoading(true);
@@ -126,7 +126,7 @@ export default function MedicalRecordsPage() {
     loadRecords(page, selectedPatientId);
   }, [page, selectedPatientId, loadRecords]);
 
-  // ─── Patient search / suggestions ────────────────────────────────────────
+  // --- Patient search / suggestions ----------------------------------------
 
   useEffect(() => {
     if (!patientSearch || patientSearch.length < 2) {
@@ -173,7 +173,7 @@ export default function MedicalRecordsPage() {
     setPage(1);
   }
 
-  // ─── Helpers ──────────────────────────────────────────────────────────────
+  // --- Helpers --------------------------------------------------------------
 
   function formatDate(dateStr: string) {
     return new Date(dateStr).toLocaleDateString('uz-UZ', {
@@ -183,7 +183,7 @@ export default function MedicalRecordsPage() {
     });
   }
 
-  // ─── Render ───────────────────────────────────────────────────────────────
+  // --- Render ---------------------------------------------------------------
 
   return (
     <div className="p-6">

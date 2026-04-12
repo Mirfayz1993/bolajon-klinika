@@ -46,7 +46,7 @@ export async function GET(req: NextRequest) {
           select: { id: true, name: true, normalRange: true, unit: true, category: true },
         },
         patient: {
-          select: { id: true, firstName: true, lastName: true, birthDate: true },
+          select: { id: true, firstName: true, lastName: true, fatherName: true, birthDate: true, gender: true },
         },
         labTech: {
           select: { id: true, name: true },

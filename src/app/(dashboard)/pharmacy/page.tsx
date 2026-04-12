@@ -15,7 +15,7 @@ import {
   AlertTriangle,
 } from "lucide-react";
 
-// ─── Types ───────────────────────────────────────────────────────────────────
+// --- Types -------------------------------------------------------------------
 
 interface Supplier {
   id: string;
@@ -55,7 +55,7 @@ interface MedicineTransaction {
 
 type ActiveTab = "medicines" | "transactions" | "suppliers";
 
-// ─── Page ─────────────────────────────────────────────────────────────────────
+// --- Page ---------------------------------------------------------------------
 
 export default function PharmacyPage() {
   const { t } = useLanguage();
@@ -68,26 +68,26 @@ export default function PharmacyPage() {
 
   const [activeTab, setActiveTab] = useState<ActiveTab>("medicines");
 
-  // ── Medicines state ─────────────────────────────────────────────────────────
+  // -- Medicines state ---------------------------------------------------------
   const [medicines, setMedicines] = useState<Medicine[]>([]);
   const [medicinesLoading, setMedicinesLoading] = useState(false);
   const [medicinesError, setMedicinesError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [lowStockOnly, setLowStockOnly] = useState(false);
 
-  // ── Suppliers state ─────────────────────────────────────────────────────────
+  // -- Suppliers state ---------------------------------------------------------
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [suppliersLoading, setSuppliersLoading] = useState(false);
   const [suppliersError, setSuppliersError] = useState<string | null>(null);
 
-  // ── Transactions state ──────────────────────────────────────────────────────
+  // -- Transactions state ------------------------------------------------------
   const [transactions, setTransactions] = useState<MedicineTransaction[]>([]);
   const [transactionsLoading, setTransactionsLoading] = useState(false);
   const [transactionsError, setTransactionsError] = useState<string | null>(
     null
   );
 
-  // ── Medicine modal ──────────────────────────────────────────────────────────
+  // -- Medicine modal ----------------------------------------------------------
   const [showMedicineModal, setShowMedicineModal] = useState(false);
   const [editingMedicine, setEditingMedicine] = useState<Medicine | null>(null);
   const [medName, setMedName] = useState("");
@@ -99,7 +99,7 @@ export default function PharmacyPage() {
   const [medSaving, setMedSaving] = useState(false);
   const [medError, setMedError] = useState<string | null>(null);
 
-  // ── Dispense modal ──────────────────────────────────────────────────────────
+  // -- Dispense modal ----------------------------------------------------------
   const [showDispenseModal, setShowDispenseModal] = useState(false);
   const [dispenseMedicine, setDispenseMedicine] = useState<Medicine | null>(
     null
@@ -113,7 +113,7 @@ export default function PharmacyPage() {
   const [dispenseSaving, setDispenseSaving] = useState(false);
   const [dispenseError, setDispenseError] = useState<string | null>(null);
 
-  // ── Supplier modal ──────────────────────────────────────────────────────────
+  // -- Supplier modal ----------------------------------------------------------
   const [showSupplierModal, setShowSupplierModal] = useState(false);
   const [editingSupplier, setEditingSupplier] = useState<Supplier | null>(null);
   const [supName, setSupName] = useState("");
@@ -122,7 +122,7 @@ export default function PharmacyPage() {
   const [supSaving, setSupSaving] = useState(false);
   const [supError, setSupError] = useState<string | null>(null);
 
-  // ─── Fetchers ──────────────────────────────────────────────────────────────
+  // --- Fetchers --------------------------------------------------------------
 
   const fetchMedicines = useCallback(async () => {
     setMedicinesLoading(true);
@@ -177,7 +177,7 @@ export default function PharmacyPage() {
     fetchTransactions();
   }, [fetchMedicines, fetchSuppliers, fetchTransactions]);
 
-  // ── Patient search (debounced) ────────────────────────────────────────────
+  // -- Patient search (debounced) --------------------------------------------
   useEffect(() => {
     if (!patientSearch.trim()) {
       setPatientResults([]);
@@ -200,13 +200,13 @@ export default function PharmacyPage() {
     return () => clearTimeout(timer);
   }, [patientSearch]);
 
-  // ─── Filtered medicines ───────────────────────────────────────────────────
+  // --- Filtered medicines ---------------------------------------------------
 
   const filteredMedicines = lowStockOnly
     ? medicines.filter((m) => m.quantity <= m.minStock)
     : medicines;
 
-  // ─── Medicine CRUD ────────────────────────────────────────────────────────
+  // --- Medicine CRUD --------------------------------------------------------
 
   function openAddMedicineModal() {
     setEditingMedicine(null);
@@ -280,7 +280,7 @@ export default function PharmacyPage() {
     }
   }
 
-  // ─── Dispense ─────────────────────────────────────────────────────────────
+  // --- Dispense -------------------------------------------------------------
 
   function openDispenseModal(med: Medicine) {
     setDispenseMedicine(med);
@@ -325,7 +325,7 @@ export default function PharmacyPage() {
     }
   }
 
-  // ─── Supplier CRUD ────────────────────────────────────────────────────────
+  // --- Supplier CRUD --------------------------------------------------------
 
   function openAddSupplierModal() {
     setEditingSupplier(null);
@@ -389,7 +389,7 @@ export default function PharmacyPage() {
     }
   }
 
-  // ─── Render ────────────────────────────────────────────────────────────────
+  // --- Render ----------------------------------------------------------------
 
   return (
     <div className="p-6">

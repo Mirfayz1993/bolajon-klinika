@@ -11,19 +11,30 @@ import {
   X,
   BedDouble,
   Building2,
-  Users,
   Pencil,
   Trash2,
   Info,
 } from 'lucide-react';
 
-// ─── Types ────────────────────────────────────────────────────────────────────
+// --- Types --------------------------------------------------------------------
+
+interface BedPatient {
+  id: string;
+  firstName: string;
+  lastName: string;
+}
+
+interface BedAdmission {
+  id: string;
+  patient: BedPatient;
+}
 
 interface Bed {
   id: string;
   roomId: string;
   bedNumber: string;
   status: 'AVAILABLE' | 'OCCUPIED' | 'MAINTENANCE';
+  admissions: BedAdmission[];
 }
 
 interface Room {
@@ -33,6 +44,7 @@ interface Room {
   type: string;
   capacity: number;
   isActive: boolean;
+  isAmbulatory: boolean;
   beds: Bed[];
   _count?: { beds: number };
 }
@@ -45,7 +57,7 @@ interface RoomForm {
   isActive: boolean;
 }
 
-// ─── Constants ────────────────────────────────────────────────────────────────
+// --- Constants ----------------------------------------------------------------
 
 const emptyRoomForm: RoomForm = {
   floor: '1',
@@ -57,23 +69,60 @@ const emptyRoomForm: RoomForm = {
 
 const FLOORS = [1, 2, 3, 4];
 
-// ─── Bed dot indicator ────────────────────────────────────────────────────────
+// --- Bed card indicator -------------------------------------------------------
 
-function BedDot({ status }: { status: Bed['status'] }) {
-  const colorMap: Record<Bed['status'], string> = {
-    AVAILABLE: 'bg-green-500',
-    OCCUPIED: 'bg-red-500',
-    MAINTENANCE: 'bg-yellow-400',
-  };
+function BedCard({
+  bed,
+  isAmbulatory,
+  onOccupiedClick,
+}: {
+  bed: Bed;
+  isAmbulatory: boolean;
+  onOccupiedClick: (patientId: string, ambulatory: boolean) => void;
+}) {
+  const { t } = useLanguage();
+  const patient = bed.admissions?.[0]?.patient;
+
+  if (bed.status === 'AVAILABLE') {
+    return (
+      <div className="flex flex-col items-center gap-0.5 p-2 bg-green-50 border border-green-200 rounded-lg min-w-[68px]">
+        <BedDouble className="w-4 h-4 text-green-600" />
+        <span className="text-xs font-semibold text-green-700">{bed.bedNumber}</span>
+        <span className="text-[10px] font-medium text-green-600 bg-green-100 px-1.5 py-0.5 rounded-full whitespace-nowrap">
+          {t.rooms.available}
+        </span>
+      </div>
+    );
+  }
+
+  if (bed.status === 'OCCUPIED' && patient) {
+    return (
+      <button
+        onClick={() => onOccupiedClick(patient.id, isAmbulatory)}
+        className="flex flex-col items-center gap-0.5 p-2 bg-red-50 border border-red-200 rounded-lg min-w-[68px] hover:bg-red-100 hover:border-red-300 transition-colors cursor-pointer"
+        title={`${patient.firstName} ${patient.lastName} — profilga o'tish`}
+      >
+        <BedDouble className="w-4 h-4 text-red-600" />
+        <span className="text-xs font-semibold text-red-700">{bed.bedNumber}</span>
+        <span className="text-[10px] font-medium text-red-600 leading-tight max-w-[64px] truncate text-center">
+          {patient.firstName} {patient.lastName}
+        </span>
+      </button>
+    );
+  }
+
   return (
-    <span
-      className={`inline-block w-3 h-3 rounded-full ${colorMap[status]}`}
-      title={status}
-    />
+    <div className="flex flex-col items-center gap-0.5 p-2 bg-yellow-50 border border-yellow-200 rounded-lg min-w-[68px]">
+      <BedDouble className="w-4 h-4 text-yellow-600" />
+      <span className="text-xs font-semibold text-yellow-700">{bed.bedNumber}</span>
+      <span className="text-[10px] font-medium text-yellow-600 bg-yellow-100 px-1.5 py-0.5 rounded-full whitespace-nowrap">
+        {bed.status === 'MAINTENANCE' ? t.rooms.maintenance : t.rooms.occupied}
+      </span>
+    </div>
   );
 }
 
-// ─── Main Component ───────────────────────────────────────────────────────────
+// --- Main Component -----------------------------------------------------------
 
 export default function RoomsPage() {
   const { t } = useLanguage();
@@ -108,7 +157,7 @@ export default function RoomsPage() {
   const [roomSaving, setRoomSaving] = useState(false);
   const [roomFormError, setRoomFormError] = useState<string | null>(null);
 
-  // ─── Fetch rooms ───────────────────────────────────────────────────────────
+  // --- Fetch rooms -----------------------------------------------------------
 
   const fetchRooms = useCallback(async () => {
     setLoading(true);
@@ -132,7 +181,7 @@ export default function RoomsPage() {
     fetchRooms();
   }, [fetchRooms]);
 
-  // ─── Add / Edit room handlers ──────────────────────────────────────────────
+  // --- Add / Edit room handlers ----------------------------------------------
 
   const openAddRoomModal = () => {
     setEditingRoom(null);
@@ -216,12 +265,20 @@ export default function RoomsPage() {
     }
   };
 
-  // ─── Helpers ───────────────────────────────────────────────────────────────
+  // --- Helpers ---------------------------------------------------------------
 
   const countByStatus = (beds: Bed[], status: Bed['status']) =>
     beds.filter((b) => b.status === status).length;
 
-  // ─── Render ────────────────────────────────────────────────────────────────
+  const handleBedClick = (patientId: string, ambulatory: boolean) => {
+    if (ambulatory) {
+      router.push(`/patients/${patientId}?tab=nurse&noteType=AMBULATORY`);
+    } else {
+      router.push(`/patients/${patientId}?tab=nurse`);
+    }
+  };
+
+  // --- Render ----------------------------------------------------------------
 
   return (
     <div className="p-6">
@@ -347,97 +404,75 @@ export default function RoomsPage() {
                   </div>
                 </div>
 
-                {/* Capacity */}
-                <div className="flex items-center gap-1.5 text-xs text-slate-500 mb-3">
-                  <Users className="w-3.5 h-3.5" />
-                  {t.rooms.capacity}: {room.capacity}
-                </div>
-
-                {/* Beds section — only if room has beds */}
+                {/* Beds summary stats */}
                 {totalBeds > 0 && (
-                  <>
-                    {/* Beds summary: Bo'sh / Band */}
-                    <div className="flex items-center gap-3 mb-3 text-sm">
-                      <div className="flex items-center gap-1.5">
-                        <span className="w-2.5 h-2.5 rounded-full bg-green-500 inline-block" />
-                        <span className="text-slate-600">
-                          {availCount} {t.rooms.available}
-                        </span>
-                      </div>
-                      <div className="flex items-center gap-1.5">
-                        <span className="w-2.5 h-2.5 rounded-full bg-red-500 inline-block" />
-                        <span className="text-slate-600">
-                          {occupiedCount} {t.rooms.occupied}
-                        </span>
-                      </div>
-                    </div>
-
-                    {/* Bed dots */}
-                    <div className="flex flex-wrap gap-1.5 mb-3">
-                      {room.beds.slice(0, 12).map((bed) => (
-                        <BedDot key={bed.id} status={bed.status} />
-                      ))}
-                      {room.beds.length > 12 && (
-                        <span className="text-xs text-slate-400 self-center">
-                          +{room.beds.length - 12}
-                        </span>
-                      )}
-                    </div>
-
-                    {/* Progress bar */}
-                    <div className="mb-3">
-                      <div className="flex items-center justify-between text-xs text-slate-500 mb-1">
-                        <span className="flex items-center gap-1">
-                          <BedDouble className="w-3.5 h-3.5" />
-                          {totalBeds} {t.rooms.bedsCount}
-                        </span>
-                        <span>{occupiedPct}% {t.rooms.occupied}</span>
-                      </div>
-                      <div className="w-full h-1.5 bg-slate-100 rounded-full overflow-hidden">
-                        <div
-                          className="h-full bg-red-400 rounded-full transition-all"
-                          style={{ width: `${occupiedPct}%` }}
-                        />
-                      </div>
-                    </div>
-                  </>
+                  <div className="flex items-center gap-3 mb-3 text-xs text-slate-500">
+                    <span className="flex items-center gap-1">
+                      <span className="w-2 h-2 rounded-full bg-green-500 inline-block" />
+                      {availCount} {t.rooms.available}
+                    </span>
+                    <span className="flex items-center gap-1">
+                      <span className="w-2 h-2 rounded-full bg-red-500 inline-block" />
+                      {occupiedCount} {t.rooms.occupied}
+                    </span>
+                    <span className="ml-auto flex items-center gap-1 text-slate-400">
+                      <BedDouble className="w-3 h-3" />
+                      {totalBeds} {t.rooms.bedsCount}
+                    </span>
+                  </div>
                 )}
 
-                {/* Actions */}
-                <div className="flex items-center gap-2 mt-auto pt-3 border-t border-slate-100">
-                  <button
-                    onClick={() => router.push(`/rooms/${room.id}`)}
-                    className="flex items-center gap-1.5 text-xs font-medium text-blue-600 hover:text-blue-700 hover:bg-blue-50 px-3 py-1.5 rounded-lg transition-colors"
-                  >
-                    <Info className="w-3.5 h-3.5" />
-                    {t.rooms.details}
-                  </button>
-                  {isAdmin && (
-                    <>
-                      <button
-                        onClick={(e) => openEditRoomModal(room, e)}
-                        className="flex items-center gap-1.5 text-xs font-medium text-slate-600 hover:text-slate-800 hover:bg-slate-100 px-3 py-1.5 rounded-lg transition-colors"
-                      >
-                        <Pencil className="w-3.5 h-3.5" />
-                        {t.common.edit}
-                      </button>
-                      <button
-                        onClick={(e) => handleDeleteRoom(room.id, e)}
-                        className="flex items-center gap-1.5 text-xs font-medium text-red-500 hover:text-red-700 hover:bg-red-50 px-3 py-1.5 rounded-lg transition-colors ml-auto"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                        {t.common.delete}
-                      </button>
-                    </>
-                  )}
-                </div>
+                {/* Bed cards */}
+                {totalBeds > 0 ? (
+                  <div className="flex flex-wrap gap-2 mb-3">
+                    {room.beds.map((bed) => (
+                      <BedCard
+                        key={bed.id}
+                        bed={bed}
+                        isAmbulatory={room.isAmbulatory}
+                        onOccupiedClick={handleBedClick}
+                      />
+                    ))}
+                  </div>
+                ) : (
+                  <div className="flex items-center justify-center py-4 mb-3 bg-slate-50 rounded-lg border border-dashed border-slate-200">
+                    <span className="text-xs text-slate-400">{t.rooms.beds}: 0</span>
+                  </div>
+                )}
+
+                {/* Actions — admin only */}
+                {isAdmin && (
+                  <div className="flex items-center gap-2 mt-auto pt-3 border-t border-slate-100">
+                    <button
+                      onClick={() => router.push(`/rooms/${room.id}`)}
+                      className="flex items-center gap-1.5 text-xs font-medium text-blue-600 hover:text-blue-700 hover:bg-blue-50 px-3 py-1.5 rounded-lg transition-colors"
+                    >
+                      <Info className="w-3.5 h-3.5" />
+                      {t.rooms.details}
+                    </button>
+                    <button
+                      onClick={(e) => openEditRoomModal(room, e)}
+                      className="flex items-center gap-1.5 text-xs font-medium text-slate-600 hover:text-slate-800 hover:bg-slate-100 px-3 py-1.5 rounded-lg transition-colors"
+                    >
+                      <Pencil className="w-3.5 h-3.5" />
+                      {t.common.edit}
+                    </button>
+                    <button
+                      onClick={(e) => handleDeleteRoom(room.id, e)}
+                      className="flex items-center gap-1.5 text-xs font-medium text-red-500 hover:text-red-700 hover:bg-red-50 px-3 py-1.5 rounded-lg transition-colors ml-auto"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                      {t.common.delete}
+                    </button>
+                  </div>
+                )}
               </div>
             );
           })}
         </div>
       )}
 
-      {/* ── Add / Edit Room Modal ──────────────────────────────────────────── */}
+      {/* -- Add / Edit Room Modal -------------------------------------------- */}
       {showRoomModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
           <div className="bg-white rounded-2xl shadow-xl w-full max-w-md">

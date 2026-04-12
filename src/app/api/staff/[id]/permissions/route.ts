@@ -25,8 +25,8 @@ export async function GET(_req: NextRequest, { params }: Ctx) {
     for (const p of rolePerms) roleMap[p.page] = p.canAccess;
 
     const userPerms = await prisma.userPermission.findMany({ where: { userId: id } });
-    const userMap: Record<string, boolean> = {};
-    for (const p of userPerms) userMap[p.page] = p.canAccess;
+    const userMap: Record<string, { canAccess: boolean; level: string }> = {};
+    for (const p of userPerms) userMap[p.page] = { canAccess: p.canAccess, level: p.level };
 
     return NextResponse.json({ userId: user.id, name: user.name, role: user.role, roleMap, userMap });
   } catch (err) {
@@ -44,7 +44,12 @@ export async function PUT(req: NextRequest, { params }: Ctx) {
   }
 
   const body = await req.json();
-  const { page, canAccess, clear } = body as { page: string; canAccess: boolean; clear?: boolean };
+  const { page, canAccess, level, clear } = body as {
+    page: string;
+    canAccess: boolean;
+    level?: string;
+    clear?: boolean;
+  };
 
   if (!page) return NextResponse.json({ error: 'page required' }, { status: 400 });
 
@@ -55,8 +60,8 @@ export async function PUT(req: NextRequest, { params }: Ctx) {
 
   await prisma.userPermission.upsert({
     where: { userId_page: { userId: id, page } },
-    create: { userId: id, page, canAccess },
-    update: { canAccess },
+    create: { userId: id, page, canAccess, level: level ?? 'EDIT' },
+    update: { canAccess, level: level ?? 'EDIT' },
   });
 
   return NextResponse.json({ ok: true });

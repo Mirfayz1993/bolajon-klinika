@@ -12,7 +12,7 @@ import {
   Trash2,
 } from 'lucide-react';
 
-// ─── Types ───────────────────────────────────────────────────────────────────
+// --- Types -------------------------------------------------------------------
 
 interface Appointment {
   id: string;
@@ -42,7 +42,8 @@ type AppointmentType =
   | 'FOLLOW_UP'
   | 'SPEECH_THERAPY'
   | 'MASSAGE'
-  | 'LAB_TEST';
+  | 'LAB_TEST'
+  | 'PHYSIOTHERAPY';
 
 interface PatientOption {
   id: string;
@@ -64,7 +65,7 @@ interface NewAppointmentForm {
   notes: string;
 }
 
-// ─── Constants ───────────────────────────────────────────────────────────────
+// --- Constants ---------------------------------------------------------------
 
 const ALL_STATUSES: AppointmentStatus[] = [
   'SCHEDULED',
@@ -81,6 +82,7 @@ const ALL_TYPES: AppointmentType[] = [
   'SPEECH_THERAPY',
   'MASSAGE',
   'LAB_TEST',
+  'PHYSIOTHERAPY',
 ];
 
 
@@ -104,7 +106,7 @@ const emptyForm: NewAppointmentForm = {
   notes: '',
 };
 
-// ─── Component ───────────────────────────────────────────────────────────────
+// --- Component ---------------------------------------------------------------
 
 export default function AppointmentsPage() {
   const { t } = useLanguage();
@@ -139,7 +141,7 @@ export default function AppointmentsPage() {
   const patientSearchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const patientDropdownRef = useRef<HTMLDivElement>(null);
 
-  // ── Fetch appointments ────────────────────────────────────────────────────
+  // -- Fetch appointments ----------------------------------------------------
 
   const fetchAppointments = useCallback(async () => {
     setLoading(true);
@@ -166,7 +168,7 @@ export default function AppointmentsPage() {
     fetchAppointments();
   }, [fetchAppointments]);
 
-  // ── Fetch doctors (once) ─────────────────────────────────────────────────
+  // -- Fetch doctors (once) -------------------------------------------------
 
   useEffect(() => {
     async function loadDoctors() {
@@ -182,7 +184,7 @@ export default function AppointmentsPage() {
     loadDoctors();
   }, []);
 
-  // ── Patient search with debounce ──────────────────────────────────────────
+  // -- Patient search with debounce ------------------------------------------
 
   useEffect(() => {
     if (patientSearchTimer.current) clearTimeout(patientSearchTimer.current);
@@ -226,7 +228,7 @@ export default function AppointmentsPage() {
     return () => document.removeEventListener('mousedown', handleOutside);
   }, []);
 
-  // ── Status change ─────────────────────────────────────────────────────────
+  // -- Status change ---------------------------------------------------------
 
   const handleStatusChange = async (id: string, status: AppointmentStatus) => {
     try {
@@ -244,7 +246,7 @@ export default function AppointmentsPage() {
     }
   };
 
-  // ── Delete (cancel) appointment ───────────────────────────────────────────
+  // -- Delete (cancel) appointment -------------------------------------------
 
   const handleDelete = async (id: string) => {
     if (!confirm(t.appointments.deleteConfirm)) return;
@@ -257,7 +259,7 @@ export default function AppointmentsPage() {
     }
   };
 
-  // ── Form handlers ─────────────────────────────────────────────────────────
+  // -- Form handlers ---------------------------------------------------------
 
   const handleFormChange = (
     e: React.ChangeEvent<
@@ -326,7 +328,7 @@ export default function AppointmentsPage() {
     }
   };
 
-  // ── Render ────────────────────────────────────────────────────────────────
+  // -- Render ----------------------------------------------------------------
 
   const doctorFilterOptions = doctors.filter((d) =>
     DOCTOR_ROLES.includes(d.role)
@@ -559,7 +561,7 @@ export default function AppointmentsPage() {
         </div>
       </div>
 
-      {/* ── Add Appointment Modal ── */}
+      {/* -- Add Appointment Modal -- */}
       {showModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
           <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg max-h-[90vh] overflow-y-auto">

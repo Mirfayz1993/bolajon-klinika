@@ -57,6 +57,7 @@ export async function POST(
       notes?: string;
       admissionId?: string;
       medicines?: { name: string; quantity: number; unit: string }[];
+      noteType?: string;
     };
 
     if (!body.procedure?.trim()) {
@@ -74,6 +75,7 @@ export async function POST(
         notes: body.notes?.trim() || null,
         admissionId: body.admissionId || null,
         medicines: body.medicines?.length ? body.medicines : null,
+        noteType: body.noteType || null,
       },
       include: {
         nurse: { select: { id: true, name: true, role: true } },

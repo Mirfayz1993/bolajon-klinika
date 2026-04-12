@@ -6,7 +6,7 @@ import { prisma } from '@/lib/prisma';
 type Ctx = { params: Promise<{ id: string }> };
 
 // POST /api/staff/[id]/permissions/batch
-// Body: { permissions: { page: string; canAccess: boolean | null }[] }
+// Body: { permissions: { page: string; canAccess: boolean | null; level?: string }[] }
 // canAccess = null → o'chirish (role defaultga qaytish)
 export async function POST(req: NextRequest, { params }: Ctx) {
   const session = await getServerSession(authOptions);
@@ -19,7 +19,9 @@ export async function POST(req: NextRequest, { params }: Ctx) {
   const user = await prisma.user.findUnique({ where: { id }, select: { id: true } });
   if (!user) return NextResponse.json({ error: 'Xodim topilmadi' }, { status: 404 });
 
-  const body = await req.json() as { permissions: { page: string; canAccess: boolean | null }[] };
+  const body = await req.json() as {
+    permissions: { page: string; canAccess: boolean | null; level?: string }[];
+  };
   if (!Array.isArray(body.permissions)) {
     return NextResponse.json({ error: 'permissions array kerak' }, { status: 400 });
   }
@@ -33,8 +35,8 @@ export async function POST(req: NextRequest, { params }: Ctx) {
         } else {
           await tx.userPermission.upsert({
             where: { userId_page: { userId: id, page: perm.page } },
-            create: { userId: id, page: perm.page, canAccess: perm.canAccess },
-            update: { canAccess: perm.canAccess },
+            create: { userId: id, page: perm.page, canAccess: perm.canAccess, level: perm.level ?? 'EDIT' },
+            update: { canAccess: perm.canAccess, level: perm.level ?? 'EDIT' },
           });
         }
       }

@@ -5,7 +5,7 @@ import { useSearchParams } from 'next/navigation';
 import { Printer, ArrowLeft } from 'lucide-react';
 import Link from 'next/link';
 
-// ─── Types ────────────────────────────────────────────────────────────────────
+// --- Types --------------------------------------------------------------------
 
 interface PrintGroup {
   category: string;
@@ -23,6 +23,7 @@ interface Patient {
   id: string;
   firstName: string;
   lastName: string;
+  fatherName: string;
   birthDate: string | null;
   gender: string | null;
 }
@@ -33,6 +34,8 @@ interface PrintData {
   printedAt: string;
   labTech: { id: string; name: string } | null;
 }
+
+// --- Helpers ------------------------------------------------------------------
 
 function formatResult(result: unknown): string {
   if (result === null || result === undefined) return '—';
@@ -47,12 +50,42 @@ function formatResult(result: unknown): string {
   return String(result);
 }
 
-function formatDate(dateStr: string | null): string {
+function formatDate(dateStr: string | null | undefined): string {
   if (!dateStr) return '—';
   return new Date(dateStr).toLocaleDateString('ru-RU');
 }
 
-// ─── Print Content ────────────────────────────────────────────────────────────
+function genderLabel(g: string | null): string {
+  if (g === 'MALE') return 'Erkak';
+  if (g === 'FEMALE') return 'Qiz';
+  return '—';
+}
+
+// --- Constants ----------------------------------------------------------------
+
+const GREEN = '#16a34a';
+const GREEN_DARK = '#15803d';
+const GREEN_BG = '#f0fdf4';
+
+const CLINIC = {
+  name: 'BOLAJON KLINIKASI',
+  sub: 'Laboratoriya tahlil natijalari',
+  address: "G'ijduvon tumani, bolalar poliklinikasi yon tomonida",
+  phone: '+998 91 440 02 07',
+  logo: '/photo_2026-03-24_20-39-19.jpg',
+};
+
+// --- Shared cell styles -------------------------------------------------------
+
+function cellStyle(extra?: React.CSSProperties): React.CSSProperties {
+  return { border: `1px solid ${GREEN_DARK}`, padding: '5px 10px', fontSize: '12px', ...extra };
+}
+
+function thStyle(extra?: React.CSSProperties): React.CSSProperties {
+  return { ...cellStyle(extra), background: GREEN, color: '#fff', fontWeight: 'bold', textAlign: 'center' };
+}
+
+// --- Print Content ------------------------------------------------------------
 
 function PrintContent() {
   const searchParams = useSearchParams();
@@ -65,11 +98,7 @@ function PrintContent() {
   const [error, setError] = useState<string | null>(null);
 
   const fetchData = useCallback(async () => {
-    if (!patientId) {
-      setError('patientId majburiy');
-      setLoading(false);
-      return;
-    }
+    if (!patientId) { setError('patientId majburiy'); setLoading(false); return; }
     try {
       const params = new URLSearchParams({ patientId });
       if (testIds) params.set('testIds', testIds);
@@ -79,8 +108,7 @@ function PrintContent() {
         const err = await res.json() as { error?: string };
         throw new Error(err.error ?? 'Xatolik');
       }
-      const json: PrintData = await res.json();
-      setData(json);
+      setData(await res.json() as PrintData);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Xatolik');
     } finally {
@@ -88,157 +116,145 @@ function PrintContent() {
     }
   }, [patientId, testIds, date]);
 
-  useEffect(() => {
-    fetchData();
-  }, [fetchData]);
+  useEffect(() => { fetchData(); }, [fetchData]);
 
-  const handlePrint = () => {
-    window.print();
-  };
+  if (loading) return (
+    <div className="flex items-center justify-center min-h-screen">
+      <div className="w-8 h-8 border-4 border-green-200 border-t-green-600 rounded-full animate-spin" />
+    </div>
+  );
 
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center min-h-screen">
-        <div className="w-8 h-8 border-4 border-blue-200 border-t-blue-600 rounded-full animate-spin" />
-      </div>
-    );
-  }
+  if (error || !data) return (
+    <div className="flex flex-col items-center justify-center min-h-screen gap-4">
+      <p className="text-red-600">{error ?? "Ma'lumot topilmadi"}</p>
+      <Link href="/lab" className="text-green-600 hover:underline text-sm">Laboratoriyaga qaytish</Link>
+    </div>
+  );
 
-  if (error || !data) {
-    return (
-      <div className="flex flex-col items-center justify-center min-h-screen gap-4">
-        <p className="text-red-600">{error ?? 'Ma\'lumot topilmadi'}</p>
-        <Link href="/lab" className="text-blue-600 hover:underline text-sm">
-          Laboratoriyaga qaytish
-        </Link>
-      </div>
-    );
-  }
+  if (data.groups.length === 0) return (
+    <div className="flex flex-col items-center justify-center min-h-screen gap-4">
+      <p className="text-slate-500">Tugallangan tahlillar topilmadi</p>
+      <Link href="/lab" className="text-green-600 hover:underline text-sm">Laboratoriyaga qaytish</Link>
+    </div>
+  );
 
-  if (data.groups.length === 0) {
-    return (
-      <div className="flex flex-col items-center justify-center min-h-screen gap-4">
-        <p className="text-slate-500">Tugallangan tahlillar topilmadi</p>
-        <Link href="/lab" className="text-blue-600 hover:underline text-sm">
-          Laboratoriyaga qaytish
-        </Link>
-      </div>
-    );
-  }
-
-  const patient = data.patient;
-  const printDate = date ?? new Date(data.printedAt).toLocaleDateString('ru-RU');
+  const p = data.patient;
+  const printDate = date ? formatDate(date) : formatDate(data.printedAt);
+  const firstTestId = data.groups[0]?.tests[0]?.id ?? '';
+  const shortId = firstTestId.slice(-6).toUpperCase();
 
   return (
-    <div className="min-h-screen bg-white">
+    <div className="lab-print-only min-h-screen bg-white">
+
       {/* Toolbar — print da ko'rinmaydi */}
       <div className="print:hidden bg-slate-50 border-b border-slate-200 px-6 py-3 flex items-center justify-between">
-        <Link
-          href="/lab"
-          className="flex items-center gap-2 text-sm text-slate-600 hover:text-slate-800"
-        >
-          <ArrowLeft className="w-4 h-4" />
-          Laboratoriyaga qaytish
+        <Link href="/lab" className="flex items-center gap-2 text-sm text-slate-600 hover:text-slate-800">
+          <ArrowLeft className="w-4 h-4" /> Laboratoriyaga qaytish
         </Link>
         <button
-          onClick={handlePrint}
-          className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-medium"
+          onClick={() => window.print()}
+          className="flex items-center gap-2 text-white px-4 py-2 rounded-lg text-sm font-medium"
+          style={{ background: GREEN }}
         >
-          <Printer className="w-4 h-4" />
-          Chop etish
+          <Printer className="w-4 h-4" /> Chop etish
         </button>
       </div>
 
-      {/* Print body */}
-      <div
-        id="print-body"
-        style={{ fontFamily: 'Arial, sans-serif', padding: '20mm 15mm', maxWidth: '210mm', margin: '0 auto' }}
-      >
-        {/* Clinic header */}
-        <div style={{ textAlign: 'center', marginBottom: '16px' }}>
-          <h1 style={{ fontSize: '16px', fontWeight: 'bold', letterSpacing: '1px', margin: 0 }}>
-            BOLAJON KLINIKASI
-          </h1>
-          <p style={{ fontSize: '11px', color: '#64748b', margin: '4px 0 0' }}>
-            Laboratoriya tahlil natijalari
-          </p>
-        </div>
+      {/* A4 body */}
+      <div style={{ fontFamily: 'Arial, sans-serif', padding: '12mm 10mm', maxWidth: '210mm', margin: '0 auto', color: '#000' }}>
 
-        {/* Patient info */}
-        {patient && (
-          <div style={{
-            display: 'flex',
-            justifyContent: 'space-between',
-            borderBottom: '1px solid #e2e8f0',
-            paddingBottom: '10px',
-            marginBottom: '16px',
-            fontSize: '13px',
-          }}>
-            <div>
-              <strong>Bemor:</strong>{' '}
-              {patient.lastName} {patient.firstName}
-              {patient.birthDate && (
-                <span style={{ marginLeft: '12px', color: '#64748b' }}>
-                  t.y.: {new Date(patient.birthDate).toLocaleDateString('ru-RU')}
-                </span>
-              )}
-            </div>
-            <div>
-              <strong>Sana:</strong> {printDate}
-            </div>
-          </div>
-        )}
+        {/* -- HEADER -- */}
+        <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: '6px' }}>
+          <tbody>
+            <tr>
+              <td style={{ width: '55%', verticalAlign: 'middle', paddingBottom: '6px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={CLINIC.logo} alt="Logo" style={{ width: '60px', height: '60px', objectFit: 'contain' }} />
+                  <div>
+                    <div style={{ fontSize: '18px', fontWeight: '900', letterSpacing: '1px' }}>{CLINIC.name}</div>
+                    <div style={{ fontSize: '11px', color: '#444', marginTop: '2px' }}>{CLINIC.sub}</div>
+                  </div>
+                </div>
+              </td>
+              <td style={{ width: '45%', textAlign: 'right', verticalAlign: 'middle', fontSize: '11px', lineHeight: '1.7' }}>
+                <div><strong>Manzil:</strong> {CLINIC.address}</div>
+                <div><strong>Tel:</strong> {CLINIC.phone}</div>
+              </td>
+            </tr>
+          </tbody>
+        </table>
 
-        {/* Groups */}
+        {/* Chiziq */}
+        <div style={{ borderTop: `2px solid ${GREEN}`, marginBottom: '8px' }} />
+
+        {/* -- BEMOR JADVALI -- */}
+        <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: '12px' }}>
+          <tbody>
+            {/* F.I.O. */}
+            <tr>
+              <td style={thStyle({ width: '20%' })}>Ф.И.О.</td>
+              <td style={{ ...cellStyle({ fontWeight: 'bold', fontSize: '13px' }), width: '55%' }} colSpan={3}>
+                {p ? `${p.lastName} ${p.firstName} ${p.fatherName}` : '—'}
+              </td>
+              {/* Badge */}
+              <td rowSpan={3} style={cellStyle({ textAlign: 'center', verticalAlign: 'middle', width: '110px', padding: '6px 4px' })}>
+                <div style={{ fontSize: '10px', fontWeight: 'bold', color: GREEN, marginBottom: '3px' }}>TAHLIL NATIJALARI</div>
+                <div style={{ fontSize: '10px', fontWeight: 'bold' }}>ID: {shortId}</div>
+              </td>
+            </tr>
+            {/* Tug'ilgan sana + Jins */}
+            <tr>
+              <td style={thStyle()}>Tug&apos;ilgan sana</td>
+              <td style={cellStyle({ width: '20%' })}>{p?.birthDate ? formatDate(p.birthDate) : '—'}</td>
+              <td style={thStyle({ width: '10%' })}>Jins</td>
+              <td style={cellStyle({ width: '20%' })}>{p ? genderLabel(p.gender) : '—'}</td>
+            </tr>
+            {/* Natija sanasi */}
+            <tr>
+              <td style={thStyle()}>Natija sanasi</td>
+              <td style={cellStyle()} colSpan={3}>{printDate}</td>
+            </tr>
+          </tbody>
+        </table>
+
+        {/* -- GURUHLAR -- */}
         {data.groups.map((group) => (
-          <div key={group.category} style={{ marginBottom: '20px' }}>
-            {/* Category header */}
-            <div style={{ textAlign: 'center', marginBottom: '8px' }}>
-              <h2 style={{
-                fontSize: '13px',
-                fontWeight: 'bold',
-                color: '#1e40af',
+          <div key={group.category} style={{ marginBottom: '16px' }}>
+            {/* Kategoriya sarlavhasi */}
+            <div style={{ textAlign: 'center', margin: '8px 0 6px' }}>
+              <span style={{
+                fontSize: '14px',
+                fontWeight: '900',
                 textTransform: 'uppercase',
-                letterSpacing: '1px',
-                margin: 0,
+                letterSpacing: '2px',
+                color: '#14532d',
+                borderBottom: `2px solid ${GREEN}`,
+                paddingBottom: '2px',
               }}>
                 {group.category}
-              </h2>
+              </span>
             </div>
 
-            {/* Table */}
-            <table style={{ borderCollapse: 'collapse', width: '100%', fontSize: '12px' }}>
+            {/* Natijalar jadvali */}
+            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
               <thead>
-                <tr style={{ backgroundColor: '#dbeafe' }}>
-                  <th style={{ border: '1px solid #94a3b8', padding: '6px 10px', textAlign: 'left', fontWeight: 'bold' }}>
-                    Наименование Анализа
-                  </th>
-                  <th style={{ border: '1px solid #94a3b8', padding: '6px 10px', textAlign: 'center', fontWeight: 'bold', width: '120px' }}>
-                    Результат
-                  </th>
-                  <th style={{ border: '1px solid #94a3b8', padding: '6px 10px', textAlign: 'center', fontWeight: 'bold', width: '150px' }}>
-                    Норма
-                  </th>
-                  <th style={{ border: '1px solid #94a3b8', padding: '6px 10px', textAlign: 'center', fontWeight: 'bold', width: '80px' }}>
-                    Ед.изм
-                  </th>
+                <tr>
+                  <th style={thStyle({ textAlign: 'left', width: '45%' })}>Наименование Анализа</th>
+                  <th style={thStyle({ width: '18%' })}>Результат</th>
+                  <th style={thStyle({ width: '25%' })}>Норма</th>
+                  <th style={thStyle({ width: '12%' })}>Ед.изм</th>
                 </tr>
               </thead>
               <tbody>
-                {group.tests.map((test) => (
-                  <tr key={test.id}>
-                    <td style={{ border: '1px solid #94a3b8', padding: '6px 10px' }}>
-                      {test.name}
-                    </td>
-                    <td style={{ border: '1px solid #94a3b8', padding: '6px 10px', textAlign: 'center', fontWeight: '600' }}>
+                {group.tests.map((test, i) => (
+                  <tr key={test.id} style={{ background: i % 2 === 0 ? '#fff' : GREEN_BG }}>
+                    <td style={cellStyle()}>{test.name}</td>
+                    <td style={cellStyle({ textAlign: 'center', fontWeight: 'bold', fontSize: '13px' })}>
                       {formatResult(test.result)}
                     </td>
-                    <td style={{ border: '1px solid #94a3b8', padding: '6px 10px', textAlign: 'center', color: '#475569', fontSize: '11px' }}>
-                      {test.normalRange ?? '—'}
-                    </td>
-                    <td style={{ border: '1px solid #94a3b8', padding: '6px 10px', textAlign: 'center', color: '#64748b' }}>
-                      {test.unit ?? '—'}
-                    </td>
+                    <td style={cellStyle({ textAlign: 'center', color: '#555' })}>{test.normalRange ?? '—'}</td>
+                    <td style={cellStyle({ textAlign: 'center', color: '#555' })}>{test.unit ?? '—'}</td>
                   </tr>
                 ))}
               </tbody>
@@ -246,21 +262,22 @@ function PrintContent() {
           </div>
         ))}
 
-        {/* Footer */}
+        {/* -- FOOTER -- */}
         <div style={{
-          marginTop: '32px',
-          paddingTop: '12px',
-          borderTop: '1px solid #e2e8f0',
+          marginTop: '24px',
+          borderTop: `1px solid ${GREEN}`,
+          paddingTop: '10px',
           display: 'flex',
           justifyContent: 'space-between',
-          fontSize: '11px',
-          color: '#94a3b8',
+          alignItems: 'center',
+          fontSize: '12px',
         }}>
           <span>
-            Laborant:{' '}
-            {data.labTech ? data.labTech.name : '___________________________'}
+            Tahlil o&apos;tkazdi:{' '}
+            <span style={{ borderBottom: '1px solid #000', display: 'inline-block', minWidth: '100px' }}>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</span>
+            {' '}{data.labTech?.name ?? ''}
           </span>
-          <span>
+          <span style={{ color: '#666', fontSize: '11px' }}>
             Chop etilgan: {new Date(data.printedAt).toLocaleString('ru-RU')}
           </span>
         </div>
@@ -269,22 +286,31 @@ function PrintContent() {
       {/* Print styles */}
       <style>{`
         @media print {
-          body { margin: 0; }
-          .print\\:hidden { display: none !important; }
-          @page { size: A4; margin: 10mm; }
+          @page { size: A4; margin: 8mm; }
+          /* Sidebar, header va boshqa layout elementlarini yashirish */
+          body * { visibility: hidden; }
+          .lab-print-only, .lab-print-only * { visibility: visible; }
+          .lab-print-only {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            overflow: visible;
+            background: white;
+            z-index: 9999;
+          }
         }
       `}</style>
     </div>
   );
 }
 
-// ─── Page ─────────────────────────────────────────────────────────────────────
-
 export default function LabPrintPage() {
   return (
     <Suspense fallback={
       <div className="flex items-center justify-center min-h-screen">
-        <div className="w-8 h-8 border-4 border-blue-200 border-t-blue-600 rounded-full animate-spin" />
+        <div className="w-8 h-8 border-4 border-green-200 border-t-green-600 rounded-full animate-spin" />
       </div>
     }>
       <PrintContent />

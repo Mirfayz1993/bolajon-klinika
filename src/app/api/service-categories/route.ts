@@ -21,7 +21,15 @@ export async function GET() {
       },
       orderBy: { name: 'asc' },
     });
-    return NextResponse.json(categories);
+    // Prisma Decimal → Number (JSON da string bo'lib keladi)
+    const result = categories.map((cat: { items: { price: unknown }[] }) => ({
+      ...cat,
+      items: cat.items.map((item: { price: unknown }) => ({
+        ...item,
+        price: Number(item.price),
+      })),
+    }));
+    return NextResponse.json(result);
   } catch (err) {
     console.error(err);
     return NextResponse.json({ error: 'Server error' }, { status: 500 });

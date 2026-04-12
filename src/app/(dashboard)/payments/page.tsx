@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useLanguage } from '@/hooks/useLanguage';
+import { useRouter } from 'next/navigation';
 import {
   Plus,
   ChevronLeft,
@@ -15,9 +16,10 @@ import {
   Clock,
   Search,
   Edit2,
+  Printer,
 } from 'lucide-react';
 
-// ─── Types ─────────────────────────────────────────────────────────────────
+// --- Types -----------------------------------------------------------------
 
 type PaymentMethod = 'CASH' | 'CARD' | 'BANK_TRANSFER' | 'CLICK' | 'PAYME';
 type PaymentCategory =
@@ -82,7 +84,7 @@ interface EditPaymentForm {
   description: string;
 }
 
-// ─── Constants ─────────────────────────────────────────────────────────────
+// --- Constants -------------------------------------------------------------
 
 const LIMIT = 20;
 
@@ -104,16 +106,17 @@ const EMPTY_FORM: NewPaymentForm = {
   description: '',
 };
 
-// ─── Helpers ───────────────────────────────────────────────────────────────
+// --- Helpers ---------------------------------------------------------------
 
 function formatMoney(n: number): string {
   return n.toLocaleString('uz-UZ') + " so'm";
 }
 
-// ─── Component ─────────────────────────────────────────────────────────────
+// --- Component -------------------------------------------------------------
 
 export default function PaymentsPage() {
   const { t } = useLanguage();
+  const router = useRouter();
 
   const METHOD_LABELS = t.payments.methods as Record<string, string>;
   const CATEGORY_LABELS = t.payments.categories as Record<string, string>;
@@ -159,7 +162,7 @@ export default function PaymentsPage() {
   const [editSaving, setEditSaving] = useState(false);
   const [editError, setEditError] = useState<string | null>(null);
 
-  // ── Fetch payments ──────────────────────────────────────────────────────
+  // -- Fetch payments ------------------------------------------------------
 
   const fetchPayments = useCallback(async () => {
     setLoading(true);
@@ -191,7 +194,7 @@ export default function PaymentsPage() {
     fetchPayments();
   }, [fetchPayments]);
 
-  // ── Fetch summary ───────────────────────────────────────────────────────
+  // -- Fetch summary -------------------------------------------------------
 
   const fetchSummary = useCallback(async () => {
     setSummaryLoading(true);
@@ -211,7 +214,7 @@ export default function PaymentsPage() {
     fetchSummary();
   }, [fetchSummary]);
 
-  // ── Patient search ──────────────────────────────────────────────────────
+  // -- Patient search ------------------------------------------------------
 
   useEffect(() => {
     if (patientDebounce.current) clearTimeout(patientDebounce.current);
@@ -248,7 +251,7 @@ export default function PaymentsPage() {
     setShowPatientDropdown(false);
   };
 
-  // ── Add payment ─────────────────────────────────────────────────────────
+  // -- Add payment ---------------------------------------------------------
 
   const handleAddSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -294,7 +297,7 @@ export default function PaymentsPage() {
     setShowAddModal(true);
   };
 
-  // ── Edit payment ────────────────────────────────────────────────────────
+  // -- Edit payment --------------------------------------------------------
 
   const openEditModal = (payment: Payment) => {
     setEditingPayment(payment);
@@ -335,7 +338,7 @@ export default function PaymentsPage() {
     }
   };
 
-  // ── Filter reset ────────────────────────────────────────────────────────
+  // -- Filter reset --------------------------------------------------------
 
   const resetFilters = () => {
     setFilterStatus('');
@@ -348,7 +351,7 @@ export default function PaymentsPage() {
 
   const hasFilters = filterStatus || filterCategory || filterMethod || dateFrom || dateTo;
 
-  // ── Pagination ──────────────────────────────────────────────────────────
+  // -- Pagination ----------------------------------------------------------
 
   const renderPageNumbers = () => {
     const pages: (number | string)[] = [];
@@ -366,14 +369,14 @@ export default function PaymentsPage() {
     return pages;
   };
 
-  // ── Input class helper ──────────────────────────────────────────────────
+  // -- Input class helper --------------------------------------------------
 
   const inputCls =
     'border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent w-full';
   const selectCls =
     'border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white';
 
-  // ── Render ──────────────────────────────────────────────────────────────
+  // -- Render --------------------------------------------------------------
 
   return (
     <div className="p-6">
@@ -616,6 +619,13 @@ export default function PaymentsPage() {
                     <td className="px-4 py-3">
                       <div className="flex items-center justify-end gap-1">
                         <button
+                          onClick={() => router.push(`/payments/print?id=${payment.id}`)}
+                          className="p-1.5 text-slate-400 hover:text-green-600 hover:bg-green-50 rounded-md transition-colors"
+                          title="Chek chop etish"
+                        >
+                          <Printer className="w-4 h-4" />
+                        </button>
+                        <button
                           onClick={() => openEditModal(payment)}
                           className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-md transition-colors"
                           title={t.common.edit}
@@ -636,6 +646,11 @@ export default function PaymentsPage() {
           <div className="flex items-center justify-between px-4 py-3 border-t border-slate-100">
             <span className="text-sm text-slate-500">
               {t.common.total}: {total} {t.payments.totalPayments}
+              {summary && (
+                <span className="ml-3 font-semibold text-slate-700">
+                  | {formatMoney(summary.totalAmount)}
+                </span>
+              )}
             </span>
             <div className="flex items-center gap-1">
               <button
@@ -676,7 +691,7 @@ export default function PaymentsPage() {
         )}
       </div>
 
-      {/* ── Add Payment Modal ─────────────────────────────────────────────── */}
+      {/* -- Add Payment Modal ----------------------------------------------- */}
       {showAddModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
           <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
@@ -856,7 +871,7 @@ export default function PaymentsPage() {
         </div>
       )}
 
-      {/* ── Edit Payment Modal ────────────────────────────────────────────── */}
+      {/* -- Edit Payment Modal ---------------------------------------------- */}
       {showEditModal && editingPayment && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
           <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg">

@@ -7,7 +7,7 @@ import {
   isValidJshshir,
 } from '@/lib/business-logic';
 
-// ─── calculateInpatientDays ───────────────────────────────────────────────────
+// --- calculateInpatientDays ---------------------------------------------------
 
 describe('calculateInpatientDays', () => {
   const base = new Date('2026-01-01T08:00:00.000Z');
@@ -50,7 +50,7 @@ describe('calculateInpatientDays', () => {
   });
 });
 
-// ─── calculateInpatientAmount ─────────────────────────────────────────────────
+// --- calculateInpatientAmount -------------------------------------------------
 
 describe('calculateInpatientAmount', () => {
   it('0 kun → 0 so\'m', () => {
@@ -66,7 +66,7 @@ describe('calculateInpatientAmount', () => {
   });
 });
 
-// ─── isValidQueueNumber ───────────────────────────────────────────────────────
+// --- isValidQueueNumber -------------------------------------------------------
 
 describe('isValidQueueNumber', () => {
   it('1 → to\'g\'ri', () => expect(isValidQueueNumber(1)).toBe(true));
@@ -76,7 +76,7 @@ describe('isValidQueueNumber', () => {
   it('1.5 → noto\'g\'ri (kasr)', () => expect(isValidQueueNumber(1.5)).toBe(false));
 });
 
-// ─── isValidUzbekPhone ────────────────────────────────────────────────────────
+// --- isValidUzbekPhone --------------------------------------------------------
 
 describe('isValidUzbekPhone', () => {
   it('+998901234567 → to\'g\'ri', () => expect(isValidUzbekPhone('+998901234567')).toBe(true));
@@ -90,7 +90,7 @@ describe('isValidUzbekPhone', () => {
     expect(isValidUzbekPhone('+1234567890123')).toBe(false));
 });
 
-// ─── isValidJshshir ───────────────────────────────────────────────────────────
+// --- isValidJshshir -----------------------------------------------------------
 
 describe('isValidJshshir', () => {
   it('14 raqam → to\'g\'ri', () => expect(isValidJshshir('12345678901234')).toBe(true));

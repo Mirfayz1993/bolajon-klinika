@@ -19,7 +19,7 @@ import {
   Calendar,
 } from "lucide-react";
 
-// ─── Types ────────────────────────────────────────────────────────────────────
+// --- Types --------------------------------------------------------------------
 
 interface FinancialReport {
   totalRevenue: number;
@@ -53,7 +53,7 @@ interface StaffReport {
   byRole: { role: string; count: number }[];
 }
 
-// ─── Helpers ──────────────────────────────────────────────────────────────────
+// --- Helpers ------------------------------------------------------------------
 
 function getDefaultDates() {
   const to = new Date();
@@ -69,7 +69,7 @@ function formatMoney(amount: number) {
   return new Intl.NumberFormat("uz-UZ").format(amount);
 }
 
-// ─── StatCard ─────────────────────────────────────────────────────────────────
+// --- StatCard -----------------------------------------------------------------
 
 interface StatCardProps {
   label: string;
@@ -135,7 +135,7 @@ function StatCard({ label, value, icon, color, suffix }: StatCardProps) {
   );
 }
 
-// ─── DateFilter ───────────────────────────────────────────────────────────────
+// --- DateFilter ---------------------------------------------------------------
 
 interface DateFilterProps {
   from: string;
@@ -192,7 +192,7 @@ function DateFilter({
   );
 }
 
-// ─── SimpleTable ──────────────────────────────────────────────────────────────
+// --- SimpleTable --------------------------------------------------------------
 
 interface SimpleTableProps {
   headers: string[];
@@ -240,7 +240,7 @@ function SimpleTable({ headers, rows, noDataLabel }: SimpleTableProps) {
   );
 }
 
-// ─── LoadingSpinner ───────────────────────────────────────────────────────────
+// --- LoadingSpinner -----------------------------------------------------------
 
 function LoadingSpinner() {
   return (
@@ -250,7 +250,7 @@ function LoadingSpinner() {
   );
 }
 
-// ─── ErrorMessage ─────────────────────────────────────────────────────────────
+// --- ErrorMessage -------------------------------------------------------------
 
 function ErrorMessage({ message }: { message: string }) {
   return (
@@ -260,7 +260,7 @@ function ErrorMessage({ message }: { message: string }) {
   );
 }
 
-// ─── FinancialTab ─────────────────────────────────────────────────────────────
+// --- FinancialTab -------------------------------------------------------------
 
 function FinancialTab() {
   const { t } = useLanguage();
@@ -377,7 +377,7 @@ function FinancialTab() {
   );
 }
 
-// ─── PatientsTab ──────────────────────────────────────────────────────────────
+// --- PatientsTab --------------------------------------------------------------
 
 function PatientsTab() {
   const { t } = useLanguage();
@@ -485,7 +485,7 @@ function PatientsTab() {
   );
 }
 
-// ─── LabTab ───────────────────────────────────────────────────────────────────
+// --- LabTab -------------------------------------------------------------------
 
 function LabTab() {
   const { t } = useLanguage();
@@ -602,7 +602,7 @@ function LabTab() {
   );
 }
 
-// ─── StaffTab ─────────────────────────────────────────────────────────────────
+// --- StaffTab -----------------------------------------------------------------
 
 function StaffTab() {
   const { t } = useLanguage();
@@ -710,7 +710,7 @@ function StaffTab() {
   );
 }
 
-// ─── Main Page ────────────────────────────────────────────────────────────────
+// --- Main Page ----------------------------------------------------------------
 
 type TabKey = "financial" | "patients" | "lab" | "staff";
 

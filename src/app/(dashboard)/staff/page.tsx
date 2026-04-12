@@ -18,7 +18,7 @@ import {
 } from 'lucide-react';
 import { MANAGED_PAGES } from '@/config/nav-pages';
 
-// ─── Types ────────────────────────────────────────────────────────────────────
+// --- Types --------------------------------------------------------------------
 
 interface Specialization {
   id: string;
@@ -56,12 +56,12 @@ interface UserPermsData {
   userMap: Record<string, boolean>;
 }
 
-// ─── Constants ────────────────────────────────────────────────────────────────
+// --- Constants ----------------------------------------------------------------
 
 const ALL_ROLES = [
   'ADMIN', 'HEAD_DOCTOR', 'DOCTOR', 'HEAD_NURSE', 'NURSE',
   'HEAD_LAB_TECH', 'LAB_TECH', 'RECEPTIONIST',
-  'SPEECH_THERAPIST', 'MASSAGE_THERAPIST', 'SANITARY_WORKER',
+  'SPEECH_THERAPIST', 'MASSAGE_THERAPIST', 'SANITARY_WORKER', 'PHARMACIST',
 ];
 
 const EMPTY_FORM: StaffFormData = {
@@ -69,7 +69,7 @@ const EMPTY_FORM: StaffFormData = {
   role: 'DOCTOR', specializationId: '', isActive: true,
 };
 
-// ─── Permission Drawer ────────────────────────────────────────────────────────
+// --- Permission Drawer --------------------------------------------------------
 
 function PermDrawer({
   member,
@@ -308,7 +308,7 @@ function PermDrawer({
   );
 }
 
-// ─── Main Component ───────────────────────────────────────────────────────────
+// --- Main Component -----------------------------------------------------------
 
 export default function StaffPage() {
   const { data: session } = useSession();
@@ -333,7 +333,7 @@ export default function StaffPage() {
   // Permissions drawer
   const [permMember, setPermMember] = useState<StaffMember | null>(null);
 
-  // ── Fetch ──────────────────────────────────────────────────────────────────
+  // -- Fetch ------------------------------------------------------------------
 
   const fetchStaff = useCallback(async () => {
     setLoading(true);
@@ -362,7 +362,7 @@ export default function StaffPage() {
   useEffect(() => { fetchStaff(); }, [fetchStaff]);
   useEffect(() => { fetchSpecializations(); }, [fetchSpecializations]);
 
-  // ── Phone format ───────────────────────────────────────────────────────────
+  // -- Phone format -----------------------------------------------------------
 
   function formatPhone(value: string): string {
     const digits = value.replace(/\D/g, '');
@@ -380,7 +380,7 @@ export default function StaffPage() {
     return formatPhone(value);
   }
 
-  // ── Modal ──────────────────────────────────────────────────────────────────
+  // -- Modal ------------------------------------------------------------------
 
   function openAddModal() {
     setEditingStaff(null);
@@ -412,7 +412,7 @@ export default function StaffPage() {
     setFormError('');
   }
 
-  // ── CRUD ───────────────────────────────────────────────────────────────────
+  // -- CRUD -------------------------------------------------------------------
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -457,7 +457,7 @@ export default function StaffPage() {
     }
   }
 
-  // ── Render ─────────────────────────────────────────────────────────────────
+  // -- Render -----------------------------------------------------------------
 
   return (
     <div className="p-6">
@@ -670,7 +670,14 @@ export default function StaffPage() {
                 <div className="relative">
                   <select
                     required value={form.role}
-                    onChange={(e) => setForm((f) => ({ ...f, role: e.target.value }))}
+                    onChange={(e) => {
+                      const role = e.target.value;
+                      setForm((f) => ({
+                        ...f,
+                        role,
+                        specializationId: (role === 'DOCTOR' || role === 'HEAD_DOCTOR') ? f.specializationId : '',
+                      }));
+                    }}
                     className="w-full border border-slate-200 rounded-lg px-3 py-2 pr-8 text-sm appearance-none focus:outline-none focus:ring-2 focus:ring-blue-300 bg-white"
                   >
                     {ALL_ROLES.map((r) => (
@@ -681,6 +688,7 @@ export default function StaffPage() {
                 </div>
               </div>
 
+              {(form.role === 'DOCTOR' || form.role === 'HEAD_DOCTOR') && (
               <div>
                 <label className="block text-xs font-medium text-slate-600 mb-1">
                   {t.staff.specialization}
@@ -699,6 +707,7 @@ export default function StaffPage() {
                   <ChevronDown size={14} className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-slate-400" />
                 </div>
               </div>
+              )}
 
               {editingStaff && (
                 <div className="flex items-center gap-3">

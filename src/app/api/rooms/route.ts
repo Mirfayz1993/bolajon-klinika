@@ -51,6 +51,16 @@ export async function GET(req: NextRequest) {
             id: true,
             bedNumber: true,
             status: true,
+            admissions: {
+              where: { dischargeDate: null },
+              select: {
+                id: true,
+                patient: {
+                  select: { id: true, firstName: true, lastName: true },
+                },
+              },
+              take: 1,
+            },
           },
         },
         _count: {

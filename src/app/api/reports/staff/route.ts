@@ -63,6 +63,7 @@ export async function GET(req: NextRequest) {
       SPEECH_THERAPIST: 0,
       MASSAGE_THERAPIST: 0,
       SANITARY_WORKER: 0,
+      PHARMACIST: 0,
     };
 
     for (const u of users) {
