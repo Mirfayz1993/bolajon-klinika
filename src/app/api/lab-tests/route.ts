@@ -66,6 +66,9 @@ export async function GET(req: NextRequest) {
           labTech: {
             select: { id: true, name: true },
           },
+          payment: {
+            select: { id: true, status: true, amount: true },
+          },
         },
       }),
       prisma.labTest.count({ where }),
@@ -131,39 +134,42 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Tahlil turi faol emas' }, { status: 400 });
     }
 
-    const [labTest, payment] = await prisma.$transaction([
-      prisma.labTest.create({
-        data: {
-          patientId,
-          testTypeId,
-          labTechId: session.user.id,
-          notes: notes ?? undefined,
-          status: 'PENDING',
-          // results: null — natija kiritilganda to'ldiriladi
+    // Avval payment yaratamiz, keyin labTestga paymentId bog'laymiz
+    const payment = await prisma.payment.create({
+      data: {
+        patientId,
+        amount: testType.price,
+        method: paymentMethod as PaymentMethod,
+        category: 'LAB_TEST',
+        status: 'PENDING',
+        description: testType.name,
+      },
+    });
+
+    const labTest = await prisma.labTest.create({
+      data: {
+        patientId,
+        testTypeId,
+        labTechId: session.user.id,
+        notes: notes ?? undefined,
+        status: 'PENDING',
+        paymentId: payment.id,
+      },
+      include: {
+        patient: {
+          select: { id: true, firstName: true, lastName: true },
         },
-        include: {
-          patient: {
-            select: { id: true, firstName: true, lastName: true },
-          },
-          testType: {
-            select: { id: true, name: true, price: true, normalRange: true, unit: true, category: true },
-          },
-          labTech: {
-            select: { id: true, name: true },
-          },
+        testType: {
+          select: { id: true, name: true, price: true, normalRange: true, unit: true, category: true },
         },
-      }),
-      prisma.payment.create({
-        data: {
-          patientId,
-          amount: testType.price,
-          method: paymentMethod as PaymentMethod,
-          category: 'LAB_TEST',
-          status: 'PENDING',
-          description: testType.name,
+        labTech: {
+          select: { id: true, name: true },
         },
-      }),
-    ]);
+        payment: {
+          select: { id: true, status: true, amount: true },
+        },
+      },
+    });
 
     return NextResponse.json({ labTest, payment }, { status: 201 });
   } catch (error) {

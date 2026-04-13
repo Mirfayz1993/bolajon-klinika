@@ -52,10 +52,57 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     return NextResponse.json({ error: 'Maydonlar to\'ldirilmagan' }, { status: 400 });
   }
 
-  // Ambulator kategoriyasini aniqlash
-  const isAmbulatory = body.categoryName.toLowerCase().includes('ambulator');
+  // Kategoriyalarni aniqlash
+  const catLower = body.categoryName.toLowerCase();
+  const isAmbulatory = catLower.includes('ambulator');
+  const isLabService = catLower.includes('lab') || catLower.includes('laboratoriya') ||
+    catLower.includes('labaratoriya') || catLower.includes('tahlil');
 
   try {
+    // Lab xizmat: Payment(PENDING) → LabTest(paymentId) → AssignedService
+    if (isLabService && body.itemId) {
+      const testType = await db.labTestType.findUnique({ where: { id: body.itemId } });
+      if (testType && testType.isActive) {
+        const result = await db.$transaction(async (tx: typeof db) => {
+          // 1. PENDING to'lov yaratamiz
+          const payment = await tx.payment.create({
+            data: {
+              patientId,
+              amount: body.price,
+              method: 'CASH',
+              category: 'LAB_TEST',
+              status: 'PENDING',
+              description: body.itemName.trim(),
+            },
+          });
+          // 2. LabTest ni payment bilan bog'laymiz
+          await tx.labTest.create({
+            data: {
+              patientId,
+              testTypeId: body.itemId,
+              labTechId: session.user.id,
+              status: 'PENDING',
+              paymentId: payment.id,
+            },
+          });
+          // 3. AssignedService
+          const service = await tx.assignedService.create({
+            data: {
+              patientId,
+              categoryName: body.categoryName.trim(),
+              itemName: body.itemName.trim(),
+              price: body.price,
+              itemId: body.itemId,
+              assignedById: session.user.id,
+            },
+            include: { assignedBy: { select: { name: true, role: true } } },
+          });
+          return service;
+        });
+        return NextResponse.json(result, { status: 201 });
+      }
+    }
+
     // Ambulator xizmat va bedId berilgan bo'lsa
     if (isAmbulatory && body.bedId) {
       const bed = await db.bed.findUnique({

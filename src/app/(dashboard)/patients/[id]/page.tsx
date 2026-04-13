@@ -53,6 +53,7 @@ interface LabTest {
   notes?: string | null; completedAt?: string | null; createdAt: string;
   testType: { name: string; unit?: string | null; normalRange?: string | null; price: number };
   labTech: { name: string; role: string };
+  payment?: { id: string; status: string } | null;
 }
 
 interface Admission {
@@ -346,11 +347,13 @@ export default function PatientDetailPage({ params }: PageProps) {
   const [patientLabOpenGroups, setPatientLabOpenGroups] = useState<Set<string>>(new Set());
   const [patientLabOrderSaving, setPatientLabOrderSaving] = useState(false);
   const [patientLabOrderError, setPatientLabOrderError] = useState<string | null>(null);
+  const [patientLabOrderDone, setPatientLabOrderDone] = useState(false);
 
   function openPatientLabOrderModal() {
     setPatientLabSelectedIds([]);
     setPatientLabOpenGroups(new Set());
     setPatientLabOrderError(null);
+    setPatientLabOrderDone(false);
     setShowPatientLabOrderModal(true);
     fetch('/api/lab-test-types')
       .then(r => r.json())
@@ -365,17 +368,22 @@ export default function PatientDetailPage({ params }: PageProps) {
     setPatientLabOrderError(null);
     try {
       await Promise.all(
-        patientLabSelectedIds.map(id =>
-          fetch('/api/lab-tests', {
+        patientLabSelectedIds.map(id => {
+          const tt = patientLabAllTypes.find(x => x.id === id);
+          if (!tt) return Promise.resolve();
+          return fetch(`/api/patients/${patient.id}/assigned-services`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ patientId: patient.id, testTypeId: id }),
-          })
-        )
+            body: JSON.stringify({
+              categoryName: 'Laboratoriya',
+              itemName: tt.name,
+              price: Number(tt.price),
+              itemId: tt.id,
+            }),
+          });
+        })
       );
-      setShowPatientLabOrderModal(false);
-      // Reload profile to show new lab tests
-      window.location.reload();
+      setPatientLabOrderDone(true);
     } catch {
       setPatientLabOrderError('Xatolik yuz berdi');
     } finally {
@@ -531,24 +539,30 @@ export default function PatientDetailPage({ params }: PageProps) {
   const printQr = () => {
     if (!profile || !qrDataUrl) return;
     const p = profile.patient;
-    const win = window.open('', '_blank');
-    if (!win) return;
-    win.document.write(`<html><head><title>QR - ${p.lastName} ${p.firstName}</title>
+    const html = `<html><head><title>QR - ${p.lastName} ${p.firstName}</title>
       <style>body{font-family:sans-serif;text-align:center;padding:20px}
       .name{font-size:18px;font-weight:bold;margin-bottom:4px}
       .info{font-size:13px;color:#666;margin-bottom:16px}
       img{width:220px;height:220px}
       .box{border:2px solid #1e293b;display:inline-block;padding:16px;border-radius:12px}
       </style></head>
-      <body onload="window.print();window.close()">
+      <body>
         <div class="box">
           <div class="name">${p.lastName} ${p.firstName} ${p.fatherName}</div>
-          <div class="info">${p.phone} | Tug'ilgan: ${fmtDate(p.birthDate)}</div>
+          <div class="info">${p.phone} | Tug'ilgan yil: ${new Date(p.birthDate).getFullYear()}</div>
           <img src="${qrDataUrl}" alt="QR"/>
           <div class="info" style="margin-top:8px">Bolajon Klinikasi</div>
         </div>
-      </body></html>`);
-    win.document.close();
+      </body></html>`;
+    const iframe = document.createElement('iframe');
+    iframe.style.cssText = 'position:fixed;top:-9999px;left:-9999px;width:400px;height:500px;border:none;';
+    document.body.appendChild(iframe);
+    const doc = iframe.contentDocument ?? iframe.contentWindow?.document;
+    if (!doc) { document.body.removeChild(iframe); return; }
+    doc.open(); doc.write(html); doc.close();
+    iframe.contentWindow?.focus();
+    iframe.contentWindow?.print();
+    setTimeout(() => { try { document.body.removeChild(iframe); } catch { /* ignore */ } }, 2000);
   };
 
   // -- Nurse note -------------------------------------------------------------
@@ -1081,7 +1095,7 @@ export default function PatientDetailPage({ params }: PageProps) {
                         </span>
                       </div>
                       <p className="text-xs text-slate-400 mt-0.5">
-                        {svc.assignedBy.name} • {fmtDate(svc.assignedAt)}
+                        {svc.assignedBy?.name} • {fmtDate(svc.assignedAt)}
                         {svc.paidAt && ` • To'langan: ${fmtDate(svc.paidAt)}`}
                       </p>
                     </div>
@@ -1092,6 +1106,16 @@ export default function PatientDetailPage({ params }: PageProps) {
                         <span className="text-xs font-medium bg-green-100 text-green-700 px-2 py-0.5 rounded-full">
                           {svc.isPaid ? "To'langan" : "Kutilmoqda"}
                         </span>
+                      )}
+                      {svc.isPaid && (
+                        <button
+                          type="button"
+                          onClick={() => printReceipt([svc.id])}
+                          className="p-1.5 text-slate-300 hover:text-blue-500 transition-colors"
+                          title="Chek chiqarish"
+                        >
+                          <Printer className="w-3.5 h-3.5" />
+                        </button>
                       )}
                       {!svc.isPaid && canManageServices && (
                         <button
@@ -1143,7 +1167,7 @@ export default function PatientDetailPage({ params }: PageProps) {
                       </span>
                     </div>
                     <p className="text-xs text-slate-500 mt-0.5">
-                      {a.doctor.name} • {fmt(a.dateTime)}
+                      {a.doctor?.name} • {fmt(a.dateTime)}
                     </p>
                     {a.notes && <p className="text-xs text-slate-400 mt-0.5">{a.notes}</p>}
                   </div>
@@ -1539,9 +1563,9 @@ export default function PatientDetailPage({ params }: PageProps) {
             <div key={r.id} className="bg-white rounded-xl border border-slate-200 overflow-hidden">
               <div className="px-4 py-3 bg-slate-50 border-b border-slate-100 flex justify-between items-center">
                 <div>
-                  <span className="text-sm font-semibold text-slate-800">{r.doctor.name}</span>
+                  <span className="text-sm font-semibold text-slate-800">{r.doctor?.name}</span>
                   <span className="text-xs text-slate-500 ml-2">
-                    {r.doctor.specialization?.name ?? r.doctor.role}
+                    {r.doctor?.specialization?.name ?? r.doctor?.role}
                   </span>
                 </div>
                 <span className="text-xs text-slate-400">{fmt(r.createdAt)}</span>
@@ -1632,7 +1656,7 @@ export default function PatientDetailPage({ params }: PageProps) {
                 <span className="text-xs text-slate-400 flex-shrink-0">{fmt(n.createdAt)}</span>
               </div>
               <p className="text-xs text-slate-500 mb-2">
-                Hamshira: <span className="font-medium">{n.nurse.name}</span>
+                Hamshira: <span className="font-medium">{n.nurse?.name}</span>
               </p>
               {n.notes && <p className="text-sm text-slate-700 mb-2">{n.notes}</p>}
               {n.medicines && n.medicines.length > 0 && (
@@ -1669,30 +1693,69 @@ export default function PatientDetailPage({ params }: PageProps) {
           {labTests.length === 0 ? <Empty text="Laboratoriya tahlillari yo'q" /> : labTests.map(lt => (
             <div key={lt.id} className="bg-white rounded-xl border border-slate-200 overflow-hidden">
               <div className="px-4 py-3 bg-slate-50 border-b border-slate-100 flex justify-between items-center">
-                <div className="flex items-center gap-3">
-                  <span className="text-sm font-semibold text-slate-800">{lt.testType.name}</span>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="text-sm font-semibold text-slate-800">{lt.testType?.name}</span>
                   <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${LAB_STATUS_COLORS[lt.status] ?? ''}`}>
                     {lt.status === 'PENDING' ? 'Kutilmoqda'
                       : lt.status === 'IN_PROGRESS' ? 'Jarayonda'
                       : lt.status === 'COMPLETED' ? 'Tayyor'
                       : 'Bekor qilindi'}
                   </span>
+                  {lt.payment && lt.payment.status !== 'PAID' && (
+                    <span className="text-xs px-2 py-0.5 rounded-full font-medium bg-orange-100 text-orange-700">
+                      To&apos;lovini kutyapti
+                    </span>
+                  )}
                 </div>
-                <span className="text-xs text-slate-400">{fmt(lt.createdAt)}</span>
+                <div className="flex items-center gap-3">
+                  {lt.status === 'COMPLETED' && (
+                    lt.payment && lt.payment.status !== 'PAID' ? (
+                      <span className="flex items-center gap-1 px-2 py-1 text-xs bg-red-50 text-red-600 rounded-md font-medium">
+                        <Printer className="w-3 h-3" />
+                        To&apos;lov qilinmagan
+                      </span>
+                    ) : (
+                      <button
+                        onClick={() => router.push(`/lab/print?patientId=${patientId}&testIds=${lt.id}`)}
+                        className="flex items-center gap-1 px-2 py-1 text-xs bg-green-50 text-green-700 hover:bg-green-100 rounded-md transition-colors font-medium"
+                      >
+                        <Printer className="w-3 h-3" />
+                        Chop
+                      </button>
+                    )
+                  )}
+                  <span className="text-xs text-slate-400">{fmt(lt.createdAt)}</span>
+                </div>
               </div>
               <div className="p-4">
                 <div className="flex justify-between text-xs text-slate-500 mb-3">
-                  <span>Laborant: {lt.labTech.name}</span>
+                  <span>Laborant: {lt.labTech?.name}</span>
                   {lt.testType.normalRange && <span>Norma: {lt.testType.normalRange} {lt.testType.unit ?? ''}</span>}
                   {lt.completedAt && <span>Tugallandi: {fmt(lt.completedAt)}</span>}
                 </div>
 
-                {lt.notes && (
-                  <div className="text-sm text-slate-700 mb-3">
-                    <span className="font-medium text-slate-500 text-xs uppercase">Izoh: </span>
-                    {lt.notes}
-                  </div>
-                )}
+                {lt.notes && (() => {
+                  try {
+                    const hist = JSON.parse(lt.notes!) as { date: string; from: string | null; to: string; by: string }[];
+                    if (Array.isArray(hist) && hist.length > 0) return (
+                      <div className="bg-amber-50 rounded-lg px-3 py-2 mb-2">
+                        <div className="text-xs font-semibold text-amber-700 uppercase mb-1">O&apos;zgarishlar tarixi</div>
+                        {hist.map((h, i) => (
+                          <div key={i} className="text-xs text-amber-800">
+                            {new Date(h.date).toLocaleString('uz-UZ')} — {h.by}:{' '}
+                            {h.from != null ? `${h.from} → ${h.to}` : h.to}
+                          </div>
+                        ))}
+                      </div>
+                    );
+                  } catch { /* ignore */ }
+                  return (
+                    <div className="text-sm text-slate-700 mb-2">
+                      <span className="font-medium text-slate-500 text-xs uppercase">Izoh: </span>
+                      {lt.notes}
+                    </div>
+                  );
+                })()}
 
                 {lt.status === 'COMPLETED' && lt.results && (
                   <div className="bg-green-50 rounded-lg p-3">
@@ -1724,11 +1787,34 @@ export default function PatientDetailPage({ params }: PageProps) {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
           <div className="bg-white rounded-2xl shadow-xl w-full max-w-3xl flex flex-col" style={{ maxHeight: '90vh' }}>
             <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 flex-shrink-0">
-              <h2 className="text-lg font-semibold text-slate-800">Tahlil buyurtma</h2>
-              <button onClick={() => setShowPatientLabOrderModal(false)} className="p-1.5 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-md transition-colors">
+              <h2 className="text-lg font-semibold text-slate-800">{patientLabOrderDone ? 'Buyurtma saqlandi' : 'Tahlil buyurtma'}</h2>
+              <button onClick={() => { setShowPatientLabOrderModal(false); if (patientLabOrderDone) window.location.reload(); }} className="p-1.5 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-md transition-colors">
                 <X className="w-5 h-5" />
               </button>
             </div>
+            {patientLabOrderDone ? (
+              <div className="flex flex-col flex-1 min-h-0">
+                <div className="overflow-y-auto flex-1 px-6 py-4 space-y-2">
+                  <p className="text-sm text-slate-500 mb-4">Quyidagi tahlillar tayinlangan xizmatlarga qo&apos;shildi. Qabulxona to&apos;lovni qabul qilgach laboratoriyaga yuboriladi.</p>
+                  {patientLabSelectedIds.map(id => {
+                    const tt = patientLabAllTypes.find(x => x.id === id);
+                    if (!tt) return null;
+                    return (
+                      <div key={id} className="flex items-center justify-between px-4 py-2.5 bg-slate-50 rounded-xl border border-slate-100">
+                        <span className="text-sm text-slate-800">{tt.name}</span>
+                        <div className="flex items-center gap-3">
+                          <span className="text-sm text-slate-500">{Number(tt.price).toLocaleString()} so&apos;m</span>
+                          <span className="text-xs font-medium bg-yellow-100 text-yellow-700 px-2 py-0.5 rounded-full">To&apos;lanmagan</span>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+                <div className="px-6 py-4 border-t border-slate-100 flex justify-end">
+                  <button type="button" onClick={() => { setShowPatientLabOrderModal(false); window.location.reload(); }} className="px-5 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg transition-colors">Yopish</button>
+                </div>
+              </div>
+            ) : (
             <form onSubmit={handlePatientLabOrderSubmit} className="flex flex-col flex-1 min-h-0">
               <div className="px-6 py-3 border-b border-slate-100 flex-shrink-0 bg-blue-50">
                 <p className="text-sm font-medium text-slate-700">
@@ -1828,6 +1914,7 @@ export default function PatientDetailPage({ params }: PageProps) {
                 </div>
               </div>
             </form>
+            )}
           </div>
         </div>
       )}
@@ -2102,9 +2189,7 @@ function Modal({ title, onClose, children }: { title: string; onClose: () => voi
 }
 
 function printPrescription(rx: { medicineName: string; dosage: string; duration: string; instructions?: string; createdAt: string }) {
-  const win = window.open('', '_blank');
-  if (!win) return;
-  win.document.write(`<html><head><meta charset="utf-8"/><title>Retsept</title>
+  const html = `<html><head><meta charset="utf-8"/><title>Retsept</title>
     <style>body{font-family:sans-serif;padding:24px}h2{margin-bottom:16px}p{margin:8px 0}</style>
     </head><body>
     <h2>Retsept</h2>
@@ -2113,16 +2198,22 @@ function printPrescription(rx: { medicineName: string; dosage: string; duration:
     <p><strong>Muddati:</strong> ${rx.duration}</p>
     ${rx.instructions ? `<p><strong>Ko'rsatma:</strong> ${rx.instructions}</p>` : ''}
     <p style="margin-top:24px;color:#888;font-size:12px">Sana: ${new Date(rx.createdAt).toLocaleDateString('uz-UZ')}</p>
-    </body></html>`);
-  win.print(); win.close();
+    </body></html>`;
+  const iframe = document.createElement('iframe');
+  iframe.style.cssText = 'position:fixed;top:-9999px;left:-9999px;width:400px;height:400px;border:none;';
+  document.body.appendChild(iframe);
+  const doc = iframe.contentDocument ?? iframe.contentWindow?.document;
+  if (!doc) { document.body.removeChild(iframe); return; }
+  doc.open(); doc.write(html); doc.close();
+  iframe.contentWindow?.focus();
+  iframe.contentWindow?.print();
+  setTimeout(() => { try { document.body.removeChild(iframe); } catch { /* ignore */ } }, 2000);
 }
 
 function printPrescriptions(
   patient: { firstName: string; lastName: string; fatherName: string; birthDate: string },
   rxList: { medicineName: string; dosage: string; duration: string; instructions: string }[]
 ) {
-  const win = window.open('', '_blank', 'width=400,height=600');
-  if (!win) return;
   const today = new Date().toLocaleDateString('uz-UZ');
   const patientName = `${patient.lastName} ${patient.firstName} ${patient.fatherName}`;
   const age = new Date().getFullYear() - new Date(patient.birthDate).getFullYear();
@@ -2136,7 +2227,7 @@ function printPrescriptions(
     </div>
   `).join('');
 
-  win.document.write(`<!DOCTYPE html><html><head>
+  const html = `<!DOCTYPE html><html><head>
     <meta charset="utf-8"/>
     <style>
       * { color: #000 !important; background: transparent !important; }
@@ -2157,8 +2248,16 @@ function printPrescriptions(
     ${rows}
     <div class="line"></div>
     <div class="center" style="font-size:10px;">Shifokor imzosi: ___________</div>
-  </body></html>`);
-  win.document.close();
-  win.focus();
-  setTimeout(() => { win.print(); win.close(); }, 300);
+  </body></html>`;
+  const iframe = document.createElement('iframe');
+  iframe.style.cssText = 'position:fixed;top:-9999px;left:-9999px;width:400px;height:600px;border:none;';
+  document.body.appendChild(iframe);
+  const doc = iframe.contentDocument ?? iframe.contentWindow?.document;
+  if (!doc) { document.body.removeChild(iframe); return; }
+  doc.open(); doc.write(html); doc.close();
+  setTimeout(() => {
+    iframe.contentWindow?.focus();
+    iframe.contentWindow?.print();
+    setTimeout(() => { try { document.body.removeChild(iframe); } catch { /* ignore */ } }, 2000);
+  }, 300);
 }

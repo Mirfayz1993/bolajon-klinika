@@ -6,6 +6,22 @@ import { prisma } from '@/lib/prisma';
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const db = prisma as any;
 
+async function sendLabNotification(patientId: string, testName: string, token: string, chatId: string) {
+  const patient = await prisma.patient.findUnique({
+    where: { id: patientId },
+    select: { firstName: true, lastName: true },
+  });
+  if (!patient) return;
+
+  const text = `🔬 Yangi tahlil buyurtmasi!\n\nBemor: ${patient.lastName} ${patient.firstName}\nTahlil: ${testName}\n\nTo'lov qabul qilindi ✅`;
+
+  await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ chat_id: chatId, text }),
+  });
+}
+
 export async function POST(
   req: NextRequest,
   { params }: { params: Promise<{ id: string; serviceId: string }> }
@@ -50,6 +66,8 @@ export async function POST(
       if (catLower.includes(key)) { category = val; break; }
     }
 
+    let notifyLabTestId: string | null = null;
+
     const payment = await db.$transaction(async (tx: typeof db) => {
       const pay = await tx.payment.create({
         data: {
@@ -66,8 +84,36 @@ export async function POST(
         where: { id: serviceId },
         data: { isPaid: true, paidAt: new Date(), paymentId: pay.id },
       });
+      // Lab xizmati to'landi → mavjud LabTest ni PAID payment bilan yangilaymiz
+      if (category === 'LAB_TEST' && svc.itemId) {
+        // Oldin yaratilgan (assigned paytda) LabTest ni topamiz
+        const existing = await tx.labTest.findFirst({
+          where: { patientId, testTypeId: svc.itemId, status: 'PENDING' },
+          orderBy: { createdAt: 'desc' },
+        });
+        if (existing) {
+          await tx.labTest.update({
+            where: { id: existing.id },
+            data: { paymentId: pay.id },
+          });
+          notifyLabTestId = existing.id;
+        } else {
+          // Eski yozuvlar uchun fallback: yangi LabTest yaratamiz
+          const lt = await tx.labTest.create({
+            data: { patientId, testTypeId: svc.itemId, labTechId: null, status: 'PENDING', paymentId: pay.id },
+          });
+          notifyLabTestId = lt.id;
+        }
+      }
       return pay;
     });
+
+    // Laborantlarga Telegram xabar (fire & forget)
+    const token = process.env.TELEGRAM_BOT_TOKEN;
+    const chatId = process.env.TELEGRAM_LAB_CHAT_ID;
+    if (notifyLabTestId && token && chatId) {
+      sendLabNotification(patientId, svc.itemName, token, chatId).catch(() => {});
+    }
 
     return NextResponse.json({ ok: true, paymentId: payment.id });
   } catch (err) {

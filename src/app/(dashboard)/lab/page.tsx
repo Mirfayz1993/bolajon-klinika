@@ -43,7 +43,8 @@ interface LabTest {
   notes: string | null;
   patient: Patient;
   testType: LabTestType & { normalRange: string | null; unit: string | null };
-  labTech: { id: string; name: string };
+  labTech: { id: string; name: string } | null;
+  payment: { id: string; status: string; amount: number } | null;
 }
 
 type StatusFilter = "ALL" | "PENDING" | "IN_PROGRESS" | "COMPLETED";
@@ -602,9 +603,16 @@ export default function LabPage() {
                           {new Date(test.createdAt).toLocaleDateString("uz-UZ")}
                         </td>
                         <td className="px-4 py-3">
-                          <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-medium ${statusBadgeClass(test.status)}`}>
-                            {t.lab.status[test.status]}
-                          </span>
+                          <div className="flex flex-col gap-1">
+                            <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-medium ${statusBadgeClass(test.status)}`}>
+                              {t.lab.status[test.status]}
+                            </span>
+                            {test.payment && test.payment.status !== "PAID" && (
+                              <span className="inline-block px-2 py-0.5 rounded-full text-xs font-medium bg-orange-100 text-orange-700">
+                                To&apos;lovini kutyapti
+                              </span>
+                            )}
+                          </div>
                         </td>
                         <td className="px-4 py-3 text-slate-500 max-w-[160px] truncate">
                           {test.result ? (test.result.length > 40 ? test.result.slice(0, 40) + "..." : test.result) : "—"}
@@ -628,6 +636,22 @@ export default function LabPage() {
                                 <Pencil className="w-3 h-3" />
                                 O&apos;zgartirish
                               </button>
+                            )}
+                            {test.status === "COMPLETED" && (
+                              test.payment && test.payment.status !== "PAID" ? (
+                                <span className="flex items-center gap-1 px-2 py-1 text-xs bg-red-50 text-red-600 rounded-md font-medium">
+                                  <Printer className="w-3 h-3" />
+                                  To&apos;lov qilinmagan
+                                </span>
+                              ) : (
+                                <button
+                                  onClick={() => router.push(`/lab/print?patientId=${test.patient.id}&testIds=${test.id}`)}
+                                  className="flex items-center gap-1 px-2 py-1 text-xs bg-green-50 text-green-700 hover:bg-green-100 rounded-md transition-colors font-medium"
+                                >
+                                  <Printer className="w-3 h-3" />
+                                  Chop
+                                </button>
+                              )
                             )}
                           </div>
                         </td>
@@ -1124,11 +1148,18 @@ export default function LabPage() {
                   onClick={() => {
                     const el = document.getElementById('print-content');
                     if (!el) return;
-                    const win = window.open('', '_blank');
-                    if (!win) return;
-                    win.document.write(`<html><head><title>Tahlil natijasi</title><style>body{font-family:Arial,sans-serif;margin:20px;}table{border-collapse:collapse;width:100%;}th,td{border:1px solid #94a3b8;padding:8px 12px;}th{background:#dbeafe;font-weight:bold;text-align:center;}td:first-child{text-align:left;}h2{text-align:center;color:#1e40af;text-transform:uppercase;letter-spacing:1px;}h1{text-align:center;}.patient-info{display:flex;justify-content:space-between;border-bottom:1px solid #e2e8f0;padding-bottom:12px;margin-bottom:16px;font-size:14px;}.footer{margin-top:32px;padding-top:12px;border-top:1px solid #e2e8f0;display:flex;justify-content:space-between;font-size:11px;color:#94a3b8;}</style></head><body>${el.innerHTML}</body></html>`);
-                    win.document.close();
-                    win.print();
+                    const css = `body{font-family:Arial,sans-serif;margin:20px;}table{border-collapse:collapse;width:100%;}th,td{border:1px solid #94a3b8;padding:8px 12px;}th{background:#dbeafe;font-weight:bold;text-align:center;}td:first-child{text-align:left;}h2{text-align:center;color:#1e40af;text-transform:uppercase;letter-spacing:1px;}h1{text-align:center;}.patient-info{display:flex;justify-content:space-between;border-bottom:1px solid #e2e8f0;padding-bottom:12px;margin-bottom:16px;font-size:14px;}.footer{margin-top:32px;padding-top:12px;border-top:1px solid #e2e8f0;display:flex;justify-content:space-between;font-size:11px;color:#94a3b8;}`;
+                    const iframe = document.createElement('iframe');
+                    iframe.style.cssText = 'position:fixed;top:-9999px;left:-9999px;width:800px;height:600px;border:none;';
+                    document.body.appendChild(iframe);
+                    const doc = iframe.contentDocument ?? iframe.contentWindow?.document;
+                    if (!doc) { document.body.removeChild(iframe); return; }
+                    doc.open();
+                    doc.write(`<html><head><title>Tahlil natijasi</title><style>${css}</style></head><body>${el.innerHTML}</body></html>`);
+                    doc.close();
+                    iframe.contentWindow?.focus();
+                    iframe.contentWindow?.print();
+                    setTimeout(() => { try { document.body.removeChild(iframe); } catch { /* ignore */ } }, 2000);
                   }}
                   className="flex items-center gap-1.5 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-medium"
                 >

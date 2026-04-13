@@ -300,6 +300,7 @@ model Payment {
   appointment Appointment? @relation(fields: [appointmentId], references: [id])
   admission   Admission?   @relation(fields: [admissionId], references: [id])
   receivedBy  User?        @relation("ReceivedPayments", fields: [receivedById], references: [id])
+  labTest     LabTest?     @relation("LabTestPayment")
 
   @@map("payments")
 }
@@ -313,8 +314,11 @@ model LabTestType {
   unit        String?
   category    String?
   isActive    Boolean  @default(true)
+  parentId    String?
   createdAt   DateTime @default(now())
 
+  parent   LabTestType?  @relation("LabTestTypePanel", fields: [parentId], references: [id])
+  children LabTestType[] @relation("LabTestTypePanel")
   labTests LabTest[]
 
   @@map("lab_test_types")
@@ -324,8 +328,9 @@ model LabTest {
   id          String        @id @default(cuid())
   patientId   String
   testTypeId  String
-  labTechId   String
+  labTechId   String?
   reagentId   String?
+  paymentId   String?       @unique
   status      LabTestStatus @default(PENDING)
   results     Json?
   notes       String?
@@ -335,8 +340,9 @@ model LabTest {
 
   patient  Patient     @relation(fields: [patientId], references: [id])
   testType LabTestType @relation(fields: [testTypeId], references: [id])
-  labTech  User        @relation(fields: [labTechId], references: [id])
+  labTech  User?       @relation(fields: [labTechId], references: [id])
   reagent  Reagent?    @relation(fields: [reagentId], references: [id])
+  payment  Payment?    @relation("LabTestPayment", fields: [paymentId], references: [id])
 
   @@map("lab_tests")
 }

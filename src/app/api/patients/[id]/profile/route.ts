@@ -50,6 +50,7 @@ export async function GET(
           include: {
             testType: { select: { name: true, unit: true, normalRange: true, price: true } },
             labTech: { select: { name: true, role: true } },
+            payment: { select: { id: true, status: true } },
           },
           orderBy: { createdAt: 'desc' },
         }),
