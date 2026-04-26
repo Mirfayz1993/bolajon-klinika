@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, Fragment } from "react";
 import { useSession } from "next-auth/react";
 import { useRouter } from "next/navigation";
 import { useLanguage } from "@/hooks/useLanguage";
@@ -25,24 +25,39 @@ interface Patient {
   fatherName: string;
 }
 
+interface SubTest {
+  id: string;
+  name: string;
+  normalRange: string | null;
+  normalMin: number | null;
+  normalMax: number | null;
+  unit: string | null;
+  price: number;
+}
+
 interface LabTestType {
   id: string;
   name: string;
   price: number;
   duration: number | null;
   normalRange: string | null;
+  normalMin: number | null;
+  normalMax: number | null;
   unit: string | null;
   category: string | null;
+  parentId: string | null;
+  children: SubTest[];
 }
 
 interface LabTest {
   id: string;
   status: "PENDING" | "IN_PROGRESS" | "COMPLETED";
   result: string | null;
+  results: Record<string, string> | null;
   createdAt: string;
   notes: string | null;
   patient: Patient;
-  testType: LabTestType & { normalRange: string | null; unit: string | null };
+  testType: LabTestType;
   labTech: { id: string; name: string } | null;
   payment: { id: string; status: string; amount: number } | null;
 }
@@ -133,14 +148,28 @@ export default function LabPage() {
   const [typeName, setTypeName] = useState("");
   const [typePrice, setTypePrice] = useState("");
   const [typeNormalRange, setTypeNormalRange] = useState("");
+  const [typeNormalMin, setTypeNormalMin] = useState("");
+  const [typeNormalMax, setTypeNormalMax] = useState("");
   const [typeUnit, setTypeUnit] = useState("");
   const [typeCategory, setTypeCategory] = useState("");
   const [typeSaving, setTypeSaving] = useState(false);
   const [typeError, setTypeError] = useState<string | null>(null);
+  // -- Sub-test (ko'rsatgich) rows for bulk creation --------------------------
+  const [typeIndicators, setTypeIndicators] = useState<{ name: string; normalRange: string; unit: string }[]>([]);
 
-  // -- Print modal ------------------------------------------------------------
+  // -- Print modal (legacy single test) ---------------------------------------
   const [showPrintModal, setShowPrintModal] = useState(false);
   const [printTest, setPrintTest] = useState<LabTest | null>(null);
+
+  // -- Panel result entry state -----------------------------------------------
+  const [panelResults, setPanelResults] = useState<Record<string, string>>({});
+
+  // -- Multi-select print state -----------------------------------------------
+  const [selectedPrintIds, setSelectedPrintIds] = useState<string[]>([]);
+  const [selectedPrintPatientId, setSelectedPrintPatientId] = useState<string | null>(null);
+
+  // -- Test type parentId (for sub-test creation) -----------------------------
+  const [typeParentId, setTypeParentId] = useState<string>("");
 
   // --- Data fetchers ---------------------------------------------------------
 
@@ -334,24 +363,42 @@ export default function LabPage() {
 
   function openResultModal(test: LabTest) {
     setActiveTest(test);
-    setResultText(test.result ?? "");
+    const isPanel = test.testType.children.length > 0;
+    if (isPanel) {
+      // Initialize panelResults from existing results JSON
+      const existing = test.results ?? {};
+      const init: Record<string, string> = {};
+      for (const ch of test.testType.children) {
+        init[ch.id] = existing[ch.id] ?? "";
+      }
+      setPanelResults(init);
+      setResultText("");
+    } else {
+      setResultText(test.result ?? "");
+      setPanelResults({});
+    }
     setResultError(null);
     setShowResultModal(true);
   }
 
   async function handleResultSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (!activeTest || !resultText.trim()) {
+    if (!activeTest) return;
+    const isPanel = activeTest.testType.children.length > 0;
+    if (!isPanel && !resultText.trim()) {
       setResultError("Natija majburiy");
       return;
     }
     setResultSaving(true);
     setResultError(null);
     try {
+      const body = isPanel
+        ? { results: panelResults }
+        : { result: resultText.trim() };
       const res = await fetch(`/api/lab-tests/${activeTest.id}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ result: resultText.trim() }),
+        body: JSON.stringify(body),
       });
       if (!res.ok) {
         const err = await res.json();
@@ -371,8 +418,12 @@ export default function LabPage() {
     setTypeName("");
     setTypePrice("");
     setTypeNormalRange("");
+    setTypeNormalMin("");
+    setTypeNormalMax("");
     setTypeUnit("");
     setTypeCategory("");
+    setTypeParentId("");
+    setTypeIndicators([]);
     setTypeError(null);
     setShowTypeModal(true);
   }
@@ -382,8 +433,12 @@ export default function LabPage() {
     setTypeName(tt.name);
     setTypePrice(String(tt.price));
     setTypeNormalRange(tt.normalRange ?? "");
+    setTypeNormalMin(tt.normalMin !== null && tt.normalMin !== undefined ? String(tt.normalMin) : "");
+    setTypeNormalMax(tt.normalMax !== null && tt.normalMax !== undefined ? String(tt.normalMax) : "");
     setTypeUnit(tt.unit ?? "");
     setTypeCategory(tt.category ?? "");
+    setTypeParentId(tt.parentId ?? "");
+    setTypeIndicators([]);
     setTypeError(null);
     setShowTypeModal(true);
   }
@@ -393,13 +448,17 @@ export default function LabPage() {
     setTypeSaving(true);
     setTypeError(null);
     try {
-      const body: Record<string, string | number> = {
+      const body: Record<string, string | number | null> = {
         name: typeName.trim(),
         price: Number(typePrice),
       };
       if (typeNormalRange.trim()) body.normalRange = typeNormalRange.trim();
+      body.normalMin = typeNormalMin !== "" ? Number(typeNormalMin) : null;
+      body.normalMax = typeNormalMax !== "" ? Number(typeNormalMax) : null;
       if (typeUnit.trim()) body.unit = typeUnit.trim();
       if (typeCategory.trim()) body.category = typeCategory.trim();
+      if (typeParentId) body.parentId = typeParentId;
+      else if (editingType && editingType.parentId) body.parentId = null;
 
       const url = editingType
         ? `/api/lab-test-types/${editingType.id}`
@@ -414,6 +473,37 @@ export default function LabPage() {
       if (!res.ok) {
         const err = await res.json();
         throw new Error(err.error || t.common.error);
+      }
+
+      // If creating a new panel (no parentId), also save indicator rows
+      if (!editingType && !typeParentId) {
+        const created = await res.json();
+        const validIndicators = typeIndicators.filter(ind => ind.name.trim());
+        if (validIndicators.length > 0) {
+          await Promise.all(validIndicators.map(ind =>
+            fetch("/api/lab-test-types", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                name: ind.name.trim(),
+                price: 0,
+                normalRange: ind.normalRange.trim() || null,
+                unit: ind.unit.trim() || null,
+                parentId: created.id,
+              }),
+            })
+          ));
+        }
+      }
+
+      // Auto-expand the category group so the new/edited type is visible
+      const cat = typeCategory.trim() || (typeParentId ? undefined : 'Boshqalar');
+      if (cat) {
+        setOpenTypeGroups(prev => {
+          const next = new Set(prev);
+          next.add(cat);
+          return next;
+        });
       }
       setShowTypeModal(false);
       fetchTestTypes();
@@ -440,6 +530,28 @@ export default function LabPage() {
   function openPrintModal(test: LabTest) {
     setPrintTest(test);
     setShowPrintModal(true);
+  }
+
+  function togglePrintSelect(test: LabTest) {
+    const patId = test.patient.id;
+    setSelectedPrintIds(prev => {
+      if (prev.includes(test.id)) {
+        const next = prev.filter(x => x !== test.id);
+        if (next.length === 0) setSelectedPrintPatientId(null);
+        return next;
+      }
+      if (selectedPrintPatientId && selectedPrintPatientId !== patId) {
+        alert("Faqat bir bemor uchun chop etish mumkin");
+        return prev;
+      }
+      setSelectedPrintPatientId(patId);
+      return [...prev, test.id];
+    });
+  }
+
+  function printSelected() {
+    if (!selectedPrintPatientId || selectedPrintIds.length === 0) return;
+    router.push(`/lab/print?patientId=${selectedPrintPatientId}&testIds=${selectedPrintIds.join(',')}`);
   }
 
   // --- Render ----------------------------------------------------------------
@@ -538,12 +650,33 @@ export default function LabPage() {
             </div>
           )}
 
+          {/* Multi-select print bar */}
+          {selectedPrintIds.length > 0 && (
+            <div className="flex items-center gap-3 mb-3 bg-blue-50 border border-blue-200 rounded-lg px-4 py-2.5">
+              <span className="text-sm text-blue-700 font-medium">{selectedPrintIds.length} ta tanlandi</span>
+              <button
+                onClick={printSelected}
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold rounded-lg transition-colors"
+              >
+                <Printer className="w-3.5 h-3.5" />
+                Tanlanganni chop et ({selectedPrintIds.length} ta)
+              </button>
+              <button
+                onClick={() => { setSelectedPrintIds([]); setSelectedPrintPatientId(null); }}
+                className="ml-auto text-xs text-slate-500 hover:text-slate-700"
+              >
+                Bekor qilish
+              </button>
+            </div>
+          )}
+
           {/* Table */}
           <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
                   <tr className="bg-slate-50 border-b border-slate-200">
+                    <th className="px-3 py-3 w-8"></th>
                     <th className="text-left px-4 py-3 font-semibold text-slate-600">
                       {t.patients.fio}
                     </th>
@@ -570,33 +703,52 @@ export default function LabPage() {
                 <tbody>
                   {testsLoading ? (
                     <tr>
-                      <td colSpan={7} className="text-center py-12">
+                      <td colSpan={8} className="text-center py-12">
                         <Loader2 className="w-6 h-6 animate-spin mx-auto text-blue-500" />
                       </td>
                     </tr>
                   ) : filteredTests.length === 0 ? (
                     <tr>
                       <td
-                        colSpan={7}
+                        colSpan={8}
                         className="text-center py-12 text-slate-400"
                       >
                         {t.lab.noTests}
                       </td>
                     </tr>
                   ) : (
-                    filteredTests.map((test) => (
+                    filteredTests.map((test) => {
+                      const isPanel = test.testType.children.length > 0;
+                      const isChecked = selectedPrintIds.includes(test.id);
+                      const canCheck = test.status === "COMPLETED" && (!test.payment || test.payment.status === "PAID");
+                      return (
                       <tr
                         key={test.id}
                         className="border-b border-slate-100 hover:bg-slate-50 transition-colors"
                       >
+                        <td className="px-3 py-3 text-center">
+                          {canCheck && (
+                            <input
+                              type="checkbox"
+                              checked={isChecked}
+                              onChange={() => togglePrintSelect(test)}
+                              className="w-4 h-4 accent-blue-600 cursor-pointer"
+                            />
+                          )}
+                        </td>
                         <td className="px-4 py-3 font-medium text-slate-800">
                           {test.patient.lastName} {test.patient.firstName}
                         </td>
                         <td className="px-4 py-3 text-slate-700">
-                          {test.testType.name}
+                          <span>{test.testType.name}</span>
+                          {isPanel && (
+                            <span className="ml-1.5 text-xs bg-purple-100 text-purple-700 px-1.5 py-0.5 rounded-full font-medium">
+                              Panel {test.testType.children.length} ta
+                            </span>
+                          )}
                         </td>
                         <td className="px-4 py-3 text-slate-600">
-                          {test.testType.price.toLocaleString()}{" "}
+                          {Number(test.testType.price).toLocaleString()}{" "}
                           {t.common.sum}
                         </td>
                         <td className="px-4 py-3 text-slate-500">
@@ -614,8 +766,26 @@ export default function LabPage() {
                             )}
                           </div>
                         </td>
-                        <td className="px-4 py-3 text-slate-500 max-w-[160px] truncate">
-                          {test.result ? (test.result.length > 40 ? test.result.slice(0, 40) + "..." : test.result) : "—"}
+                        <td className="px-4 py-3 text-slate-500 max-w-[180px]">
+                          {test.result ? (
+                            <span className="flex items-center gap-1.5 flex-wrap">
+                              <span className="truncate max-w-[100px]">{test.result.length > 30 ? test.result.slice(0, 30) + "..." : test.result}</span>
+                              {(() => {
+                                const val = parseFloat(test.result);
+                                const mn = test.testType.normalMin;
+                                const mx = test.testType.normalMax;
+                                if (!isNaN(val) && mn !== null && mx !== null) {
+                                  const isNormal = val >= mn && val <= mx;
+                                  return (
+                                    <span className={`flex-shrink-0 text-xs px-1.5 py-0.5 rounded-full font-medium ${isNormal ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
+                                      {isNormal ? 'Norma' : 'Anormal'}
+                                    </span>
+                                  );
+                                }
+                                return null;
+                              })()}
+                            </span>
+                          ) : "—"}
                         </td>
                         <td className="px-4 py-3">
                           <div className="flex items-center justify-end gap-1">
@@ -656,7 +826,8 @@ export default function LabPage() {
                           </div>
                         </td>
                       </tr>
-                    ))
+                      );
+                    })
                   )}
                 </tbody>
               </table>
@@ -684,8 +855,10 @@ export default function LabPage() {
           ) : (
             <div className="space-y-2">
               {(() => {
+                // Only top-level types grouped by category
+                const topLevel = testTypes.filter(tt => !tt.parentId);
                 const groups: Record<string, LabTestType[]> = {};
-                for (const tt of testTypes) {
+                for (const tt of topLevel) {
                   const cat = tt.category ?? 'Boshqalar';
                   if (!groups[cat]) groups[cat] = [];
                   groups[cat].push(tt);
@@ -717,24 +890,63 @@ export default function LabPage() {
                             </tr>
                           </thead>
                           <tbody>
-                            {items.map((tt, i) => (
-                              <tr key={tt.id} className={`border-b border-slate-50 hover:bg-slate-50 transition-colors ${i % 2 === 0 ? '' : 'bg-slate-50/40'}`}>
-                                <td className="px-5 py-2.5 font-medium text-slate-800">{tt.name}</td>
-                                <td className="px-4 py-2.5 text-slate-600">{tt.price.toLocaleString()} {t.common.sum}</td>
-                                <td className="px-4 py-2.5 text-slate-500">{tt.normalRange ?? '—'}</td>
-                                <td className="px-4 py-2.5 text-slate-500">{tt.unit ?? '—'}</td>
-                                <td className="px-4 py-2.5">
-                                  <div className="flex items-center justify-end gap-1">
-                                    <button onClick={() => openEditTypeModal(tt)} className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-md transition-colors" title={t.common.edit}>
-                                      <Pencil className="w-4 h-4" />
-                                    </button>
-                                    <button onClick={() => handleDeleteType(tt.id)} className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-md transition-colors" title={t.common.delete}>
-                                      <Trash2 className="w-4 h-4" />
-                                    </button>
-                                  </div>
-                                </td>
-                              </tr>
-                            ))}
+                            {items.map((tt, i) => {
+                              const isPanel = tt.children.length > 0;
+                              return (
+                                <Fragment key={tt.id}>
+                                <tr className={`border-b border-slate-50 hover:bg-slate-50 transition-colors ${i % 2 === 0 ? '' : 'bg-slate-50/40'}`}>
+                                  <td className="px-5 py-2.5 font-medium text-slate-800">
+                                    {tt.name}
+                                    {isPanel && (
+                                      <span className="ml-2 text-xs bg-purple-100 text-purple-700 px-1.5 py-0.5 rounded-full">
+                                        Panel {tt.children.length} ta
+                                      </span>
+                                    )}
+                                  </td>
+                                  <td className="px-4 py-2.5 text-slate-600">{Number(tt.price).toLocaleString()} {t.common.sum}</td>
+                                  <td className="px-4 py-2.5 text-slate-500">{tt.normalRange ?? '—'}</td>
+                                  <td className="px-4 py-2.5 text-slate-500">{tt.unit ?? '—'}</td>
+                                  <td className="px-4 py-2.5">
+                                    <div className="flex items-center justify-end gap-1">
+                                      <button onClick={() => openEditTypeModal(tt)} className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-md transition-colors" title={t.common.edit}>
+                                        <Pencil className="w-4 h-4" />
+                                      </button>
+                                      <button onClick={() => handleDeleteType(tt.id)} className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-md transition-colors" title={t.common.delete}>
+                                        <Trash2 className="w-4 h-4" />
+                                      </button>
+                                    </div>
+                                  </td>
+                                </tr>
+                                {/* Sub-tests shown indented under panel */}
+                                {isPanel && tt.children.map(ch => (
+                                  <tr key={ch.id} className="border-b border-slate-50 bg-purple-50/30">
+                                    <td className="px-5 py-1.5 text-slate-600 text-xs pl-10">↳ {ch.name}</td>
+                                    <td className="px-4 py-1.5 text-slate-400 text-xs">{Number(ch.price).toLocaleString()} {t.common.sum}</td>
+                                    <td className="px-4 py-1.5 text-slate-400 text-xs">{ch.normalRange ?? '—'}</td>
+                                    <td className="px-4 py-1.5 text-slate-400 text-xs">{ch.unit ?? '—'}</td>
+                                    <td className="px-4 py-1.5">
+                                      <div className="flex items-center justify-end gap-1">
+                                        <button
+                                          onClick={() => openEditTypeModal({ id: ch.id, name: ch.name, price: ch.price, duration: null, normalRange: ch.normalRange, normalMin: ch.normalMin, normalMax: ch.normalMax, unit: ch.unit, category: tt.category, parentId: tt.id, children: [] })}
+                                          className="p-1 text-slate-300 hover:text-blue-600 hover:bg-blue-50 rounded transition-colors"
+                                          title={t.common.edit}
+                                        >
+                                          <Pencil className="w-3.5 h-3.5" />
+                                        </button>
+                                        <button
+                                          onClick={() => handleDeleteType(ch.id)}
+                                          className="p-1 text-slate-300 hover:text-red-600 hover:bg-red-50 rounded transition-colors"
+                                          title={t.common.delete}
+                                        >
+                                          <Trash2 className="w-3.5 h-3.5" />
+                                        </button>
+                                      </div>
+                                    </td>
+                                  </tr>
+                                ))}
+                                </Fragment>
+                              );
+                            })}
                           </tbody>
                         </table>
                       )}
@@ -751,7 +963,7 @@ export default function LabPage() {
       {activeTab === "reagents" && (
         <div>
           {/* Add button */}
-          {role === 'ADMIN' && (
+          {canManageTypes && (
             <div className="flex justify-end mb-4">
               <button
                 onClick={() => { setEditingReagent(null); setReagentForm({ name: '', unit: 'ml', quantity: '0', minQuantity: '10', expiryDate: '', pricePerUnit: '0' }); setShowReagentModal(true); }}
@@ -776,7 +988,7 @@ export default function LabPage() {
                     <th className="px-4 py-3 text-center text-xs font-semibold text-slate-500 uppercase">Min.miqdor</th>
                     <th className="px-4 py-3 text-center text-xs font-semibold text-slate-500 uppercase">Yaroqlilik</th>
                     <th className="px-4 py-3 text-center text-xs font-semibold text-slate-500 uppercase">Status</th>
-                    {role === 'ADMIN' && <th className="px-4 py-3 text-center text-xs font-semibold text-slate-500 uppercase">Amallar</th>}
+                    {canManageTypes && <th className="px-4 py-3 text-center text-xs font-semibold text-slate-500 uppercase">Amallar</th>}
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-50">
@@ -794,7 +1006,7 @@ export default function LabPage() {
                         <td className="px-4 py-3 text-center">
                           <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${st.color}`}>{st.label}</span>
                         </td>
-                        {role === 'ADMIN' && (
+                        {canManageTypes && (
                           <td className="px-4 py-3 text-center">
                             <div className="flex items-center justify-center gap-2">
                               <button
@@ -960,8 +1172,10 @@ export default function LabPage() {
                   )}
                 </div>
                 {(() => {
+                  // Only show top-level types (parentId == null)
+                  const topLevel = testTypes.filter(tt => !tt.parentId);
                   const groups: Record<string, LabTestType[]> = {};
-                  for (const tt of testTypes) {
+                  for (const tt of topLevel) {
                     const cat = tt.category ?? 'Boshqalar';
                     if (!groups[cat]) groups[cat] = [];
                     groups[cat].push(tt);
@@ -983,12 +1197,20 @@ export default function LabPage() {
                         {isOpen && (
                           <div className="divide-y divide-slate-50">
                             {items.map(tt => {
+                              const isPanel = tt.children.length > 0;
                               const checked = selectedTestTypeIds.includes(tt.id);
                               return (
                                 <label key={tt.id} className={`flex items-center gap-3 px-4 py-2.5 cursor-pointer hover:bg-slate-50 transition-colors ${checked ? 'bg-blue-50/50' : ''}`}>
                                   <input type="checkbox" checked={checked} onChange={() => toggleOrderTestType(tt.id)} className="w-4 h-4 accent-blue-600 flex-shrink-0" />
-                                  <span className="flex-1 text-sm text-slate-800">{tt.name}</span>
-                                  <span className="text-sm text-slate-500 font-medium">{tt.price.toLocaleString()} {t.common.sum}</span>
+                                  <span className="flex-1 text-sm text-slate-800">
+                                    {tt.name}
+                                    {isPanel && (
+                                      <span className="ml-1.5 text-xs bg-purple-100 text-purple-700 px-1.5 py-0.5 rounded-full">
+                                        Panel {tt.children.length} ta
+                                      </span>
+                                    )}
+                                  </span>
+                                  <span className="text-sm text-slate-500 font-medium">{Number(tt.price).toLocaleString()} {t.common.sum}</span>
                                 </label>
                               );
                             })}
@@ -1005,7 +1227,7 @@ export default function LabPage() {
                 {selectedTestTypeIds.length > 0 && (() => {
                   const groups: Record<string, { name: string; total: number }> = {};
                   for (const id of selectedTestTypeIds) {
-                    const tt = testTypes.find(x => x.id === id);
+                    const tt = testTypes.find(x => x.id === id && !x.parentId);
                     if (!tt) continue;
                     const cat = tt.category ?? 'Boshqalar';
                     if (!groups[cat]) groups[cat] = { name: cat, total: 0 };
@@ -1050,7 +1272,7 @@ export default function LabPage() {
       ═══════════════════════════════════════════════════════ */}
       {showResultModal && activeTest && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-md">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100">
               <h2 className="text-lg font-semibold text-slate-800">
                 {activeTest.status === "COMPLETED" ? "Natijani o'zgartirish" : "Natija kiriting"}
@@ -1072,34 +1294,65 @@ export default function LabPage() {
               <div className="bg-slate-50 border border-slate-200 rounded-lg px-4 py-3 space-y-1.5 text-sm">
                 <p><span className="text-slate-500">Bemor: </span><span className="font-semibold text-slate-800">{activeTest.patient.lastName} {activeTest.patient.firstName}</span></p>
                 <p><span className="text-slate-500">Tahlil: </span><span className="font-semibold text-slate-800">{activeTest.testType.name}</span></p>
-                {activeTest.testType.normalRange && (
-                  <p className="flex items-center gap-2">
-                    <span className="text-slate-500">Norma: </span>
-                    <span className="font-medium text-green-700 bg-green-50 px-2 py-0.5 rounded">
-                      {activeTest.testType.normalRange}{activeTest.testType.unit ? ` ${activeTest.testType.unit}` : ''}
-                    </span>
-                  </p>
-                )}
               </div>
 
-              {/* Result input */}
-              <div className="flex flex-col gap-1">
-                <label className="text-sm font-medium text-slate-700">
-                  Natija <span className="text-red-500">*</span>
-                  {activeTest.testType.unit && <span className="ml-1 text-slate-400 font-normal">({activeTest.testType.unit})</span>}
-                </label>
-                <textarea
-                  value={resultText}
-                  onChange={(e) => setResultText(e.target.value)}
-                  rows={3}
-                  placeholder="Natijani kiriting..."
-                  className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none"
-                />
-              </div>
+              {/* Panel: table of inputs per sub-test */}
+              {activeTest.testType.children.length > 0 ? (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm border border-slate-200 rounded-lg overflow-hidden">
+                    <thead>
+                      <tr className="bg-slate-50 border-b border-slate-200">
+                        <th className="text-left px-3 py-2 font-semibold text-slate-600 text-xs">Parametr</th>
+                        <th className="text-center px-3 py-2 font-semibold text-slate-600 text-xs">Natija</th>
+                        <th className="text-center px-3 py-2 font-semibold text-slate-600 text-xs">Norma</th>
+                        <th className="text-center px-3 py-2 font-semibold text-slate-600 text-xs">Birlik</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {activeTest.testType.children.map((ch, i) => (
+                        <tr key={ch.id} className={`border-b border-slate-100 ${i % 2 === 0 ? '' : 'bg-slate-50/40'}`}>
+                          <td className="px-3 py-2 font-medium text-slate-800">{ch.name}</td>
+                          <td className="px-3 py-2">
+                            <input
+                              type="text"
+                              value={panelResults[ch.id] ?? ""}
+                              onChange={(e) => setPanelResults(prev => ({ ...prev, [ch.id]: e.target.value }))}
+                              placeholder="—"
+                              className="w-full border border-slate-200 rounded-md px-2 py-1 text-sm text-center focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                            />
+                          </td>
+                          <td className="px-3 py-2 text-center text-slate-500 text-xs">{ch.normalRange ?? '—'}</td>
+                          <td className="px-3 py-2 text-center text-slate-500 text-xs">{ch.unit ?? '—'}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              ) : (
+                /* Individual test: single textarea */
+                <div className="flex flex-col gap-1">
+                  <label className="text-sm font-medium text-slate-700">
+                    Natija <span className="text-red-500">*</span>
+                    {activeTest.testType.unit && <span className="ml-1 text-slate-400 font-normal">({activeTest.testType.unit})</span>}
+                  </label>
+                  {activeTest.testType.normalRange && (
+                    <p className="text-xs text-green-700 bg-green-50 px-2 py-1 rounded mb-1">
+                      Norma: {activeTest.testType.normalRange}
+                    </p>
+                  )}
+                  <textarea
+                    value={resultText}
+                    onChange={(e) => setResultText(e.target.value)}
+                    rows={3}
+                    placeholder="Natijani kiriting..."
+                    className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none"
+                  />
+                </div>
+              )}
 
               {/* Change history (HEAD_LAB_TECH only) */}
               {activeTest.notes && (() => {
-                type HistoryEntry = { date: string; from: string | null; to: string; by: string };
+                type HistoryEntry = { date: string; from: string | null; to: string; by: string; field?: string };
                 let history: HistoryEntry[] = [];
                 try { history = JSON.parse(activeTest.notes) as HistoryEntry[]; } catch { return null; }
                 if (!history.length) return null;
@@ -1111,7 +1364,7 @@ export default function LabPage() {
                         <div key={i} className="text-xs text-amber-800">
                           <span className="text-amber-500">{new Date(h.date).toLocaleString('uz-UZ')}</span>
                           {' · '}<span className="font-medium">{h.by}</span>
-                          {' · '}{h.from != null ? `${h.from} → ${h.to}` : `Natija kiritildi: ${h.to}`}
+                          {' · '}{h.from != null ? `${h.from} → ${h.to}` : `Kiritildi: ${h.to}`}
                         </div>
                       ))}
                     </div>
@@ -1123,7 +1376,11 @@ export default function LabPage() {
                 <button type="button" onClick={() => setShowResultModal(false)} className="px-4 py-2 text-sm font-medium text-slate-600 hover:text-slate-800 hover:bg-slate-100 rounded-lg transition-colors">
                   {t.common.cancel}
                 </button>
-                <button type="submit" disabled={resultSaving || !resultText.trim()} className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-60 disabled:cursor-not-allowed text-white text-sm font-medium rounded-lg transition-colors">
+                <button
+                  type="submit"
+                  disabled={resultSaving || (activeTest.testType.children.length === 0 && !resultText.trim())}
+                  className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-60 disabled:cursor-not-allowed text-white text-sm font-medium rounded-lg transition-colors"
+                >
                   {resultSaving && <Loader2 className="w-4 h-4 animate-spin" />}
                   Natijani saqlash
                 </button>
@@ -1287,8 +1544,8 @@ export default function LabPage() {
 
       {showTypeModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-md">
-            <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-md max-h-[90vh] flex flex-col">
+            <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 flex-shrink-0">
               <h2 className="text-lg font-semibold text-slate-800">
                 {editingType ? t.common.edit : t.lab.addTestType}
               </h2>
@@ -1300,7 +1557,7 @@ export default function LabPage() {
               </button>
             </div>
 
-            <form onSubmit={handleTypeSubmit} className="p-6 space-y-4">
+            <form onSubmit={handleTypeSubmit} className="p-6 space-y-4 overflow-y-auto">
               {typeError && (
                 <div className="flex items-center gap-2 text-red-600 bg-red-50 border border-red-200 rounded-lg px-4 py-3 text-sm">
                   <AlertCircle className="w-4 h-4 flex-shrink-0" />
@@ -1347,21 +1604,66 @@ export default function LabPage() {
                 />
               </div>
 
-              {/* Guruh nomi (category) */}
+              <div className="grid grid-cols-2 gap-3">
+                <div className="flex flex-col gap-1">
+                  <label className="text-sm font-medium text-slate-700">Norma min (raqamli)</label>
+                  <input
+                    type="number"
+                    step="any"
+                    value={typeNormalMin}
+                    onChange={(e) => setTypeNormalMin(e.target.value)}
+                    placeholder="0.0"
+                    className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  />
+                </div>
+                <div className="flex flex-col gap-1">
+                  <label className="text-sm font-medium text-slate-700">Norma max (raqamli)</label>
+                  <input
+                    type="number"
+                    step="any"
+                    value={typeNormalMax}
+                    onChange={(e) => setTypeNormalMax(e.target.value)}
+                    placeholder="100.0"
+                    className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  />
+                </div>
+              </div>
+
+              {/* Panel uchun sub-test: parent tanlash */}
               <div className="flex flex-col gap-1">
                 <label className="text-sm font-medium text-slate-700">
-                  Guruh nomi <span className="text-red-500">*</span>
+                  Panel (ixtiyoriy)
                 </label>
-                <input
-                  type="text"
-                  value={typeCategory}
-                  onChange={(e) => setTypeCategory(e.target.value)}
-                  placeholder="Masalan: ЩИТОВИДНАЯ ЖЕЛЕЗА"
-                  required
-                  className="border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300"
-                />
-                <p className="text-xs text-slate-400">Chop etishda guruh sarlavhasi sifatida ko&apos;rinadi</p>
+                <select
+                  value={typeParentId}
+                  onChange={(e) => setTypeParentId(e.target.value)}
+                  className="border border-slate-200 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-300"
+                >
+                  <option value="">— Alohida tahlil (panel emas) —</option>
+                  {testTypes.filter(tt => !tt.parentId && tt.id !== editingType?.id).map(tt => (
+                    <option key={tt.id} value={tt.id}>{tt.name}</option>
+                  ))}
+                </select>
+                {typeParentId && <p className="text-xs text-purple-600">Bu sub-test panel ichida ko&apos;rinadi</p>}
               </div>
+
+              {/* Guruh nomi (category) — only for top-level */}
+              {!typeParentId && (
+                <div className="flex flex-col gap-1">
+                  <label className="text-sm font-medium text-slate-700">
+                    Guruh nomi <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    value={typeCategory}
+                    onChange={(e) => setTypeCategory(e.target.value)}
+                    placeholder="Masalan: ЩИТОВИДНАЯ ЖЕЛЕЗА"
+                    required={!typeParentId}
+                    className="border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300"
+                  />
+                  <p className="text-xs text-slate-400">Chop etishda guruh sarlavhasi sifatida ko&apos;rinadi</p>
+                </div>
+              )}
 
               {/* O'lchov birligi (unit) */}
               <div className="flex flex-col gap-1">
@@ -1376,6 +1678,68 @@ export default function LabPage() {
                   className="border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300"
                 />
               </div>
+
+              {/* Ko'rsatgichlar (faqat yangi panel uchun) */}
+              {!editingType && !typeParentId && (
+                <div className="flex flex-col gap-2 border-t border-slate-100 pt-4">
+                  <div className="flex items-center justify-between">
+                    <label className="text-sm font-semibold text-slate-700">
+                      Ko&apos;rsatgichlar (ixtiyoriy)
+                    </label>
+                    <button
+                      type="button"
+                      onClick={() => setTypeIndicators(prev => [...prev, { name: "", normalRange: "", unit: "" }])}
+                      className="flex items-center gap-1 text-xs text-blue-600 hover:text-blue-800 hover:bg-blue-50 px-2 py-1 rounded-md transition-colors"
+                    >
+                      <Plus className="w-3.5 h-3.5" />
+                      Ko&apos;rsatgich qo&apos;shish
+                    </button>
+                  </div>
+                  {typeIndicators.length > 0 && (
+                    <div className="space-y-2 max-h-52 overflow-y-auto">
+                      {typeIndicators.map((ind, idx) => (
+                        <div key={idx} className="flex gap-2 items-start bg-slate-50 rounded-lg p-2">
+                          <div className="flex-1 flex flex-col gap-1">
+                            <input
+                              type="text"
+                              value={ind.name}
+                              onChange={(e) => setTypeIndicators(prev => prev.map((x, i) => i === idx ? { ...x, name: e.target.value } : x))}
+                              placeholder="Nomi (mas: Hemoglobin)"
+                              className="border border-slate-200 rounded px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-blue-300"
+                            />
+                            <div className="flex gap-1">
+                              <input
+                                type="text"
+                                value={ind.normalRange}
+                                onChange={(e) => setTypeIndicators(prev => prev.map((x, i) => i === idx ? { ...x, normalRange: e.target.value } : x))}
+                                placeholder="Norma (mas: 120-160)"
+                                className="flex-1 border border-slate-200 rounded px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-blue-300"
+                              />
+                              <input
+                                type="text"
+                                value={ind.unit}
+                                onChange={(e) => setTypeIndicators(prev => prev.map((x, i) => i === idx ? { ...x, unit: e.target.value } : x))}
+                                placeholder="Birlik"
+                                className="w-20 border border-slate-200 rounded px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-blue-300"
+                              />
+                            </div>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => setTypeIndicators(prev => prev.filter((_, i) => i !== idx))}
+                            className="p-1 text-red-400 hover:text-red-600 hover:bg-red-50 rounded transition-colors mt-0.5"
+                          >
+                            <X className="w-4 h-4" />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  {typeIndicators.length === 0 && (
+                    <p className="text-xs text-slate-400">Panel ko&apos;rsatgichlarini shu yerda qo&apos;shing (ixtiyoriy)</p>
+                  )}
+                </div>
+              )}
 
               <div className="flex items-center justify-end gap-3 pt-2">
                 <button

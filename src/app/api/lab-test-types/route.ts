@@ -34,12 +34,19 @@ export async function GET(req: NextRequest) {
         description: true,
         price: true,
         normalRange: true,
+        normalMin: true,
+        normalMax: true,
         unit: true,
         category: true,
         isActive: true,
+        parentId: true,
         createdAt: true,
+        children: {
+          select: { id: true, name: true, normalRange: true, normalMin: true, normalMax: true, unit: true, price: true, createdAt: true },
+          orderBy: { createdAt: 'asc' },
+        },
       },
-      orderBy: { name: 'asc' },
+      orderBy: { createdAt: 'asc' },
     });
 
     return NextResponse.json({ data });
@@ -64,11 +71,14 @@ export async function POST(req: NextRequest) {
       description?: string;
       price?: number;
       normalRange?: string;
+      normalMin?: number | null;
+      normalMax?: number | null;
       unit?: string;
       category?: string;
+      parentId?: string;
     };
 
-    const { name, description, price, normalRange, unit, category } = body;
+    const { name, description, price, normalRange, normalMin, normalMax, unit, category, parentId } = body;
 
     if (!name || price === undefined || price === null) {
       return NextResponse.json(
@@ -77,7 +87,8 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    if (!category || !category.trim()) {
+    // category required only for top-level types (not sub-tests)
+    if (!parentId && (!category || !category.trim())) {
       return NextResponse.json(
         { error: 'Guruh nomi majburiy' },
         { status: 400 }
@@ -89,6 +100,14 @@ export async function POST(req: NextRequest) {
         { error: 'price musbat son bo\'lishi kerak' },
         { status: 400 }
       );
+    }
+
+    // Validate parentId if provided
+    if (parentId) {
+      const parent = await prisma.labTestType.findUnique({ where: { id: parentId } });
+      if (!parent) return NextResponse.json({ error: 'Panel topilmadi' }, { status: 404 });
+      // Sub-tests cannot have sub-tests (max 1 level)
+      if (parent.parentId) return NextResponse.json({ error: 'Sub-testning sub-testi bo\'lmaydi' }, { status: 400 });
     }
 
     const existing = await prisma.labTestType.findUnique({ where: { name } });
@@ -105,8 +124,11 @@ export async function POST(req: NextRequest) {
         description: description ?? undefined,
         price,
         normalRange: normalRange ?? undefined,
+        normalMin: normalMin ?? undefined,
+        normalMax: normalMax ?? undefined,
         unit: unit ?? undefined,
-        category: category.trim(),
+        category: category?.trim() ?? undefined,
+        parentId: parentId ?? undefined,
       },
     });
 

@@ -43,7 +43,14 @@ export async function GET(req: NextRequest) {
       where,
       include: {
         testType: {
-          select: { id: true, name: true, normalRange: true, unit: true, category: true },
+          select: {
+            id: true, name: true, normalRange: true, unit: true, category: true,
+            parentId: true,
+            children: {
+              select: { id: true, name: true, normalRange: true, unit: true, createdAt: true },
+              orderBy: { createdAt: 'asc' },
+            },
+          },
         },
         patient: {
           select: { id: true, firstName: true, lastName: true, fatherName: true, birthDate: true, gender: true },
@@ -52,10 +59,7 @@ export async function GET(req: NextRequest) {
           select: { id: true, name: true },
         },
       },
-      orderBy: [
-        { testType: { category: 'asc' } },
-        { testType: { name: 'asc' } },
-      ],
+      orderBy: { testType: { createdAt: 'asc' } },
     });
 
     // Guruhlab chiqarish
@@ -72,23 +76,47 @@ export async function GET(req: NextRequest) {
     }> = {};
 
     for (const t of tests) {
+      const isPanel = t.testType.children.length > 0;
       const cat = t.testType.category ?? 'BOSHQA';
       if (!grouped[cat]) grouped[cat] = { category: cat, tests: [] };
-      grouped[cat].tests.push({
-        id: t.id,
-        name: t.testType.name,
-        result: t.results,
-        normalRange: t.testType.normalRange,
-        unit: t.testType.unit,
-        completedAt: t.completedAt,
-      });
+
+      if (isPanel) {
+        // Expand panel results: each child becomes a row
+        const results = t.results as Record<string, string> | null ?? {};
+        for (const child of t.testType.children) {
+          const val = results[child.id];
+          if (val?.trim()) {
+            grouped[cat].tests.push({
+              id: `${t.id}_${child.id}`,
+              name: child.name,
+              result: { value: val },
+              normalRange: child.normalRange,
+              unit: child.unit,
+              completedAt: t.completedAt,
+            });
+          }
+        }
+      } else {
+        // Individual test
+        grouped[cat].tests.push({
+          id: t.id,
+          name: t.testType.name,
+          result: t.results,
+          normalRange: t.testType.normalRange,
+          unit: t.testType.unit,
+          completedAt: t.completedAt,
+        });
+      }
     }
+
+    // Remove empty groups (panels with no filled values)
+    const groups = Object.values(grouped).filter(g => g.tests.length > 0);
 
     const patient = tests[0]?.patient ?? null;
 
     return NextResponse.json({
       patient,
-      groups: Object.values(grouped),
+      groups,
       printedAt: new Date().toISOString(),
       labTech: tests[0]?.labTech ?? null,
     });

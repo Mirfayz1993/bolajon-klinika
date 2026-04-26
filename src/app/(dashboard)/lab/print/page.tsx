@@ -205,8 +205,8 @@ function PrintContent() {
             </tr>
             {/* Tug'ilgan sana + Jins */}
             <tr>
-              <td style={thStyle()}>Tug&apos;ilgan sana</td>
-              <td style={cellStyle({ width: '20%' })}>{p?.birthDate ? formatDate(p.birthDate) : '—'}</td>
+              <td style={thStyle()}>Tug&apos;ilgan yil</td>
+              <td style={cellStyle({ width: '20%' })}>{p?.birthDate ? new Date(p.birthDate).getFullYear() : '—'}</td>
               <td style={thStyle({ width: '10%' })}>Jins</td>
               <td style={cellStyle({ width: '20%' })}>{p ? genderLabel(p.gender) : '—'}</td>
             </tr>
@@ -287,6 +287,12 @@ function PrintContent() {
       <style>{`
         @media print {
           @page { size: A4; margin: 8mm; }
+          /* Fon ranglarni saqlab qolish */
+          * {
+            -webkit-print-color-adjust: exact !important;
+            print-color-adjust: exact !important;
+            color-adjust: exact !important;
+          }
           /* Sidebar, header va boshqa layout elementlarini yashirish */
           body * { visibility: hidden; }
           .lab-print-only, .lab-print-only * { visibility: visible; }

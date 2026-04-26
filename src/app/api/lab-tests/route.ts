@@ -61,7 +61,11 @@ export async function GET(req: NextRequest) {
             select: { id: true, firstName: true, lastName: true },
           },
           testType: {
-            select: { id: true, name: true, price: true, normalRange: true, unit: true, category: true },
+            select: {
+              id: true, name: true, price: true, normalRange: true, normalMin: true, normalMax: true, unit: true, category: true,
+              parentId: true,
+              children: { select: { id: true, name: true, normalRange: true, normalMin: true, normalMax: true, unit: true, price: true }, orderBy: { name: 'asc' } },
+            },
           },
           labTech: {
             select: { id: true, name: true },
@@ -79,11 +83,20 @@ export async function GET(req: NextRequest) {
     // Normalize `results` JSON to a flat `result` string for frontend
     const normalized = data.map((item) => {
       const r = item.results as Record<string, unknown> | null;
-      const resultStr = r
-        ? typeof r.value === 'string' || typeof r.value === 'number'
-          ? String(r.value)
-          : JSON.stringify(r)
-        : null;
+      const children = item.testType.children ?? [];
+      const isPanel = children.length > 0;
+
+      let resultStr: string | null = null;
+      if (r) {
+        if (isPanel) {
+          const filled = children.filter(c => (r[c.id] as string)?.trim()).length;
+          resultStr = `${filled}/${children.length} ta`;
+        } else if (typeof r.value === 'string' || typeof r.value === 'number') {
+          resultStr = String(r.value);
+        } else {
+          resultStr = JSON.stringify(r);
+        }
+      }
       return { ...item, result: resultStr };
     });
 
@@ -121,7 +134,10 @@ export async function POST(req: NextRequest) {
 
     const [patient, testType] = await Promise.all([
       prisma.patient.findUnique({ where: { id: patientId } }),
-      prisma.labTestType.findUnique({ where: { id: testTypeId } }),
+      prisma.labTestType.findUnique({
+        where: { id: testTypeId },
+        include: { children: { select: { id: true } } },
+      }),
     ]);
 
     if (!patient) {
@@ -134,41 +150,77 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Tahlil turi faol emas' }, { status: 400 });
     }
 
-    // Avval payment yaratamiz, keyin labTestga paymentId bog'laymiz
-    const payment = await prisma.payment.create({
-      data: {
-        patientId,
-        amount: testType.price,
-        method: paymentMethod as PaymentMethod,
-        category: 'LAB_TEST',
-        status: 'PENDING',
-        description: testType.name,
-      },
-    });
+    const isPanel = testType.children.length > 0;
 
-    const labTest = await prisma.labTest.create({
-      data: {
+    // Duplikat tekshiruvi: shu bemor + shu tahlil turi PENDING/IN_PROGRESS bo'lsa, qaytadan yaratma
+    const existing = await prisma.labTest.findFirst({
+      where: {
         patientId,
         testTypeId,
-        labTechId: session.user.id,
-        notes: notes ?? undefined,
-        status: 'PENDING',
-        paymentId: payment.id,
+        status: { in: ['PENDING', 'IN_PROGRESS'] },
       },
-      include: {
-        patient: {
-          select: { id: true, firstName: true, lastName: true },
+    });
+    if (existing) {
+      return NextResponse.json(
+        { error: 'Bu tahlil ushbu bemor uchun allaqachon buyurtma qilingan va natija kutilmoqda' },
+        { status: 409 }
+      );
+    }
+
+    // For panels: initial results = empty strings keyed by child IDs
+    const initialResults = isPanel
+      ? Object.fromEntries(testType.children.map(c => [c.id, '']))
+      : undefined;
+
+    const { labTest, payment } = await prisma.$transaction(async (tx) => {
+      const pay = await tx.payment.create({
+        data: {
+          patientId,
+          amount: testType.price,
+          method: paymentMethod as PaymentMethod,
+          category: 'LAB_TEST',
+          status: 'PENDING',
+          description: testType.name,
         },
-        testType: {
-          select: { id: true, name: true, price: true, normalRange: true, unit: true, category: true },
+      });
+
+      const lt = await tx.labTest.create({
+        data: {
+          patientId,
+          testTypeId,
+          labTechId: session.user.id,
+          notes: notes ?? undefined,
+          status: 'PENDING',
+          paymentId: pay.id,
+          ...(isPanel && { results: initialResults }),
         },
-        labTech: {
-          select: { id: true, name: true },
+        include: {
+          patient: { select: { id: true, firstName: true, lastName: true } },
+          testType: {
+            select: {
+              id: true, name: true, price: true, normalRange: true, unit: true, category: true,
+              parentId: true,
+              children: { select: { id: true, name: true, normalRange: true, unit: true, price: true }, orderBy: { createdAt: 'asc' } },
+            },
+          },
+          labTech: { select: { id: true, name: true } },
+          payment: { select: { id: true, status: true, amount: true } },
         },
-        payment: {
-          select: { id: true, status: true, amount: true },
+      });
+
+      // AssignedService yaratamiz — Xizmatlar tabida ko'rinishi uchun
+      await tx.assignedService.create({
+        data: {
+          patientId,
+          categoryName: 'Laboratoriya',
+          itemName: testType.name,
+          price: testType.price,
+          itemId: testTypeId,
+          assignedById: session.user.id,
         },
-      },
+      });
+
+      return { labTest: lt, payment: pay };
     });
 
     return NextResponse.json({ labTest, payment }, { status: 201 });
