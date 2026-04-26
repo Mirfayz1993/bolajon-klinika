@@ -40,6 +40,12 @@ export async function POST(
     const paymentAmount = Number(body.paymentAmount ?? 0);
     const paymentMethod = (body.paymentMethod ?? 'CASH') as PaymentMethod;
 
+    // Shu to'shakda boshqa aktiv admission bor-yo'qligini tekshirish
+    const otherActiveCount = await prisma.admission.count({
+      where: { bedId: admission.bedId, dischargeDate: null, id: { not: id } },
+    });
+    const shouldFreeBed = otherActiveCount === 0;
+
     // 1. Discharge admission
     const updateAdmission = prisma.admission.update({
       where: { id: id },
@@ -49,10 +55,10 @@ export async function POST(
       },
     });
 
-    // 2. Free the bed
+    // 2. Free the bed only if no other active admissions remain
     const freeBed = prisma.bed.update({
       where: { id: admission.bedId },
-      data: { status: BedStatus.AVAILABLE },
+      data: { status: shouldFreeBed ? BedStatus.AVAILABLE : BedStatus.OCCUPIED },
     });
 
     // 3. Create payment if amount > 0

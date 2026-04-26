@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { useSession } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
 import { useLanguage } from '@/hooks/useLanguage';
+import { floorLabel } from '@/lib/utils';
 import {
   Plus,
   Loader2,
@@ -18,6 +19,7 @@ import {
   History,
   ChevronRight,
   Building2,
+  Pill,
 } from 'lucide-react';
 
 // --- Types --------------------------------------------------------------------
@@ -80,19 +82,7 @@ function AmbBedCard({
   const { t } = useLanguage();
   const patient = bed.admissions?.[0]?.patient;
 
-  if (bed.status === 'AVAILABLE') {
-    return (
-      <div className="flex flex-col items-center gap-0.5 p-2 bg-green-50 border border-green-200 rounded-lg min-w-[68px]">
-        <BedDouble className="w-4 h-4 text-green-600" />
-        <span className="text-xs font-semibold text-green-700">{bed.bedNumber}</span>
-        <span className="text-[10px] font-medium text-green-600 bg-green-100 px-1.5 py-0.5 rounded-full whitespace-nowrap">
-          {t.rooms.available}
-        </span>
-      </div>
-    );
-  }
-
-  if (bed.status === 'OCCUPIED' && patient) {
+  if (patient) {
     return (
       <button
         onClick={() => onOccupiedClick(patient.id)}
@@ -108,12 +98,24 @@ function AmbBedCard({
     );
   }
 
+  if (bed.status === 'MAINTENANCE') {
+    return (
+      <div className="flex flex-col items-center gap-0.5 p-2 bg-yellow-50 border border-yellow-200 rounded-lg min-w-[68px]">
+        <BedDouble className="w-4 h-4 text-yellow-600" />
+        <span className="text-xs font-semibold text-yellow-700">{bed.bedNumber}</span>
+        <span className="text-[10px] font-medium text-yellow-600 bg-yellow-100 px-1.5 py-0.5 rounded-full whitespace-nowrap">
+          {t.rooms.maintenance}
+        </span>
+      </div>
+    );
+  }
+
   return (
-    <div className="flex flex-col items-center gap-0.5 p-2 bg-yellow-50 border border-yellow-200 rounded-lg min-w-[68px]">
-      <BedDouble className="w-4 h-4 text-yellow-600" />
-      <span className="text-xs font-semibold text-yellow-700">{bed.bedNumber}</span>
-      <span className="text-[10px] font-medium text-yellow-600 bg-yellow-100 px-1.5 py-0.5 rounded-full whitespace-nowrap">
-        {bed.status === 'MAINTENANCE' ? t.rooms.maintenance : t.rooms.occupied}
+    <div className="flex flex-col items-center gap-0.5 p-2 bg-green-50 border border-green-200 rounded-lg min-w-[68px]">
+      <BedDouble className="w-4 h-4 text-green-600" />
+      <span className="text-xs font-semibold text-green-700">{bed.bedNumber}</span>
+      <span className="text-[10px] font-medium text-green-600 bg-green-100 px-1.5 py-0.5 rounded-full whitespace-nowrap">
+        {t.rooms.available}
       </span>
     </div>
   );
@@ -183,6 +185,64 @@ export default function AmbulatoryPage() {
   const [dischargeSaving, setDischargeSaving] = useState(false);
   const [dischargeError, setDischargeError] = useState<string | null>(null);
   const [dischargeDone, setDischargeDone] = useState(false);
+
+  // Expiry medicines (floor=2)
+  const [expiryMeds, setExpiryMeds] = useState<{id:string;name:string;expiryDate:string;quantity:number}[]>([]);
+  useEffect(() => {
+    fetch('/api/medicines?floor=2&expiringSoon=true&writtenOff=false')
+      .then(r => r.json())
+      .then(d => setExpiryMeds(Array.isArray(d) ? d : []))
+      .catch(() => {});
+  }, []);
+
+  // Dori berish modal
+  interface MedOption { id: string; name: string; type: string; price: number; quantity: number; }
+  const [showMedModal, setShowMedModal] = useState(false);
+  const [medPatient, setMedPatient] = useState<AmbulatoryAdmission | null>(null);
+  const [ambMeds, setAmbMeds] = useState<MedOption[]>([]);
+  const [ambMedsLoading, setAmbMedsLoading] = useState(false);
+  const [selMedId, setSelMedId] = useState('');
+  const [medQty, setMedQty] = useState('1');
+  const [medSaving, setMedSaving] = useState(false);
+  const [medError, setMedError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!showMedModal) return;
+    setAmbMedsLoading(true);
+    fetch('/api/medicines?floor=2&writtenOff=false')
+      .then(r => r.json())
+      .then(d => setAmbMeds(Array.isArray(d) ? d : []))
+      .catch(() => setAmbMeds([]))
+      .finally(() => setAmbMedsLoading(false));
+  }, [showMedModal]);
+
+  function openMedModal(adm: AmbulatoryAdmission) {
+    setMedPatient(adm);
+    setSelMedId('');
+    setMedQty('1');
+    setMedError(null);
+    setShowMedModal(true);
+  }
+
+  async function handleMedDispense(e: React.FormEvent) {
+    e.preventDefault();
+    if (!medPatient || !selMedId) return;
+    setMedSaving(true);
+    setMedError(null);
+    try {
+      const res = await fetch('/api/medicine-transactions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ medicineId: selMedId, type: 'OUT', quantity: Number(medQty), patientId: medPatient.patient.id }),
+      });
+      if (!res.ok) { const err = await res.json(); throw new Error(err.error || 'Xato'); }
+      setShowMedModal(false);
+    } catch (err) {
+      setMedError(err instanceof Error ? err.message : 'Xato');
+    } finally {
+      setMedSaving(false);
+    }
+  }
 
   // QR Scan
   const [qrInput, setQrInput] = useState('');
@@ -392,7 +452,7 @@ export default function AmbulatoryPage() {
   // --- Navigate to patient nurse-notes --------------------------------------
 
   const goToPatientNotes = (patientId: string) => {
-    router.push(`/patients/${patientId}?tab=nurse-notes&noteType=AMBULATORY`);
+    router.push(`/patients/${patientId}?tab=nurse-notes&noteType=AMBULATORY&from=ambulatory`);
   };
 
   // --- Render ---------------------------------------------------------------
@@ -406,7 +466,7 @@ export default function AmbulatoryPage() {
             <Stethoscope className="w-6 h-6 text-teal-600" />
             Ambulator bo&apos;lim
           </h1>
-          <p className="text-sm text-slate-500 mt-1">3-qavat — qisqa muddatli muolaja (ukol, infuziya)</p>
+          <p className="text-sm text-slate-500 mt-1">2-qavat — qisqa muddatli muolaja (ukol, infuziya)</p>
         </div>
         <div className="flex items-center gap-3">
           <label className="flex items-center gap-2 text-sm text-slate-600 cursor-pointer">
@@ -430,11 +490,29 @@ export default function AmbulatoryPage() {
         </div>
       </div>
 
+      {/* Expiry alert for floor=2 medicines */}
+      {expiryMeds.length > 0 && (
+        <div className="mb-4 bg-orange-50 border border-orange-200 rounded-xl px-4 py-3">
+          <p className="text-sm font-semibold text-orange-800 mb-2">⚠️ 2-qavat dorilar — muddati tugayotgan ({expiryMeds.length} ta):</p>
+          <div className="flex flex-wrap gap-2">
+            {expiryMeds.map(m => {
+              const exp = new Date(m.expiryDate);
+              const isExpired = exp < new Date();
+              return (
+                <span key={m.id} className={`text-xs px-2 py-1 rounded-full font-medium ${isExpired ? 'bg-red-100 text-red-700' : 'bg-orange-100 text-orange-700'}`}>
+                  {m.name} — {exp.toLocaleDateString('uz-UZ')} {isExpired ? '(muddati o\'tgan)' : ''}
+                </span>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
       {/* Room Map */}
       <div className="mb-6">
         <div className="flex items-center gap-2 mb-3">
           <Building2 className="w-4 h-4 text-teal-600" />
-          <h2 className="text-sm font-semibold text-slate-700">3-qavat xona xaritasi</h2>
+          <h2 className="text-sm font-semibold text-slate-700">2-qavat xona xaritasi</h2>
           {ambRoomsLoading && <Loader2 className="w-3.5 h-3.5 animate-spin text-slate-400" />}
         </div>
         {ambRooms.length === 0 && !ambRoomsLoading ? (
@@ -478,7 +556,7 @@ export default function AmbulatoryPage() {
                           key={bed.id}
                           bed={bed}
                           onOccupiedClick={(patientId) =>
-                            router.push(`/patients/${patientId}?tab=nurse&noteType=AMBULATORY`)
+                            router.push(`/patients/${patientId}?tab=nurse&noteType=AMBULATORY&from=ambulatory`)
                           }
                         />
                       ))}
@@ -599,7 +677,7 @@ export default function AmbulatoryPage() {
                       <span className="font-medium">Xona {adm.bed.room.roomNumber}</span>
                       <span className="text-slate-400 mx-1">/</span>
                       To&apos;shak {adm.bed.bedNumber}
-                      <span className="block text-xs text-slate-400">{adm.bed.room.floor}-qavat</span>
+                      <span className="block text-xs text-slate-400">{floorLabel(adm.bed.room.floor)}</span>
                     </td>
                     <td className="px-4 py-3 text-slate-600 whitespace-nowrap text-xs">
                       {formatDate(adm.admittedAt)}
@@ -619,14 +697,25 @@ export default function AmbulatoryPage() {
                       )}
                     </td>
                     <td className="px-4 py-3 text-right">
-                      {canManage && adm.status === 'ACTIVE' && (
-                        <button
-                          onClick={(e) => openDischarge(adm, e)}
-                          className="flex items-center gap-1.5 text-xs font-medium text-orange-600 hover:text-orange-700 hover:bg-orange-50 px-3 py-1.5 rounded-lg transition-colors ml-auto"
-                        >
-                          <LogOut className="w-3.5 h-3.5" />
-                          Chiqarish
-                        </button>
+                      {adm.status === 'ACTIVE' && (
+                        <div className="flex items-center justify-end gap-2">
+                          <button
+                            onClick={(e) => { e.stopPropagation(); openMedModal(adm); }}
+                            className="flex items-center gap-1.5 text-xs font-medium text-teal-600 hover:text-teal-700 hover:bg-teal-50 px-3 py-1.5 rounded-lg transition-colors"
+                          >
+                            <Pill className="w-3.5 h-3.5" />
+                            Dori
+                          </button>
+                          {canManage && (
+                            <button
+                              onClick={(e) => openDischarge(adm, e)}
+                              className="flex items-center gap-1.5 text-xs font-medium text-orange-600 hover:text-orange-700 hover:bg-orange-50 px-3 py-1.5 rounded-lg transition-colors"
+                            >
+                              <LogOut className="w-3.5 h-3.5" />
+                              Chiqarish
+                            </button>
+                          )}
+                        </div>
                       )}
                     </td>
                   </tr>
@@ -776,7 +865,7 @@ export default function AmbulatoryPage() {
                     <option value="">— To&apos;shak tanlang —</option>
                     {bedOptions.map((b) => (
                       <option key={b.id} value={b.id}>
-                        Xona {b.room.roomNumber} / To&apos;shak {b.bedNumber} ({b.room.floor}-qavat)
+                        Xona {b.room.roomNumber} / To&apos;shak {b.bedNumber} ({floorLabel(b.room.floor)})
                       </option>
                     ))}
                   </select>
@@ -882,6 +971,86 @@ export default function AmbulatoryPage() {
                 </div>
               )}
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* -- Dori berish Modal ----------------------------------------------- */}
+      {showMedModal && medPatient && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-md">
+            <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100">
+              <div>
+                <h2 className="text-lg font-semibold text-slate-800 flex items-center gap-2">
+                  <Pill className="w-5 h-5 text-teal-600" />
+                  Dori berish
+                </h2>
+                <p className="text-sm text-slate-500 mt-0.5">
+                  {medPatient.patient.lastName} {medPatient.patient.firstName}
+                </p>
+              </div>
+              <button onClick={() => setShowMedModal(false)} className="p-1.5 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-md transition-colors">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <form onSubmit={handleMedDispense} className="p-6 space-y-4">
+              {medError && (
+                <div className="flex items-center gap-2 text-red-600 bg-red-50 border border-red-200 rounded-lg px-4 py-3 text-sm">
+                  <AlertCircle className="w-4 h-4 flex-shrink-0" />
+                  {medError}
+                </div>
+              )}
+              <div className="flex flex-col gap-1">
+                <label className="text-sm font-medium text-slate-700">Dori <span className="text-red-500">*</span></label>
+                {ambMedsLoading ? (
+                  <div className="flex items-center gap-2 text-slate-400 text-sm py-2"><Loader2 className="w-4 h-4 animate-spin" /> Yuklanmoqda...</div>
+                ) : ambMeds.length === 0 ? (
+                  <p className="text-sm text-slate-400 py-2">2-qavat shkafida dori topilmadi</p>
+                ) : (
+                  <select
+                    value={selMedId}
+                    onChange={e => setSelMedId(e.target.value)}
+                    required
+                    className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
+                  >
+                    <option value="">— Dorini tanlang —</option>
+                    {ambMeds.map(m => (
+                      <option key={m.id} value={m.id} disabled={m.quantity === 0}>
+                        {m.name} ({m.type}) — {Number(m.price).toLocaleString()} so&apos;m — zaxira: {m.quantity}
+                      </option>
+                    ))}
+                  </select>
+                )}
+              </div>
+              <div className="flex flex-col gap-1">
+                <label className="text-sm font-medium text-slate-700">Miqdor <span className="text-red-500">*</span></label>
+                <input
+                  type="number"
+                  min={1}
+                  max={ambMeds.find(m => m.id === selMedId)?.quantity ?? 999}
+                  value={medQty}
+                  onChange={e => setMedQty(e.target.value)}
+                  required
+                  className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
+                />
+              </div>
+              {selMedId && (
+                <div className="bg-teal-50 border border-teal-200 rounded-lg px-4 py-2 text-sm text-teal-800">
+                  Jami: {(Number(ambMeds.find(m=>m.id===selMedId)?.price ?? 0) * Number(medQty || 1)).toLocaleString()} so&apos;m
+                  <span className="text-teal-600 ml-2">(bemor profiliga yoziladi)</span>
+                </div>
+              )}
+              <div className="flex items-center justify-end gap-3 pt-2">
+                <button type="button" onClick={() => setShowMedModal(false)} className="px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100 rounded-lg transition-colors">
+                  Bekor
+                </button>
+                <button type="submit" disabled={medSaving || !selMedId} className="flex items-center gap-2 px-4 py-2 bg-teal-600 hover:bg-teal-700 disabled:opacity-60 disabled:cursor-not-allowed text-white text-sm font-medium rounded-lg transition-colors">
+                  {medSaving && <Loader2 className="w-4 h-4 animate-spin" />}
+                  <Pill className="w-4 h-4" />
+                  Berish
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

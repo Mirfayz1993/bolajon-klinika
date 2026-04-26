@@ -94,6 +94,34 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "To'shak band" }, { status: 400 });
     }
 
+    // Bemorning boshqa aktiv ambulator yotqizishi bor-yo'qligini tekshirish
+    const activePatientAdmission = await prisma.admission.findFirst({
+      where: {
+        patientId,
+        dischargeDate: null,
+        admissionType: AdmissionType.AMBULATORY,
+      },
+      include: { bed: { select: { bedNumber: true, room: { select: { roomNumber: true } } } } },
+    });
+    if (activePatientAdmission) {
+      const loc = `${activePatientAdmission.bed.room.roomNumber}-xona, ${activePatientAdmission.bed.bedNumber}-karavot`;
+      return NextResponse.json(
+        { error: `Bu bemor allaqachon ambulator bo'limida yotibdi (${loc}). Avval uni chiqaring.` },
+        { status: 400 }
+      );
+    }
+
+    // To'shakda allaqachon aktiv yotqizish bor-yo'qligini tekshirish
+    const activeBedAdmission = await prisma.admission.findFirst({
+      where: { bedId, dischargeDate: null },
+    });
+    if (activeBedAdmission) {
+      return NextResponse.json(
+        { error: "Bu to'shakda allaqachon aktiv bemor mavjud. Avval uni chiqaring." },
+        { status: 400 }
+      );
+    }
+
     const [admission] = await prisma.$transaction([
       prisma.admission.create({
         data: {
