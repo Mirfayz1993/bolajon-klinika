@@ -160,6 +160,9 @@ model User {
   taskPermsAssigner    TaskAssignPermission[] @relation("TaskAssignPermAssigner")
   taskPermsTarget      TaskAssignPermission[] @relation("TaskAssignPermTarget")
   taskPermsGrantedBy   TaskAssignPermission[] @relation("PermGrantedBy")
+  vitalsRecorded       Vital[]
+  writtenOffMedicines  Medicine[]          @relation("MedicineWriteOff")
+  inventoryLogs        RoomInventoryLog[]  @relation("InventoryLogPerformedBy")
 
   @@map("users")
 }
@@ -175,9 +178,10 @@ model Patient {
   district       String?
   houseNumber    String?
   gender         String? // "MALE" | "FEMALE"
-  medicalHistory String?
-  allergies      String?
-  telegramChatId String?
+  medicalHistory     String?
+  allergies          String?
+  chronicConditions  String?
+  telegramChatId     String?
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt
   deletedAt      DateTime? // Soft delete: null = faol, qiymat = o'chirilgan
@@ -191,6 +195,8 @@ model Patient {
   notifications        Notification[]
   nurseNotes           NurseNote[]
   assignedServices     AssignedService[]
+  tasks                Task[]              @relation("PatientTasks")
+  vitals               Vital[]
 
   @@map("patients")
 }
@@ -228,8 +234,26 @@ model RoomInventoryItem {
 
   room    Room  @relation(fields: [roomId], references: [id])
   addedBy User? @relation("InventoryAddedBy", fields: [addedById], references: [id])
+  logs    RoomInventoryLog[]
 
   @@map("room_inventory_items")
+}
+
+model RoomInventoryLog {
+  id              String   @id @default(cuid())
+  roomId          String
+  inventoryItemId String
+  action          String   // "ADDED" | "WRITTEN_OFF"
+  quantity        Int
+  comment         String?
+  performedById   String?
+  createdAt       DateTime @default(now())
+
+  room          Room              @relation(fields: [roomId], references: [id])
+  inventoryItem RoomInventoryItem @relation(fields: [inventoryItemId], references: [id])
+  performedBy   User?             @relation("InventoryLogPerformedBy", fields: [performedById], references: [id])
+
+  @@map("room_inventory_logs")
 }
 
 model RoomResponsible {
@@ -311,6 +335,8 @@ model LabTestType {
   price       Decimal  @db.Decimal(12, 2)
   description String?
   normalRange String?
+  normalMin   Float?
+  normalMax   Float?
   unit        String?
   category    String?
   isActive    Boolean  @default(true)
@@ -348,19 +374,25 @@ model LabTest {
 }
 
 model Medicine {
-  id         String   @id @default(cuid())
-  name       String
-  type       String
-  quantity   Int      @default(0)
-  price      Decimal  @db.Decimal(12, 2)
-  expiryDate DateTime
-  supplierId String?
-  minStock   Int      @default(10)
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
+  id          String   @id @default(cuid())
+  name        String
+  type        String
+  quantity    Int      @default(0)
+  price       Decimal  @db.Decimal(12, 2)
+  expiryDate  DateTime
+  supplierId  String?
+  minStock    Int      @default(10)
+  // Joylashuv: null=asosiy dorixona, 2=2-qavat ambulator, 3=3-qavat statsionar
+  floor       Int?
+  writtenOff  Boolean  @default(false)
+  writtenOffAt DateTime?
+  writtenOffById String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 
-  supplier     Supplier?             @relation(fields: [supplierId], references: [id])
-  transactions MedicineTransaction[]
+  supplier       Supplier?             @relation(fields: [supplierId], references: [id])
+  writtenOffBy   User?                 @relation("MedicineWriteOff", fields: [writtenOffById], references: [id])
+  transactions   MedicineTransaction[]
 
   @@map("medicines")
 }
@@ -408,6 +440,7 @@ model Room {
   beds            Bed[]
   appointments    Appointment[]
   inventory       RoomInventoryItem[]
+  inventoryLogs   RoomInventoryLog[]
   responsible     RoomResponsible?
   expenses        RoomExpense[]
   attendances     Attendance[]
@@ -450,21 +483,26 @@ model Admission {
   medicineTransactions MedicineTransaction[]
   nurseNotes           NurseNote[]
   assignedService      AssignedService?
+  tasks                Task[]
+  medicalRecords       MedicalRecord[]
+  vitals               Vital[]
 
   @@map("admissions")
 }
 
 model MedicalRecord {
-  id        String   @id @default(cuid())
-  patientId String
-  doctorId  String
-  diagnosis String?
-  treatment String?
-  notes     String?
-  createdAt DateTime @default(now())
+  id          String   @id @default(cuid())
+  patientId   String
+  doctorId    String
+  admissionId String?
+  diagnosis   String?
+  treatment   String?
+  notes       String?
+  createdAt   DateTime @default(now())
 
   patient       Patient        @relation(fields: [patientId], references: [id])
   doctor        User           @relation(fields: [doctorId], references: [id])
+  admission     Admission?     @relation(fields: [admissionId], references: [id])
   prescriptions Prescription[]
 
   @@map("medical_records")
@@ -726,6 +764,8 @@ model Task {
   status         TaskStatus @default(PENDING)
   assignerId     String
   assigneeId     String
+  admissionId    String?
+  patientId      String?
   progressNote   String?
   startedAt      DateTime?
   completedAt    DateTime?
@@ -734,8 +774,10 @@ model Task {
   createdAt      DateTime   @default(now())
   updatedAt      DateTime   @updatedAt
 
-  assigner User @relation("TasksAssigned", fields: [assignerId], references: [id])
-  assignee User @relation("TasksReceived", fields: [assigneeId], references: [id])
+  assigner  User       @relation("TasksAssigned", fields: [assignerId], references: [id])
+  assignee  User       @relation("TasksReceived", fields: [assigneeId], references: [id])
+  admission Admission? @relation(fields: [admissionId], references: [id])
+  patient   Patient?   @relation("PatientTasks", fields: [patientId], references: [id])
 
   @@map("tasks")
 }
@@ -753,4 +795,25 @@ model TaskAssignPermission {
 
   @@unique([assignerId, targetUserId])
   @@map("task_assign_permissions")
+}
+
+model Vital {
+  id                     String   @id @default(cuid())
+  patientId              String
+  admissionId            String?
+  temperature            Float?   // Harorat (°C)
+  bloodPressureSystolic  Int?     // Sistolik bosim (mmHg)
+  bloodPressureDiastolic Int?     // Diastolik bosim (mmHg)
+  pulse                  Int?     // Puls (urish/daqiqa)
+  oxygenSaturation       Float?   // SpO2 (%)
+  weight                 Float?   // Vazn (kg)
+  notes                  String?
+  recordedById           String?
+  createdAt              DateTime @default(now())
+
+  patient     Patient    @relation(fields: [patientId], references: [id])
+  admission   Admission? @relation(fields: [admissionId], references: [id])
+  recordedBy  User?      @relation(fields: [recordedById], references: [id])
+
+  @@map("vitals")
 }

@@ -248,3 +248,111 @@ Bu fayl permissions boshqaruv tizimining yagona manbasi — shu yangilanmasa, ad
 | `public/locales/uz-latin.json` | O'zbek lotin tarjimalari |
 | `public/locales/uz-cyrillic.json` | O'zbek kirill tarjimalari |
 | `docs/plans/implementation-plan.md` | 18 ta task, 5 faza |
+
+---
+
+## VPS Deploy
+
+**Server:** `194.163.157.44` | User: `root` | App: `/var/www/bolajon-klinika`
+**Local root:** `c:\Users\user\Desktop\bolajon klinika\clinic-cms`
+
+> ⚠️ Bir xil serverda `wood-erp` (PM2 id:0,1) ham ishlaydi — **unga tegma!**
+> Faqat `bolajon-klinika` (PM2 id:5) ni restart qil.
+
+### Deploy skripti (har safar shu shablonni ishlat)
+
+Deploy kerak bo'lganda `c:\Users\user\Desktop\bolajon klinika\` papkasida yangi `.py` fayl yaratib, quyidagi shablonga `FILES` ro'yxatini to'ldirish kifoya:
+
+```python
+"""Vazifa tavsifi"""
+import paramiko, os, sys, time, socket, base64
+
+HOST = '194.163.157.44'; PORT = 22; USER = 'root'; PASS = 'Mirfayz1993!'
+APP_DIR = '/var/www/bolajon-klinika'
+LOCAL_ROOT = r'c:\Users\user\Desktop\bolajon klinika\clinic-cms'
+
+FILES = [
+    # O'zgartirilgan fayllar ro'yxati (clinic-cms dan nisbiy yo'l):
+    'src/app/api/example/route.ts',
+    'src/app/(dashboard)/example/page.tsx',
+]
+
+# Schema o'zgarsa True qil:
+RUN_PRISMA = False
+
+transport = None
+
+def connect():
+    global transport
+    for attempt in range(3):
+        try:
+            time.sleep(1); sock = socket.socket(); sock.settimeout(20); sock.connect((HOST, PORT))
+            t = paramiko.Transport(sock); t.connect(username=USER, password=PASS); transport = t; return
+        except Exception as e:
+            print(f'  Ulanish xato: {e}')
+            if attempt == 2: sys.exit(1)
+            time.sleep(3)
+
+def run(cmd, timeout=300):
+    print(f'  $ {cmd[:80]}{"..." if len(cmd)>80 else ""}')
+    for attempt in range(2):
+        try:
+            connect(); chan = transport.open_session(); chan.exec_command(cmd)
+            out_bytes = b''; start = time.time()
+            while True:
+                if chan.recv_ready(): out_bytes += chan.recv(8192)
+                elif chan.recv_stderr_ready(): out_bytes += chan.recv_stderr(8192)
+                elif chan.exit_status_ready():
+                    while chan.recv_ready(): out_bytes += chan.recv(8192)
+                    while chan.recv_stderr_ready(): out_bytes += chan.recv_stderr(8192)
+                    break
+                elif time.time() - start > timeout: chan.close(); return -1, ''
+                else: time.sleep(0.3)
+            code = chan.recv_exit_status(); chan.close()
+            out = out_bytes.decode('utf-8', errors='replace')
+            if out.strip():
+                for line in out.strip().split('\n')[-20:]:
+                    sys.stdout.buffer.write(f'    {line}\n'.encode('utf-8', errors='replace'))
+                sys.stdout.buffer.flush()
+            return code, out
+        except Exception as e:
+            if attempt == 0: time.sleep(2)
+            else: print(f'  [ERROR] {e}'); return -1, ''
+    return -1, ''
+
+def upload(rel_path):
+    local = os.path.join(LOCAL_ROOT, rel_path.replace('/', os.sep))
+    if not os.path.exists(local): print(f'  [skip] {rel_path}'); return False
+    with open(local, 'rb') as f: b64 = base64.b64encode(f.read()).decode('ascii')
+    remote = f'{APP_DIR}/{rel_path}'
+    run(f'mkdir -p "{"/".join(remote.split("/")[:-1])}"')
+    chunks = [b64[i:i+40000] for i in range(0, len(b64), 40000)]
+    run(f'echo "{chunks[0]}" > /tmp/_c.b64')
+    for c in chunks[1:]: run(f'echo "{c}" >> /tmp/_c.b64')
+    code, _ = run(f'base64 -d /tmp/_c.b64 > "{remote}" && rm /tmp/_c.b64 && echo OK')
+    print(f'  {"[OK]" if code==0 else "[FAIL]"} {rel_path}')
+    return code == 0
+
+print('=== Deploy ===')
+for f in FILES: upload(f)
+
+if RUN_PRISMA:
+    print('\nPrisma...')
+    run(f'cd {APP_DIR} && npx prisma db push --accept-data-loss 2>&1 | tail -5', timeout=120)
+    run(f'cd {APP_DIR} && npx prisma generate 2>&1 | tail -3', timeout=60)
+
+print('\nBuild + restart...')
+code, out = run(
+    f'cd {APP_DIR} && npm run build 2>&1 | tee /tmp/build.log; tail -20 /tmp/build.log; '
+    f'[ ${{PIPESTATUS[0]}} -eq 0 ] && pm2 restart bolajon-klinika && echo "DONE" || echo "FAIL"',
+    timeout=400
+)
+print('OK!' if 'DONE' in out else 'XATO! Log: /tmp/build.log')
+run('pm2 list --no-color 2>/dev/null | grep bolajon')
+```
+
+### Qoidalar
+- Faqat o'zgargan fayllarni `FILES` ga qo'sh
+- `prisma/schema.prisma` o'zgarganda `RUN_PRISMA = True` qil
+- Build xato berganda: `tail -100 /tmp/build.log` bilan log ko'r
+- Deploy skriptlari `c:\Users\user\Desktop\bolajon klinika\` da saqlanadi (clinic-cms ichida emas)
