@@ -13,6 +13,9 @@ import {
   Trash2,
   Search,
   AlertTriangle,
+  PackagePlus,
+  ShieldAlert,
+  CheckCircle2,
 } from "lucide-react";
 
 // --- Types -------------------------------------------------------------------
@@ -33,6 +36,9 @@ interface Medicine {
   price: number;
   expiryDate: string | null;
   supplier: Supplier | null;
+  floor: number | null;
+  writtenOff: boolean;
+  writtenOffAt: string | null;
 }
 
 interface Patient {
@@ -53,7 +59,8 @@ interface MedicineTransaction {
   performedBy?: { firstName: string; lastName: string } | null;
 }
 
-type ActiveTab = "medicines" | "transactions" | "suppliers";
+type ActiveTab = "medicines" | "receive" | "expiry" | "transactions" | "suppliers";
+
 
 // --- Page ---------------------------------------------------------------------
 
@@ -74,6 +81,7 @@ export default function PharmacyPage() {
   const [medicinesError, setMedicinesError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [lowStockOnly, setLowStockOnly] = useState(false);
+  const [showWrittenOff, setShowWrittenOff] = useState(false);
 
   // -- Suppliers state ---------------------------------------------------------
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
@@ -83,9 +91,23 @@ export default function PharmacyPage() {
   // -- Transactions state ------------------------------------------------------
   const [transactions, setTransactions] = useState<MedicineTransaction[]>([]);
   const [transactionsLoading, setTransactionsLoading] = useState(false);
-  const [transactionsError, setTransactionsError] = useState<string | null>(
-    null
-  );
+  const [transactionsError, setTransactionsError] = useState<string | null>(null);
+
+
+  // -- Receive (STOCK_IN) state ------------------------------------------------
+  const [rcvMedicineId, setRcvMedicineId] = useState("");
+  const [rcvQty, setRcvQty] = useState("");
+  const [rcvSupplierId, setRcvSupplierId] = useState("");
+  const [rcvExpiryDate, setRcvExpiryDate] = useState("");
+  const [rcvFloor, setRcvFloor] = useState<string>("2");
+  const [rcvSaving, setRcvSaving] = useState(false);
+  const [rcvError, setRcvError] = useState<string | null>(null);
+  const [rcvSuccess, setRcvSuccess] = useState<string | null>(null);
+
+  // -- Expiry state ------------------------------------------------------------
+  const [expiryMeds, setExpiryMeds] = useState<Medicine[]>([]);
+  const [expiryLoading, setExpiryLoading] = useState(false);
+  const [writeOffingId, setWriteOffingId] = useState<string | null>(null);
 
   // -- Medicine modal ----------------------------------------------------------
   const [showMedicineModal, setShowMedicineModal] = useState(false);
@@ -94,8 +116,10 @@ export default function PharmacyPage() {
   const [medUnit, setMedUnit] = useState("");
   const [medPrice, setMedPrice] = useState("");
   const [medMinStock, setMedMinStock] = useState("");
+  const [medQuantity, setMedQuantity] = useState("");
   const [medExpiryDate, setMedExpiryDate] = useState("");
   const [medSupplierId, setMedSupplierId] = useState("");
+  const [medFloor, setMedFloor] = useState<string>("");
   const [medSaving, setMedSaving] = useState(false);
   const [medError, setMedError] = useState<string | null>(null);
 
@@ -128,9 +152,10 @@ export default function PharmacyPage() {
     setMedicinesLoading(true);
     setMedicinesError(null);
     try {
-      const res = await fetch(
-        `/api/medicines?search=${encodeURIComponent(search)}`
-      );
+      const params = new URLSearchParams();
+      if (search) params.set("search", search);
+      params.set("writtenOff", showWrittenOff ? "true" : "false");
+      const res = await fetch(`/api/medicines?${params.toString()}`);
       if (!res.ok) throw new Error(t.common.error);
       const json = await res.json();
       setMedicines(Array.isArray(json) ? json : json.data ?? []);
@@ -139,7 +164,7 @@ export default function PharmacyPage() {
     } finally {
       setMedicinesLoading(false);
     }
-  }, [search, t.common.error]);
+  }, [search, showWrittenOff, t.common.error]);
 
   const fetchSuppliers = useCallback(async () => {
     setSuppliersLoading(true);
@@ -176,6 +201,57 @@ export default function PharmacyPage() {
     fetchSuppliers();
     fetchTransactions();
   }, [fetchMedicines, fetchSuppliers, fetchTransactions]);
+
+  // -- Expiry medicines fetch -------------------------------------------------
+  const fetchExpiryMeds = useCallback(async () => {
+    setExpiryLoading(true);
+    try {
+      const res = await fetch("/api/medicines?expiringSoon=true&writtenOff=false");
+      if (!res.ok) throw new Error();
+      const json = await res.json();
+      setExpiryMeds(Array.isArray(json) ? json : []);
+    } catch {
+      setExpiryMeds([]);
+    } finally {
+      setExpiryLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (activeTab === "expiry") fetchExpiryMeds();
+  }, [activeTab, fetchExpiryMeds]);
+
+  // -- Receive submit ----------------------------------------------------------
+  async function handleReceive(e: React.FormEvent) {
+    e.preventDefault();
+    if (!rcvMedicineId || !rcvQty) return;
+    setRcvSaving(true);
+    setRcvError(null);
+    setRcvSuccess(null);
+    try {
+      const med = medicines.find(m => m.id === rcvMedicineId);
+      const res = await fetch("/api/medicine-transactions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          medicineId: rcvMedicineId,
+          type: "IN",
+          quantity: Number(rcvQty),
+          supplierId: rcvSupplierId || undefined,
+          expiryDate: rcvExpiryDate || undefined,
+          floor: rcvFloor === "3" ? 3 : 2,
+        }),
+      });
+      if (!res.ok) { const err = await res.json(); throw new Error(err.error || t.common.error); }
+      setRcvSuccess(`${med?.name ?? "Dori"} — ${rcvQty} dona qabul qilindi`);
+      setRcvMedicineId(""); setRcvQty(""); setRcvSupplierId(""); setRcvExpiryDate(""); setRcvFloor("2");
+      fetchMedicines();
+    } catch (err) {
+      setRcvError(err instanceof Error ? err.message : t.common.error);
+    } finally {
+      setRcvSaving(false);
+    }
+  }
 
   // -- Patient search (debounced) --------------------------------------------
   useEffect(() => {
@@ -214,8 +290,10 @@ export default function PharmacyPage() {
     setMedUnit("");
     setMedPrice("");
     setMedMinStock("");
+    setMedQuantity("");
     setMedExpiryDate("");
     setMedSupplierId("");
+    setMedFloor("2");
     setMedError(null);
     setShowMedicineModal(true);
   }
@@ -226,12 +304,31 @@ export default function PharmacyPage() {
     setMedUnit(med.unit);
     setMedPrice(String(med.price));
     setMedMinStock(String(med.minStock));
+    setMedQuantity("");
     setMedExpiryDate(
       med.expiryDate ? med.expiryDate.slice(0, 10) : ""
     );
     setMedSupplierId(med.supplier?.id ?? "");
+    setMedFloor(med.floor === 3 ? "3" : "2");
     setMedError(null);
     setShowMedicineModal(true);
+  }
+
+  async function handleWriteOff(med: Medicine) {
+    if (!confirm(`"${med.name}" ni hisobdan chiqarasizmi? Bu amal qaytarib bo'lmaydi.`)) return;
+    try {
+      const res = await fetch(`/api/medicines/${med.id}`, {
+        method: "PATCH",
+      });
+      if (!res.ok) {
+        const err = await res.json();
+        alert(err.error || t.common.error);
+        return;
+      }
+      fetchMedicines();
+    } catch {
+      alert(t.common.error);
+    }
   }
 
   async function handleMedicineSubmit(e: React.FormEvent) {
@@ -239,6 +336,7 @@ export default function PharmacyPage() {
     setMedSaving(true);
     setMedError(null);
     try {
+      const floorValue = medFloor === "3" ? 3 : 2;
       const body: Record<string, string | number | null> = {
         name: medName.trim(),
         unit: medUnit.trim(),
@@ -246,7 +344,11 @@ export default function PharmacyPage() {
         minStock: Number(medMinStock),
         expiryDate: medExpiryDate || null,
         supplierId: medSupplierId || null,
+        floor: floorValue,
       };
+      if (!editingMedicine) {
+        body.quantity = medQuantity ? Number(medQuantity) : 0;
+      }
       const url = editingMedicine
         ? `/api/medicines/${editingMedicine.id}`
         : "/api/medicines";
@@ -301,7 +403,7 @@ export default function PharmacyPage() {
     try {
       const body: Record<string, string | number | null | undefined> = {
         medicineId: dispenseMedicine.id,
-        type: "STOCK_OUT",
+        type: "OUT",
         quantity: Number(dispenseQty),
         patientId: selectedPatient?.id ?? undefined,
         notes: dispenseNotes.trim() || null,
@@ -426,6 +528,8 @@ export default function PharmacyPage() {
         {(
           [
             { key: "medicines", label: t.pharmacy.medicines },
+            { key: "receive", label: "Qabul qilish" },
+            { key: "expiry", label: "Muddati & Chiqarish" },
             { key: "transactions", label: t.pharmacy.transactions },
             ...(canManage
               ? [{ key: "suppliers", label: t.pharmacy.suppliers }]
@@ -472,6 +576,16 @@ export default function PharmacyPage() {
               <AlertTriangle className="w-4 h-4" />
               {t.pharmacy.lowStock}
             </button>
+            <button
+              onClick={() => setShowWrittenOff((v) => !v)}
+              className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+                showWrittenOff
+                  ? "bg-slate-600 text-white"
+                  : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+              }`}
+            >
+              Hisobdan chiqarilganlar
+            </button>
           </div>
 
           {/* Error */}
@@ -509,6 +623,9 @@ export default function PharmacyPage() {
                     <th className="text-left px-4 py-3 font-semibold text-slate-600">
                       {t.pharmacy.supplier}
                     </th>
+                    <th className="text-left px-4 py-3 font-semibold text-slate-600">
+                      Joylashuv
+                    </th>
                     <th className="text-right px-4 py-3 font-semibold text-slate-600">
                       {t.common.actions}
                     </th>
@@ -517,14 +634,14 @@ export default function PharmacyPage() {
                 <tbody>
                   {medicinesLoading ? (
                     <tr>
-                      <td colSpan={8} className="text-center py-12">
+                      <td colSpan={9} className="text-center py-12">
                         <Loader2 className="w-6 h-6 animate-spin mx-auto text-blue-500" />
                       </td>
                     </tr>
                   ) : filteredMedicines.length === 0 ? (
                     <tr>
                       <td
-                        colSpan={8}
+                        colSpan={9}
                         className="text-center py-12 text-slate-400"
                       >
                         {t.pharmacy.noMedicines}
@@ -533,10 +650,14 @@ export default function PharmacyPage() {
                   ) : (
                     filteredMedicines.map((med) => {
                       const isLow = med.quantity <= med.minStock;
+                      const now = new Date();
+                      const expiry = med.expiryDate ? new Date(med.expiryDate) : null;
+                      const isExpired = expiry ? expiry < now : false;
+                      const isExpiringSoon = expiry ? !isExpired && (expiry.getTime() - now.getTime()) < 30 * 24 * 60 * 60 * 1000 : false;
                       return (
                         <tr
                           key={med.id}
-                          className="border-b border-slate-100 hover:bg-slate-50 transition-colors"
+                          className={`border-b border-slate-100 hover:bg-slate-50 transition-colors ${isExpired ? 'bg-red-50' : ''}`}
                         >
                           <td className="px-4 py-3 font-medium text-slate-800">
                             {med.name}
@@ -564,45 +685,62 @@ export default function PharmacyPage() {
                           <td className="px-4 py-3 text-slate-600">
                             {med.price.toLocaleString()} {t.common.sum}
                           </td>
-                          <td className="px-4 py-3 text-slate-500">
-                            {med.expiryDate
-                              ? new Date(med.expiryDate).toLocaleDateString(
-                                  "uz-UZ"
-                                )
-                              : "—"}
+                          <td className="px-4 py-3">
+                            {med.expiryDate ? (
+                              <span className={`font-medium ${isExpired ? 'text-red-700' : isExpiringSoon ? 'text-orange-600' : 'text-slate-500'}`}>
+                                {new Date(med.expiryDate).toLocaleDateString("uz-UZ")}
+                                {isExpired && <span className="ml-1 text-xs bg-red-100 text-red-700 px-1.5 py-0.5 rounded-full">Muddati o'tgan</span>}
+                                {isExpiringSoon && <span className="ml-1 text-xs bg-orange-100 text-orange-700 px-1.5 py-0.5 rounded-full">Tez tugaydi</span>}
+                              </span>
+                            ) : "—"}
                           </td>
                           <td className="px-4 py-3 text-slate-500">
                             {med.supplier?.name ?? "—"}
                           </td>
                           <td className="px-4 py-3">
+                            {med.floor === 2 ? (
+                              <span className="text-xs bg-teal-100 text-teal-700 px-2 py-0.5 rounded-full font-medium">2-qavat Amb.</span>
+                            ) : med.floor === 3 ? (
+                              <span className="text-xs bg-purple-100 text-purple-700 px-2 py-0.5 rounded-full font-medium">3-qavat Stat.</span>
+                            ) : (
+                              <span className="text-xs bg-slate-100 text-slate-500 px-2 py-0.5 rounded-full font-medium">—</span>
+                            )}
+                          </td>
+                          <td className="px-4 py-3">
                             <div className="flex items-center justify-end gap-1">
-                              {canDispense && (
-                                <button
-                                  onClick={() => openDispenseModal(med)}
-                                  className="flex items-center gap-1 px-2 py-1 text-xs bg-orange-50 text-orange-700 hover:bg-orange-100 rounded-md transition-colors font-medium"
-                                >
-                                  <Pill className="w-3 h-3" />
-                                  {t.pharmacy.dispenseMedicine}
-                                </button>
-                              )}
-                              {canManage && (
+                              {med.writtenOff ? (
+                                <span className="text-xs bg-slate-100 text-slate-500 px-2 py-0.5 rounded-full">Chiqarilgan</span>
+                              ) : (
                                 <>
-                                  <button
-                                    onClick={() => openEditMedicineModal(med)}
-                                    className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-md transition-colors"
-                                    title={t.common.edit}
-                                  >
-                                    <Pencil className="w-4 h-4" />
-                                  </button>
-                                  <button
-                                    onClick={() =>
-                                      handleDeleteMedicine(med.id)
-                                    }
-                                    className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-md transition-colors"
-                                    title={t.common.delete}
-                                  >
-                                    <Trash2 className="w-4 h-4" />
-                                  </button>
+                                  {canDispense && (
+                                    <button
+                                      onClick={() => openDispenseModal(med)}
+                                      className="flex items-center gap-1 px-2 py-1 text-xs bg-orange-50 text-orange-700 hover:bg-orange-100 rounded-md transition-colors font-medium"
+                                    >
+                                      <Pill className="w-3 h-3" />
+                                      {t.pharmacy.dispenseMedicine}
+                                    </button>
+                                  )}
+                                  {canManage && (
+                                    <>
+                                      <button
+                                        onClick={() => openEditMedicineModal(med)}
+                                        className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-md transition-colors"
+                                        title={t.common.edit}
+                                      >
+                                        <Pencil className="w-4 h-4" />
+                                      </button>
+                                      {(isExpired || med.quantity === 0) && (
+                                        <button
+                                          onClick={() => handleWriteOff(med)}
+                                          className="p-1.5 text-slate-400 hover:text-orange-600 hover:bg-orange-50 rounded-md transition-colors"
+                                          title="Hisobdan chiqarish"
+                                        >
+                                          <Trash2 className="w-4 h-4" />
+                                        </button>
+                                      )}
+                                    </>
+                                  )}
                                 </>
                               )}
                             </div>
@@ -615,6 +753,184 @@ export default function PharmacyPage() {
               </table>
             </div>
           </div>
+        </div>
+      )}
+
+      {/* ═══ TAB: Qabul qilish (STOCK_IN) ═══ */}
+      {activeTab === "receive" && (
+        <div className="max-w-lg">
+          <div className="bg-white rounded-xl border border-slate-200 p-6">
+            <h2 className="text-base font-semibold text-slate-800 flex items-center gap-2 mb-5">
+              <PackagePlus className="w-5 h-5 text-green-600" />
+              Dori qabul qilish (kirim)
+            </h2>
+            {rcvError && (
+              <div className="flex items-center gap-2 text-red-600 bg-red-50 border border-red-200 rounded-lg px-4 py-3 text-sm mb-4">
+                <AlertCircle className="w-4 h-4 flex-shrink-0" />{rcvError}
+              </div>
+            )}
+            {rcvSuccess && (
+              <div className="flex items-center gap-2 text-green-700 bg-green-50 border border-green-200 rounded-lg px-4 py-3 text-sm mb-4">
+                <CheckCircle2 className="w-4 h-4 flex-shrink-0" />{rcvSuccess}
+              </div>
+            )}
+            <form onSubmit={handleReceive} className="space-y-4">
+              <div className="flex flex-col gap-1">
+                <label className="text-sm font-medium text-slate-700">Dori <span className="text-red-500">*</span></label>
+                <select
+                  value={rcvMedicineId}
+                  onChange={e => setRcvMedicineId(e.target.value)}
+                  required
+                  className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
+                >
+                  <option value="">— Dorini tanlang —</option>
+                  {medicines.filter(m => !m.writtenOff).map(m => (
+                    <option key={m.id} value={m.id}>
+                      {m.name} ({m.unit}) — zaxira: {m.quantity}
+                    </option>
+                  ))}
+                </select>
+                <p className="text-xs text-slate-400">Yangi dori bo&apos;lsa avval &ldquo;Dorilar&rdquo; tabida qo&apos;shing</p>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="flex flex-col gap-1">
+                  <label className="text-sm font-medium text-slate-700">Miqdor <span className="text-red-500">*</span></label>
+                  <input
+                    type="number"
+                    min={1}
+                    value={rcvQty}
+                    onChange={e => setRcvQty(e.target.value)}
+                    required
+                    placeholder="0"
+                    className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
+                  />
+                </div>
+                <div className="flex flex-col gap-1">
+                  <label className="text-sm font-medium text-slate-700">Saqlash muddati</label>
+                  <input
+                    type="date"
+                    value={rcvExpiryDate}
+                    onChange={e => setRcvExpiryDate(e.target.value)}
+                    className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
+                  />
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="flex flex-col gap-1">
+                  <label className="text-sm font-medium text-slate-700">Yetkazib beruvchi</label>
+                  <select
+                    value={rcvSupplierId}
+                    onChange={e => setRcvSupplierId(e.target.value)}
+                    className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
+                  >
+                    <option value="">— Ixtiyoriy —</option>
+                    {suppliers.map(s => (
+                      <option key={s.id} value={s.id}>{s.name}</option>
+                    ))}
+                  </select>
+                </div>
+                <div className="flex flex-col gap-1">
+                  <label className="text-sm font-medium text-slate-700">Shkaf joylashuvi</label>
+                  <select
+                    value={rcvFloor}
+                    onChange={e => setRcvFloor(e.target.value)}
+                    className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
+                  >
+                    <option value="">— O'zgartirmaslik —</option>
+                    <option value="2">2-qavat — Ambulator shkafi</option>
+                    <option value="3">3-qavat — Statsionar shkafi</option>
+                  </select>
+                </div>
+              </div>
+              <button
+                type="submit"
+                disabled={rcvSaving}
+                className="flex items-center gap-2 px-5 py-2.5 bg-green-600 hover:bg-green-700 disabled:opacity-60 disabled:cursor-not-allowed text-white text-sm font-medium rounded-lg transition-colors"
+              >
+                {rcvSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <PackagePlus className="w-4 h-4" />}
+                Qabul qilish
+              </button>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ═══ TAB: Muddati & Hisobdan chiqarish ═══ */}
+      {activeTab === "expiry" && (
+        <div>
+          <div className="flex items-center gap-2 mb-4">
+            <ShieldAlert className="w-5 h-5 text-orange-500" />
+            <h2 className="text-base font-semibold text-slate-700">Muddati tugayotgan va o&apos;tgan dorilar</h2>
+            <button onClick={fetchExpiryMeds} className="ml-auto text-xs text-slate-400 hover:text-slate-600 underline">Yangilash</button>
+          </div>
+          {expiryLoading ? (
+            <div className="flex items-center justify-center py-16"><Loader2 className="w-6 h-6 animate-spin text-orange-400" /></div>
+          ) : expiryMeds.length === 0 ? (
+            <div className="text-center py-16 bg-white rounded-xl border border-slate-200">
+              <CheckCircle2 className="w-10 h-10 text-green-400 mx-auto mb-3" />
+              <p className="text-slate-500 text-sm">Muddati tugayotgan dori yo&apos;q</p>
+            </div>
+          ) : (
+            <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="bg-slate-50 border-b border-slate-200">
+                      <th className="text-left px-4 py-3 font-semibold text-slate-600">Dori nomi</th>
+                      <th className="text-left px-4 py-3 font-semibold text-slate-600">Joylashuv</th>
+                      <th className="text-left px-4 py-3 font-semibold text-slate-600">Miqdor</th>
+                      <th className="text-left px-4 py-3 font-semibold text-slate-600">Yaroqlilik muddati</th>
+                      <th className="text-right px-4 py-3 font-semibold text-slate-600">Amal</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {expiryMeds.map(m => {
+                      const exp = new Date(m.expiryDate!);
+                      const now = new Date();
+                      const isExpired = exp < now;
+                      return (
+                        <tr key={m.id} className={`border-b border-slate-100 ${isExpired ? "bg-red-50" : "bg-orange-50/40"}`}>
+                          <td className="px-4 py-3 font-medium text-slate-800">{m.name}</td>
+                          <td className="px-4 py-3">
+                            {m.floor === 2 ? <span className="text-xs bg-teal-100 text-teal-700 px-2 py-0.5 rounded-full">2-qavat Amb.</span>
+                            : m.floor === 3 ? <span className="text-xs bg-purple-100 text-purple-700 px-2 py-0.5 rounded-full">3-qavat Stat.</span>
+                            : <span className="text-xs bg-slate-100 text-slate-500 px-2 py-0.5 rounded-full">—</span>}
+                          </td>
+                          <td className="px-4 py-3 text-slate-700">{m.quantity} {m.unit}</td>
+                          <td className="px-4 py-3">
+                            <span className={`font-medium ${isExpired ? "text-red-700" : "text-orange-600"}`}>
+                              {exp.toLocaleDateString("uz-UZ")}
+                            </span>
+                            <span className={`ml-2 text-xs px-1.5 py-0.5 rounded-full ${isExpired ? "bg-red-100 text-red-700" : "bg-orange-100 text-orange-700"}`}>
+                              {isExpired ? "Muddati o'tgan" : "Tez tugaydi"}
+                            </span>
+                          </td>
+                          <td className="px-4 py-3 text-right">
+                            <button
+                              disabled={writeOffingId === m.id}
+                              onClick={async () => {
+                                if (!confirm(`"${m.name}" ni hisobdan chiqarasizmi?`)) return;
+                                setWriteOffingId(m.id);
+                                try {
+                                  const res = await fetch(`/api/medicines/${m.id}`, { method: "PATCH" });
+                                  if (!res.ok) { const e = await res.json(); alert(e.error); return; }
+                                  fetchExpiryMeds();
+                                } finally { setWriteOffingId(null); }
+                              }}
+                              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-red-600 hover:text-red-700 hover:bg-red-50 border border-red-200 rounded-lg transition-colors ml-auto disabled:opacity-50"
+                            >
+                              {writeOffingId === m.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
+                              Hisobdan chiqarish
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
         </div>
       )}
 
@@ -801,6 +1117,7 @@ export default function PharmacyPage() {
         </div>
       )}
 
+
       {/* ═══════════════════════════════════════════════════════
           MODAL: Add / Edit Medicine
       ═══════════════════════════════════════════════════════ */}
@@ -895,6 +1212,22 @@ export default function PharmacyPage() {
                 />
               </div>
 
+              {!editingMedicine && (
+                <div className="flex flex-col gap-1">
+                  <label className="text-sm font-medium text-slate-700">
+                    Boshlang&apos;ich miqdor
+                  </label>
+                  <input
+                    type="number"
+                    min={0}
+                    value={medQuantity}
+                    onChange={(e) => setMedQuantity(e.target.value)}
+                    placeholder="0"
+                    className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  />
+                </div>
+              )}
+
               <div className="flex flex-col gap-1">
                 <label className="text-sm font-medium text-slate-700">
                   {t.pharmacy.supplier}
@@ -910,6 +1243,20 @@ export default function PharmacyPage() {
                       {sup.name}
                     </option>
                   ))}
+                </select>
+              </div>
+
+              <div className="flex flex-col gap-1">
+                <label className="text-sm font-medium text-slate-700">
+                  Joylashuv
+                </label>
+                <select
+                  value={medFloor}
+                  onChange={(e) => setMedFloor(e.target.value)}
+                  className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                >
+                  <option value="2">2-qavat — Ambulator shkafi</option>
+                  <option value="3">3-qavat — Statsionar shkafi</option>
                 </select>
               </div>
 

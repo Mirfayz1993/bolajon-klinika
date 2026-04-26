@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
-import { Role, MedicineTransactionType, PaymentMethod, PaymentCategory, PaymentStatus } from '@prisma/client';
+import { Role, MedicineTransactionType } from '@prisma/client';
 
 const WRITE_ROLES: Role[] = [Role.ADMIN, Role.HEAD_NURSE, Role.NURSE];
 
@@ -72,9 +72,12 @@ export async function POST(req: NextRequest) {
       quantity?: number;
       patientId?: string;
       notes?: string;
+      supplierId?: string;
+      expiryDate?: string;
+      floor?: number | null;
     };
 
-    const { medicineId, type, quantity, patientId, notes } = body;
+    const { medicineId, type, quantity, patientId, notes, supplierId, expiryDate, floor } = body;
 
     if (!medicineId || !type || quantity === undefined) {
       return NextResponse.json(
@@ -146,24 +149,37 @@ export async function POST(req: NextRequest) {
           data: { quantity: { decrement: quantity } },
         });
 
-        // 3. Payment yaratish (patientId har doim mavjud — STOCK_OUT da majburiy)
-        const payment = await tx.payment.create({
+        // 3. AssignedService yaratish — bemor profilining Xizmatlar tabida ko'rinadi
+        const assignedService = await tx.assignedService.create({
           data: {
             patientId: patientId!,
-            amount: Number(medicine.price) * quantity,
-            method: PaymentMethod.CASH,
-            category: PaymentCategory.TREATMENT,
-            status: PaymentStatus.PENDING,
-            description: `Dori: ${medicine.name} x${quantity}`,
+            categoryName: 'Dori',
+            itemName: `${medicine.name} x${quantity}`,
+            price: Number(medicine.price) * quantity,
+            isPaid: false,
+            assignedById: session.user.id,
           },
         });
 
-        return { transaction, payment };
+        return { transaction, assignedService };
       });
 
       return NextResponse.json(result, { status: 201 });
     } else {
-      // STOCK_IN — oddiy yaratish + quantity oshirish
+      // STOCK_IN — transaction + quantity oshirish + expiryDate/supplierId yangilash
+      let parsedExpiry: Date | undefined;
+      if (expiryDate) {
+        parsedExpiry = new Date(expiryDate);
+        if (isNaN(parsedExpiry.getTime())) {
+          return NextResponse.json({ error: 'expiryDate noto\'g\'ri format' }, { status: 400 });
+        }
+      }
+
+      if (supplierId) {
+        const sup = await prisma.supplier.findUnique({ where: { id: supplierId } });
+        if (!sup) return NextResponse.json({ error: 'Yetkazib beruvchi topilmadi' }, { status: 404 });
+      }
+
       const result = await prisma.$transaction(async (tx) => {
         const transaction = await tx.medicineTransaction.create({
           data: {
@@ -179,7 +195,12 @@ export async function POST(req: NextRequest) {
 
         await tx.medicine.update({
           where: { id: medicineId },
-          data: { quantity: { increment: quantity } },
+          data: {
+            quantity: { increment: quantity },
+            ...(parsedExpiry && { expiryDate: parsedExpiry }),
+            ...(supplierId && { supplierId }),
+            ...(floor !== undefined && { floor: floor }),
+          },
         });
 
         return { transaction };

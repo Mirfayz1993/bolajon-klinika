@@ -6,6 +6,8 @@ import { Role } from '@prisma/client';
 
 const WRITE_ROLES: Role[] = [Role.ADMIN, Role.HEAD_NURSE];
 
+// ─── GET /api/medicines/[id] ────────────────────────────────────────────────
+
 export async function GET(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -20,6 +22,7 @@ export async function GET(
       where: { id },
       include: {
         supplier: true,
+        writtenOffBy: { select: { id: true, name: true } },
       },
     });
 
@@ -33,6 +36,12 @@ export async function GET(
     return NextResponse.json({ error: 'Server error' }, { status: 500 });
   }
 }
+
+// ─── PUT /api/medicines/[id] ─────────────────────────────────────────────────
+// floor va writtenOff qo'llab-quvvatlanadi.
+// writtenOff=true bo'lganda quantity=0 ga tushiriladi, writtenOffAt va
+// writtenOffById saqlanadi.
+// quantity bu yerda to'g'ridan-to'g'ri o'zgartirilishi MUMKIN EMAS.
 
 export async function PUT(
   req: NextRequest,
@@ -55,6 +64,8 @@ export async function PUT(
       price?: number;
       supplierId?: string;
       expiryDate?: string;
+      floor?: number | null;
+      writtenOff?: boolean;
       quantity?: unknown;
     };
 
@@ -69,6 +80,22 @@ export async function PUT(
     const existing = await prisma.medicine.findUnique({ where: { id } });
     if (!existing) {
       return NextResponse.json({ error: 'Dori topilmadi' }, { status: 404 });
+    }
+
+    // Allaqachon write-off qilingan dorini qayta write-off qilib bo'lmaydi
+    if (body.writtenOff === true && existing.writtenOff) {
+      return NextResponse.json(
+        { error: 'Bu dori allaqachon hisobdan chiqarilgan' },
+        { status: 400 }
+      );
+    }
+
+    // write-off ni qaytarib bo'lmaydi (true → false)
+    if (body.writtenOff === false && existing.writtenOff) {
+      return NextResponse.json(
+        { error: 'Hisobdan chiqarilgan dorini qayta tiklash mumkin emas' },
+        { status: 400 }
+      );
     }
 
     const { name, minStock, price, supplierId, expiryDate } = body;
@@ -97,6 +124,30 @@ export async function PUT(
       return NextResponse.json({ error: 'minStock manfiy bo\'lishi mumkin emas' }, { status: 400 });
     }
 
+    // floor validatsiya: undefined (o'zgartirilmaydi), null, 2 yoki 3
+    if (
+      body.floor !== undefined &&
+      body.floor !== null &&
+      body.floor !== 2 &&
+      body.floor !== 3
+    ) {
+      return NextResponse.json(
+        { error: 'floor faqat null, 2 yoki 3 bo\'lishi mumkin' },
+        { status: 400 }
+      );
+    }
+
+    // write-off bo'lganda: quantity=0, writtenOffAt, writtenOffById set qilinadi
+    const writeOffData =
+      body.writtenOff === true
+        ? {
+            writtenOff: true,
+            quantity: 0,
+            writtenOffAt: new Date(),
+            writtenOffById: session.user.id,
+          }
+        : {};
+
     const medicine = await prisma.medicine.update({
       where: { id },
       data: {
@@ -106,9 +157,13 @@ export async function PUT(
         ...(price !== undefined && { price }),
         ...(supplierId !== undefined && { supplierId }),
         ...(parsedExpiry !== undefined && { expiryDate: parsedExpiry }),
+        // floor: body da kalit bo'lsa (undefined emas) — yangilash
+        ...(body.floor !== undefined && { floor: body.floor }),
+        ...writeOffData,
       },
       include: {
         supplier: { select: { id: true, name: true } },
+        writtenOffBy: { select: { id: true, name: true } },
       },
     });
 
@@ -118,6 +173,60 @@ export async function PUT(
     return NextResponse.json({ error: 'Server error' }, { status: 500 });
   }
 }
+
+// ─── PATCH /api/medicines/[id]/write-off ni shu faylda alohida action sifatida
+// Agar faqat write-off uchun tez endpoint kerak bo'lsa, PATCH ishlatiladi.
+// Body: { reason?: string } — ixtiyoriy sabab
+// Natija: medicine.writtenOff=true, quantity=0, writtenOffAt va writtenOffById to'ldiriladi.
+
+export async function PATCH(
+  req: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  const session = await getServerSession(authOptions);
+  if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+
+  if (!WRITE_ROLES.includes(session.user.role as Role)) {
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+  }
+
+  try {
+    const { id } = await params;
+
+    const existing = await prisma.medicine.findUnique({ where: { id } });
+    if (!existing) {
+      return NextResponse.json({ error: 'Dori topilmadi' }, { status: 404 });
+    }
+
+    if (existing.writtenOff) {
+      return NextResponse.json(
+        { error: 'Bu dori allaqachon hisobdan chiqarilgan' },
+        { status: 400 }
+      );
+    }
+
+    const medicine = await prisma.medicine.update({
+      where: { id },
+      data: {
+        writtenOff: true,
+        quantity: 0,
+        writtenOffAt: new Date(),
+        writtenOffById: session.user.id,
+      },
+      include: {
+        supplier: { select: { id: true, name: true } },
+        writtenOffBy: { select: { id: true, name: true } },
+      },
+    });
+
+    return NextResponse.json(medicine);
+  } catch (error) {
+    console.error(error);
+    return NextResponse.json({ error: 'Server error' }, { status: 500 });
+  }
+}
+
+// ─── DELETE /api/medicines/[id] ──────────────────────────────────────────────
 
 export async function DELETE(
   req: NextRequest,
