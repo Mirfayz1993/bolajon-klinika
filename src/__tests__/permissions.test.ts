@@ -15,8 +15,8 @@ describe('ROLES_HIERARCHY', () => {
     expect(ROLES_HIERARCHY.SANITARY_WORKER).toBe(Math.min(...levels));
   });
 
-  it('barcha 11 ta rol mavjud', () => {
-    expect(Object.keys(ROLES_HIERARCHY)).toHaveLength(11);
+  it('barcha 12 ta rol mavjud', () => {
+    expect(Object.keys(ROLES_HIERARCHY)).toHaveLength(12);
   });
 });
 
