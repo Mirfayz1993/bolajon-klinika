@@ -18,7 +18,9 @@ build/
 .env.*.local
 
 # Prisma
-prisma/migrations/
+# migrations/ endi git'ga commit qilinadi — versiyalangan deploy uchun
+# Lekin manual qo'lda yozilgan stray SQL fayllar emas:
+prisma/migrations/*.sql
 
 # Logs
 npm-debug.log*
