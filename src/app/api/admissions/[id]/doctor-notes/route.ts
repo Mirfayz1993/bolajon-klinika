@@ -1,14 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getServerSession } from 'next-auth';
-import { authOptions } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
+import { requireRole, requireSession, ROLE_GROUPS } from '@/lib/api-auth';
+import { validateBody } from '@/lib/validate';
+import { doctorNoteCreateSchema } from '@/lib/schemas';
 
 export async function GET(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const session = await getServerSession(authOptions);
-  if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  const auth = await requireSession();
+  if (!auth.ok) return auth.response;
 
   const { id: admissionId } = await params;
 
@@ -32,13 +33,9 @@ export async function POST(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const session = await getServerSession(authOptions);
-  if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-
-  const ALLOWED = ['ADMIN', 'HEAD_DOCTOR', 'DOCTOR'];
-  if (!ALLOWED.includes(session.user.role)) {
-    return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
-  }
+  const auth = await requireRole(ROLE_GROUPS.DOCTORS);
+  if (!auth.ok) return auth.response;
+  const { session } = auth;
 
   const { id: admissionId } = await params;
 
@@ -49,28 +46,25 @@ export async function POST(
     });
     if (!admission) return NextResponse.json({ error: 'Statsionar topilmadi' }, { status: 404 });
 
-    const body = await req.json() as {
-      diagnosis?: string;
-      treatment?: string;
-      notes?: string;
-      prescriptions?: { medicineName: string; dosage: string; duration: string; instructions?: string }[];
-    };
+    const parsed = await validateBody(req, doctorNoteCreateSchema);
+    if (!parsed.ok) return parsed.response;
+    const body = parsed.data;
 
     const record = await prisma.medicalRecord.create({
       data: {
         patientId: admission.patientId,
         doctorId: session.user.id,
         admissionId,
-        diagnosis: body.diagnosis ?? undefined,
-        treatment: body.treatment ?? undefined,
-        notes: body.notes ?? undefined,
+        diagnosis: body.diagnosis,
+        treatment: body.treatment,
+        notes: body.notes,
         prescriptions: body.prescriptions?.length
           ? {
               create: body.prescriptions.map((p) => ({
                 medicineName: p.medicineName,
                 dosage: p.dosage,
                 duration: p.duration,
-                instructions: p.instructions ?? undefined,
+                instructions: p.instructions,
               })),
             }
           : undefined,

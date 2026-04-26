@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { requireRole, requireSession, ROLE_GROUPS } from '@/lib/api-auth';
+import { validateBody } from '@/lib/validate';
+import { vitalCreateSchema } from '@/lib/schemas';
 
 export async function GET(
   req: NextRequest,
@@ -43,27 +45,21 @@ export async function POST(
     });
     if (!admission) return NextResponse.json({ error: 'Statsionar topilmadi' }, { status: 404 });
 
-    const body = await req.json() as {
-      temperature?: number;
-      bloodPressureSystolic?: number;
-      bloodPressureDiastolic?: number;
-      pulse?: number;
-      oxygenSaturation?: number;
-      weight?: number;
-      notes?: string;
-    };
+    const parsed = await validateBody(req, vitalCreateSchema);
+    if (!parsed.ok) return parsed.response;
+    const body = parsed.data;
 
     const vital = await prisma.vital.create({
       data: {
         patientId: admission.patientId,
         admissionId,
-        temperature: body.temperature ?? undefined,
-        bloodPressureSystolic: body.bloodPressureSystolic ?? undefined,
-        bloodPressureDiastolic: body.bloodPressureDiastolic ?? undefined,
-        pulse: body.pulse ?? undefined,
-        oxygenSaturation: body.oxygenSaturation ?? undefined,
-        weight: body.weight ?? undefined,
-        notes: body.notes ?? undefined,
+        temperature: body.temperature,
+        bloodPressureSystolic: body.bloodPressureSystolic,
+        bloodPressureDiastolic: body.bloodPressureDiastolic,
+        pulse: body.pulse,
+        oxygenSaturation: body.oxygenSaturation,
+        weight: body.weight,
+        notes: body.notes,
         recordedById: session.user.id,
       },
       include: {

@@ -1,14 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getServerSession } from 'next-auth';
-import { authOptions } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
+import { requireRole, requireSession } from '@/lib/api-auth';
+import { validateBody } from '@/lib/validate';
+import { taskCreateSchema } from '@/lib/schemas';
 
 export async function GET(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const session = await getServerSession(authOptions);
-  if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  const auth = await requireSession();
+  if (!auth.ok) return auth.response;
 
   const { id: admissionId } = await params;
 
@@ -32,13 +33,9 @@ export async function POST(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const session = await getServerSession(authOptions);
-  if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-
-  const ALLOWED = ['ADMIN', 'HEAD_DOCTOR', 'DOCTOR', 'HEAD_NURSE'];
-  if (!ALLOWED.includes(session.user.role)) {
-    return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
-  }
+  const auth = await requireRole(['ADMIN', 'HEAD_DOCTOR', 'DOCTOR', 'HEAD_NURSE']);
+  if (!auth.ok) return auth.response;
+  const { session } = auth;
 
   const { id: admissionId } = await params;
 
@@ -52,16 +49,9 @@ export async function POST(
       return NextResponse.json({ error: 'Bemor chiqarilgan' }, { status: 400 });
     }
 
-    const body = await req.json() as {
-      title: string;
-      description?: string;
-      assigneeId: string;
-      deadline?: string;
-    };
-
-    if (!body.title || !body.assigneeId) {
-      return NextResponse.json({ error: 'title va assigneeId majburiy' }, { status: 400 });
-    }
+    const parsed = await validateBody(req, taskCreateSchema);
+    if (!parsed.ok) return parsed.response;
+    const body = parsed.data;
 
     // Default deadline: 24 hours from now
     const deadline = body.deadline ? new Date(body.deadline) : new Date(Date.now() + 24 * 60 * 60 * 1000);
@@ -69,7 +59,7 @@ export async function POST(
     const task = await prisma.task.create({
       data: {
         title: body.title,
-        description: body.description ?? undefined,
+        description: body.description,
         deadline,
         assignerId: session.user.id,
         assigneeId: body.assigneeId,
