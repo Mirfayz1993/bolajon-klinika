@@ -34,7 +34,6 @@ jobs:
 
       - name: Lint
         run: npm run lint
-        continue-on-error: true # TODO: legacy lint xatolarini tuzatib bu qatorni olib tashlash
 
       - name: Test
         run: npm test

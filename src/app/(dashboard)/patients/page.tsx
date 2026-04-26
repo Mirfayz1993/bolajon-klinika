@@ -372,7 +372,7 @@ export default function PatientsPage() {
                     <td className="px-4 py-3">
                       {patient.pendingDebt && patient.pendingDebt > 0 ? (
                         <span className="inline-block px-2 py-0.5 rounded-full text-xs font-semibold bg-red-100 text-red-700">
-                          {patient.pendingDebt.toLocaleString()} so'm
+                          {patient.pendingDebt.toLocaleString()} so&apos;m
                         </span>
                       ) : (
                         <span className="text-slate-300 text-xs">—</span>
@@ -706,7 +706,7 @@ export default function PatientsPage() {
               </div>
 
               <p className="text-xs text-slate-400 text-center">
-                Doktor bu QR kodni laser bilan o'qiydi — bemor ma'lumotlari ochiladi
+                Doktor bu QR kodni laser bilan o&apos;qiydi — bemor ma&apos;lumotlari ochiladi
               </p>
 
               <button

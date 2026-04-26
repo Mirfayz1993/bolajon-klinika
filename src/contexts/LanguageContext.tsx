@@ -17,14 +17,11 @@ interface LanguageContextType {
 const LanguageContext = createContext<LanguageContextType | null>(null);
 
 export function LanguageProvider({ children }: { children: ReactNode }) {
-  const [locale, setLocaleState] = useState<Locale>('uz-latin');
-
-  useEffect(() => {
-    const saved = localStorage.getItem('locale');
-    if (saved === 'uz-latin' || saved === 'uz-cyrillic') {
-      setLocaleState(saved);
-    }
-  }, []);
+  const [locale, setLocaleState] = useState<Locale>(() => {
+    if (typeof window === 'undefined') return 'uz-latin';
+    const saved = window.localStorage.getItem('locale');
+    return saved === 'uz-latin' || saved === 'uz-cyrillic' ? saved : 'uz-latin';
+  });
 
   useEffect(() => {
     localStorage.setItem('locale', locale);

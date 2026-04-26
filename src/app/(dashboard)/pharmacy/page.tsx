@@ -689,7 +689,7 @@ export default function PharmacyPage() {
                             {med.expiryDate ? (
                               <span className={`font-medium ${isExpired ? 'text-red-700' : isExpiringSoon ? 'text-orange-600' : 'text-slate-500'}`}>
                                 {new Date(med.expiryDate).toLocaleDateString("uz-UZ")}
-                                {isExpired && <span className="ml-1 text-xs bg-red-100 text-red-700 px-1.5 py-0.5 rounded-full">Muddati o'tgan</span>}
+                                {isExpired && <span className="ml-1 text-xs bg-red-100 text-red-700 px-1.5 py-0.5 rounded-full">Muddati o&apos;tgan</span>}
                                 {isExpiringSoon && <span className="ml-1 text-xs bg-orange-100 text-orange-700 px-1.5 py-0.5 rounded-full">Tez tugaydi</span>}
                               </span>
                             ) : "—"}
@@ -836,7 +836,7 @@ export default function PharmacyPage() {
                     onChange={e => setRcvFloor(e.target.value)}
                     className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
                   >
-                    <option value="">— O'zgartirmaslik —</option>
+                    <option value="">— O&apos;zgartirmaslik —</option>
                     <option value="2">2-qavat — Ambulator shkafi</option>
                     <option value="3">3-qavat — Statsionar shkafi</option>
                   </select>
