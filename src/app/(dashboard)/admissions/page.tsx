@@ -13,7 +13,9 @@ import {
   Search,
   LogOut,
   Building2,
+  Pill,
 } from 'lucide-react';
+import { floorLabel } from '@/lib/utils';
 
 // --- Types -------------------------------------------------------------------
 
@@ -42,12 +44,10 @@ interface StaffOption {
 
 interface Admission {
   id: string;
-  status: 'ACTIVE' | 'DISCHARGED';
-  admittedAt: string;
-  dischargedAt: string | null;
-  diagnosis: string | null;
+  admissionDate: string;
+  dischargeDate: string | null;
+  notes: string | null;
   dailyRate: number;
-  dischargeNotes: string | null;
   patient: {
     id: string;
     firstName: string;
@@ -62,17 +62,20 @@ interface Admission {
       floor: number;
     };
   };
-  staff: {
-    id: string;
-    firstName: string;
-    lastName: string;
-  } | null;
 }
 
 interface DischargeResult {
   days: number;
   payment: { amount: number } | null;
   free: boolean;
+}
+
+interface MedOption {
+  id: string;
+  name: string;
+  type: string;
+  price: number;
+  quantity: number;
 }
 
 interface RoomBedPatient {
@@ -109,19 +112,7 @@ function AdmissionBedCard({
   const { t } = useLanguage();
   const patient = bed.admissions?.[0]?.patient;
 
-  if (bed.status === 'AVAILABLE') {
-    return (
-      <div className="flex flex-col items-center gap-0.5 p-2 bg-green-50 border border-green-200 rounded-lg min-w-[68px]">
-        <BedDouble className="w-4 h-4 text-green-600" />
-        <span className="text-xs font-semibold text-green-700">{bed.bedNumber}</span>
-        <span className="text-[10px] font-medium text-green-600 bg-green-100 px-1.5 py-0.5 rounded-full whitespace-nowrap">
-          {t.rooms.available}
-        </span>
-      </div>
-    );
-  }
-
-  if (bed.status === 'OCCUPIED' && patient) {
+  if (patient) {
     return (
       <button
         onClick={() => onOccupiedClick(patient.id)}
@@ -137,12 +128,24 @@ function AdmissionBedCard({
     );
   }
 
+  if (bed.status === 'MAINTENANCE') {
+    return (
+      <div className="flex flex-col items-center gap-0.5 p-2 bg-yellow-50 border border-yellow-200 rounded-lg min-w-[68px]">
+        <BedDouble className="w-4 h-4 text-yellow-600" />
+        <span className="text-xs font-semibold text-yellow-700">{bed.bedNumber}</span>
+        <span className="text-[10px] font-medium text-yellow-600 bg-yellow-100 px-1.5 py-0.5 rounded-full whitespace-nowrap">
+          {t.rooms.maintenance}
+        </span>
+      </div>
+    );
+  }
+
   return (
-    <div className="flex flex-col items-center gap-0.5 p-2 bg-yellow-50 border border-yellow-200 rounded-lg min-w-[68px]">
-      <BedDouble className="w-4 h-4 text-yellow-600" />
-      <span className="text-xs font-semibold text-yellow-700">{bed.bedNumber}</span>
-      <span className="text-[10px] font-medium text-yellow-600 bg-yellow-100 px-1.5 py-0.5 rounded-full whitespace-nowrap">
-        {bed.status === 'MAINTENANCE' ? t.rooms.maintenance : t.rooms.occupied}
+    <div className="flex flex-col items-center gap-0.5 p-2 bg-green-50 border border-green-200 rounded-lg min-w-[68px]">
+      <BedDouble className="w-4 h-4 text-green-600" />
+      <span className="text-xs font-semibold text-green-700">{bed.bedNumber}</span>
+      <span className="text-[10px] font-medium text-green-600 bg-green-100 px-1.5 py-0.5 rounded-full whitespace-nowrap">
+        {t.rooms.available}
       </span>
     </div>
   );
@@ -174,15 +177,26 @@ export default function AdmissionsPage() {
   const router = useRouter();
 
   const canManage = CAN_MANAGE_ROLES.includes(session?.user?.role ?? '');
+  const canDispense = ['ADMIN', 'HEAD_DOCTOR', 'HEAD_NURSE', 'NURSE'].includes(session?.user?.role ?? '');
 
   // -- List state --
   const [admissions, setAdmissions] = useState<Admission[]>([]);
+  const [recentDischarged, setRecentDischarged] = useState<Admission[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   // -- Room map state --
   const [rooms, setRooms] = useState<RoomWithBeds[]>([]);
   const [roomsLoading, setRoomsLoading] = useState(false);
+
+  // Expiry medicines (floor=3)
+  const [expiryMeds, setExpiryMeds] = useState<{id:string;name:string;expiryDate:string;quantity:number}[]>([]);
+  useEffect(() => {
+    fetch('/api/medicines?floor=3&expiringSoon=true&writtenOff=false')
+      .then(r => r.json())
+      .then(d => setExpiryMeds(Array.isArray(d) ? d : []))
+      .catch(() => {});
+  }, []);
 
   // -- Add Admission Modal --
   const [showAddModal, setShowAddModal] = useState(false);
@@ -217,16 +231,76 @@ export default function AdmissionsPage() {
   const [dischargeError, setDischargeError] = useState<string | null>(null);
   const [dischargeResult, setDischargeResult] = useState<DischargeResult | null>(null);
 
+  // -- Dori berish modal (floor=3) -------------------------------------------
+  const [showMedModal, setShowMedModal] = useState(false);
+  const [medAdmission, setMedAdmission] = useState<Admission | null>(null);
+  const [statMeds, setStatMeds] = useState<MedOption[]>([]);
+  const [statMedsLoading, setStatMedsLoading] = useState(false);
+  const [selMedId, setSelMedId] = useState('');
+  const [medQty, setMedQty] = useState('1');
+  const [medSaving, setMedSaving] = useState(false);
+  const [medError, setMedError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!showMedModal) return;
+    setStatMedsLoading(true);
+    fetch('/api/medicines?floor=3&writtenOff=false')
+      .then(r => r.json())
+      .then(d => setStatMeds(Array.isArray(d) ? d : []))
+      .catch(() => setStatMeds([]))
+      .finally(() => setStatMedsLoading(false));
+  }, [showMedModal]);
+
+  function openMedModal(adm: Admission) {
+    setMedAdmission(adm);
+    setSelMedId('');
+    setMedQty('1');
+    setMedError(null);
+    setShowMedModal(true);
+  }
+
+  async function handleMedDispense(e: React.FormEvent) {
+    e.preventDefault();
+    if (!medAdmission || !selMedId) return;
+    setMedSaving(true);
+    setMedError(null);
+    try {
+      const res = await fetch('/api/medicine-transactions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          medicineId: selMedId,
+          type: 'OUT',
+          quantity: Number(medQty),
+          patientId: medAdmission.patient.id,
+        }),
+      });
+      if (!res.ok) { const err = await res.json(); throw new Error(err.error || t.common.error); }
+      setShowMedModal(false);
+    } catch (err) {
+      setMedError(err instanceof Error ? err.message : t.common.error);
+    } finally {
+      setMedSaving(false);
+    }
+  }
+
   // --- Fetch admissions ------------------------------------------------------
 
   const fetchAdmissions = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch('/api/admissions?status=ACTIVE');
-      if (!res.ok) throw new Error(t.common.error);
-      const json = await res.json();
-      setAdmissions(json.data ?? json);
+      const [activeRes, historyRes] = await Promise.all([
+        fetch('/api/admissions?status=ACTIVE&admissionType=INPATIENT&limit=50'),
+        fetch('/api/admissions?status=DISCHARGED&admissionType=INPATIENT&limit=10'),
+      ]);
+      if (!activeRes.ok) throw new Error(t.common.error);
+      const activeJson = await activeRes.json();
+      setAdmissions(activeJson.data ?? activeJson);
+      if (historyRes.ok) {
+        const histJson = await historyRes.json();
+        setRecentDischarged(histJson.data ?? histJson);
+      }
     } catch {
       setError(t.common.error);
     } finally {
@@ -237,7 +311,7 @@ export default function AdmissionsPage() {
   const fetchRooms = useCallback(async () => {
     setRoomsLoading(true);
     try {
-      const res = await fetch('/api/rooms?isAmbulatory=false&include=beds');
+      const res = await fetch('/api/rooms?isAmbulatory=false&floor=4&include=beds');
       if (!res.ok) return;
       const json = await res.json();
       setRooms(Array.isArray(json) ? json : (json.data ?? []));
@@ -293,7 +367,7 @@ export default function AdmissionsPage() {
     (async () => {
       setBedLoading(true);
       try {
-        const res = await fetch('/api/beds?status=AVAILABLE');
+        const res = await fetch('/api/beds?status=AVAILABLE&floor=4&ambulatory=false');
         if (!res.ok) return;
         const json = await res.json();
         setBedOptions(json.data ?? json);
@@ -346,7 +420,7 @@ export default function AdmissionsPage() {
         bedId: selectedBedId,
       };
       if (selectedDoctorId) body.staffId = selectedDoctorId;
-      if (diagnosis.trim()) body.diagnosis = diagnosis.trim();
+      if (diagnosis.trim()) body.notes = diagnosis.trim();
       body.dailyRate = Number(dailyRate) || 0;
 
       const res = await fetch('/api/admissions', {
@@ -435,6 +509,24 @@ export default function AdmissionsPage() {
         </div>
       )}
 
+      {/* Expiry alert for floor=3 medicines */}
+      {expiryMeds.length > 0 && (
+        <div className="mb-4 bg-orange-50 border border-orange-200 rounded-xl px-4 py-3">
+          <p className="text-sm font-semibold text-orange-800 mb-2">⚠️ 3-qavat dorilar — muddati tugayotgan ({expiryMeds.length} ta):</p>
+          <div className="flex flex-wrap gap-2">
+            {expiryMeds.map(m => {
+              const exp = new Date(m.expiryDate);
+              const isExpired = exp < new Date();
+              return (
+                <span key={m.id} className={`text-xs px-2 py-1 rounded-full font-medium ${isExpired ? 'bg-red-100 text-red-700' : 'bg-orange-100 text-orange-700'}`}>
+                  {m.name} — {exp.toLocaleDateString('uz-UZ')} {isExpired ? '(muddati o\'tgan)' : ''}
+                </span>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
       {/* Room Map */}
       <div className="mb-6">
         <div className="flex items-center gap-2 mb-3">
@@ -456,7 +548,7 @@ export default function AdmissionsPage() {
                   return (
                     <div key={floor}>
                       <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2">
-                        {floor}{t.rooms.floorLabel}
+                        {floorLabel(floor)}
                       </p>
                       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
                         {floorRooms.map(room => {
@@ -566,16 +658,16 @@ export default function AdmissionsPage() {
                       <span className="text-slate-400 mx-1">/</span>
                       {t.admissions.bed} {adm.bed.bedNumber}
                       <span className="block text-xs text-slate-400">
-                        {adm.bed.room.floor}{t.rooms.floorLabel}
+                        {floorLabel(adm.bed.room.floor)}
                       </span>
                     </td>
                     {/* Admitted at */}
                     <td className="px-4 py-3 text-slate-600 whitespace-nowrap">
-                      {formatDate(adm.admittedAt)}
+                      {formatDate(adm.admissionDate)}
                     </td>
                     {/* Diagnosis */}
                     <td className="px-4 py-3 text-slate-600 max-w-[200px] truncate">
-                      {adm.diagnosis ?? '—'}
+                      {adm.notes ?? '—'}
                     </td>
                     {/* Daily rate */}
                     <td className="px-4 py-3 text-slate-600 whitespace-nowrap">
@@ -583,7 +675,7 @@ export default function AdmissionsPage() {
                     </td>
                     {/* Status badge */}
                     <td className="px-4 py-3">
-                      {adm.status === 'ACTIVE' ? (
+                      {!adm.dischargeDate ? (
                         <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
                           {t.admissions.active}
                         </span>
@@ -595,14 +687,27 @@ export default function AdmissionsPage() {
                     </td>
                     {/* Actions */}
                     <td className="px-4 py-3 text-right">
-                      {canManage && adm.status === 'ACTIVE' && (
-                        <button
-                          onClick={() => openDischarge(adm)}
-                          className="flex items-center gap-1.5 text-xs font-medium text-orange-600 hover:text-orange-700 hover:bg-orange-50 px-3 py-1.5 rounded-lg transition-colors ml-auto"
-                        >
-                          <LogOut className="w-3.5 h-3.5" />
-                          {t.admissions.discharge}
-                        </button>
+                      {!adm.dischargeDate && (
+                        <div className="flex items-center justify-end gap-1.5">
+                          {canDispense && (
+                            <button
+                              onClick={() => openMedModal(adm)}
+                              className="flex items-center gap-1 text-xs font-medium text-teal-600 hover:text-teal-700 hover:bg-teal-50 px-3 py-1.5 rounded-lg transition-colors"
+                            >
+                              <Pill className="w-3.5 h-3.5" />
+                              Dori
+                            </button>
+                          )}
+                          {canManage && (
+                            <button
+                              onClick={() => openDischarge(adm)}
+                              className="flex items-center gap-1.5 text-xs font-medium text-orange-600 hover:text-orange-700 hover:bg-orange-50 px-3 py-1.5 rounded-lg transition-colors"
+                            >
+                              <LogOut className="w-3.5 h-3.5" />
+                              {t.admissions.discharge}
+                            </button>
+                          )}
+                        </div>
                       )}
                     </td>
                   </tr>
@@ -612,6 +717,50 @@ export default function AdmissionsPage() {
           </table>
         </div>
       </div>
+
+      {/* Recently discharged history */}
+      {recentDischarged.length > 0 && (
+        <div className="mt-6">
+          <h2 className="text-sm font-semibold text-slate-500 uppercase tracking-wide mb-3">
+            So&apos;nggi chiqarilganlar
+          </h2>
+          <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="bg-slate-50 border-b border-slate-200">
+                    <th className="text-left px-4 py-3 font-semibold text-slate-500">Bemor</th>
+                    <th className="text-left px-4 py-3 font-semibold text-slate-500">Xona / To&apos;shak</th>
+                    <th className="text-left px-4 py-3 font-semibold text-slate-500">Yotqizilgan</th>
+                    <th className="text-left px-4 py-3 font-semibold text-slate-500">Chiqarilgan</th>
+                    <th className="text-left px-4 py-3 font-semibold text-slate-500">Kunlik narx</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {recentDischarged.map(adm => (
+                    <tr key={adm.id} className="border-b border-slate-100 hover:bg-slate-50 text-slate-600">
+                      <td className="px-4 py-3 font-medium text-slate-700">
+                        {adm.patient.lastName} {adm.patient.firstName} {adm.patient.fatherName}
+                      </td>
+                      <td className="px-4 py-3">
+                        Xona {adm.bed.room.roomNumber} / To&apos;shak {adm.bed.bedNumber}
+                        <span className="block text-xs text-slate-400">{floorLabel(adm.bed.room.floor)}</span>
+                      </td>
+                      <td className="px-4 py-3 whitespace-nowrap">{formatDate(adm.admissionDate)}</td>
+                      <td className="px-4 py-3 whitespace-nowrap">
+                        {adm.dischargeDate ? formatDate(adm.dischargeDate) : '—'}
+                      </td>
+                      <td className="px-4 py-3 whitespace-nowrap">
+                        {adm.dailyRate > 0 ? formatCurrency(adm.dailyRate, t.common.sum) : '—'}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* -- Add Admission Modal ---------------------------------------------- */}
       {showAddModal && (
@@ -718,29 +867,13 @@ export default function AdmissionsPage() {
                     <option value="">{t.admissions.selectBed}</option>
                     {bedOptions.map((b) => (
                       <option key={b.id} value={b.id}>
-                        {t.admissions.room} {b.room.roomNumber} — {t.admissions.bed} {b.bedNumber} ({b.room.floor}{t.rooms.floorLabel})
+                        {t.admissions.room} {b.room.roomNumber} — {t.admissions.bed} {b.bedNumber} ({floorLabel(b.room.floor)})
                       </option>
                     ))}
                   </select>
                 )}
               </div>
 
-              {/* Doctor select */}
-              <div className="flex flex-col gap-1">
-                <label className="text-sm font-medium text-slate-700">{t.admissions.doctor}</label>
-                <select
-                  value={selectedDoctorId}
-                  onChange={(e) => setSelectedDoctorId(e.target.value)}
-                  className="border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                >
-                  <option value="">{t.admissions.selectDoctor}</option>
-                  {doctorOptions.map((d) => (
-                    <option key={d.id} value={d.id}>
-                      {d.lastName} {d.firstName}
-                    </option>
-                  ))}
-                </select>
-              </div>
 
               {/* Diagnosis */}
               <div className="flex flex-col gap-1">
@@ -813,7 +946,7 @@ export default function AdmissionsPage() {
                   {dischargeAdmission.patient.fatherName}
                 </p>
                 <p className="text-xs text-slate-500 mt-1">
-                  {t.admissions.admittedAt}: {formatDate(dischargeAdmission.admittedAt)}
+                  {t.admissions.admittedAt}: {formatDate(dischargeAdmission.admissionDate)}
                 </p>
               </div>
 
@@ -881,6 +1014,109 @@ export default function AdmissionsPage() {
                 </div>
               )}
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* -- Dori berish Modal (floor=3) --------------------------------------- */}
+      {showMedModal && medAdmission && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-md">
+            <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100">
+              <h2 className="text-lg font-semibold text-slate-800 flex items-center gap-2">
+                <Pill className="w-5 h-5 text-teal-600" />
+                Dori berish — 3-qavat shkafi
+              </h2>
+              <button
+                onClick={() => setShowMedModal(false)}
+                className="p-1.5 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-md transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleMedDispense} className="p-6 space-y-4">
+              {/* Patient info */}
+              <div className="bg-slate-50 rounded-lg px-4 py-2.5 text-sm">
+                <span className="text-slate-500">Bemor: </span>
+                <span className="font-medium text-slate-800">
+                  {medAdmission.patient.lastName} {medAdmission.patient.firstName} {medAdmission.patient.fatherName}
+                </span>
+              </div>
+
+              {medError && (
+                <div className="flex items-center gap-2 text-red-600 bg-red-50 border border-red-200 rounded-lg px-4 py-3 text-sm">
+                  <AlertCircle className="w-4 h-4 flex-shrink-0" />{medError}
+                </div>
+              )}
+
+              <div className="flex flex-col gap-1">
+                <label className="text-sm font-medium text-slate-700">Dori <span className="text-red-500">*</span></label>
+                {statMedsLoading ? (
+                  <div className="flex items-center gap-2 px-3 py-2 border border-slate-200 rounded-lg text-slate-400 text-sm">
+                    <Loader2 className="w-4 h-4 animate-spin" /> Yuklanmoqda...
+                  </div>
+                ) : (
+                  <select
+                    value={selMedId}
+                    onChange={e => setSelMedId(e.target.value)}
+                    required
+                    className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
+                  >
+                    <option value="">— Dorini tanlang —</option>
+                    {statMeds.filter(m => m.quantity > 0).map(m => (
+                      <option key={m.id} value={m.id}>
+                        {m.name} ({m.type}) — zaxira: {m.quantity} | {Number(m.price).toLocaleString()} so&apos;m
+                      </option>
+                    ))}
+                  </select>
+                )}
+                {statMeds.length === 0 && !statMedsLoading && (
+                  <p className="text-xs text-orange-500">3-qavat shkafida dori mavjud emas</p>
+                )}
+              </div>
+
+              <div className="flex flex-col gap-1">
+                <label className="text-sm font-medium text-slate-700">Miqdor <span className="text-red-500">*</span></label>
+                <input
+                  type="number"
+                  min={1}
+                  value={medQty}
+                  onChange={e => setMedQty(e.target.value)}
+                  required
+                  className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
+                />
+              </div>
+
+              {selMedId && (() => {
+                const med = statMeds.find(m => m.id === selMedId);
+                if (!med) return null;
+                return (
+                  <div className="bg-teal-50 border border-teal-100 rounded-lg px-4 py-2.5 text-sm text-teal-800">
+                    Jami: <span className="font-semibold">{(Number(med.price) * Number(medQty || 0)).toLocaleString()} so&apos;m</span>
+                    <span className="text-teal-500 ml-2 text-xs">(bemor profilidagi Xizmatlar bo&apos;limiga qo&apos;shiladi)</span>
+                  </div>
+                );
+              })()}
+
+              <div className="flex items-center justify-end gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setShowMedModal(false)}
+                  className="px-4 py-2 text-sm font-medium text-slate-600 hover:text-slate-800 hover:bg-slate-100 rounded-lg transition-colors"
+                >
+                  {t.common.cancel}
+                </button>
+                <button
+                  type="submit"
+                  disabled={medSaving || !selMedId}
+                  className="flex items-center gap-2 px-4 py-2 bg-teal-600 hover:bg-teal-700 disabled:opacity-60 disabled:cursor-not-allowed text-white text-sm font-medium rounded-lg transition-colors"
+                >
+                  {medSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Pill className="w-4 h-4" />}
+                  Berish
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

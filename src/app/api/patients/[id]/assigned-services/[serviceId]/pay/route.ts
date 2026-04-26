@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
+import { writeAuditLog } from '@/lib/audit';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const db = prisma as any;
@@ -86,19 +87,25 @@ export async function POST(
       });
       // Lab xizmati to'landi → mavjud LabTest ni PAID payment bilan yangilaymiz
       if (category === 'LAB_TEST' && svc.itemId) {
-        // Oldin yaratilgan (assigned paytda) LabTest ni topamiz
+        // Eng oxirgi to'lanmagan LabTest ni topib paymentId ni yangilaymiz
         const existing = await tx.labTest.findFirst({
-          where: { patientId, testTypeId: svc.itemId, status: 'PENDING' },
+          where: { patientId, testTypeId: svc.itemId },
           orderBy: { createdAt: 'desc' },
         });
         if (existing) {
+          // Eski paymentId ni bo'shatamiz (unique constraint uchun), keyin yangi PAID ni biriktiramiz
+          if (existing.paymentId && existing.paymentId !== pay.id) {
+            const oldPaymentId = existing.paymentId;
+            await tx.labTest.update({ where: { id: existing.id }, data: { paymentId: null } });
+            await tx.payment.delete({ where: { id: oldPaymentId } });
+          }
           await tx.labTest.update({
             where: { id: existing.id },
             data: { paymentId: pay.id },
           });
           notifyLabTestId = existing.id;
         } else {
-          // Eski yozuvlar uchun fallback: yangi LabTest yaratamiz
+          // Fallback: yangi LabTest yaratamiz
           const lt = await tx.labTest.create({
             data: { patientId, testTypeId: svc.itemId, labTechId: null, status: 'PENDING', paymentId: pay.id },
           });
@@ -107,6 +114,21 @@ export async function POST(
       }
       return pay;
     });
+
+    // Audit log
+    writeAuditLog({
+      userId: session.user.id,
+      action: 'PAYMENT',
+      module: 'assigned-services',
+      details: {
+        serviceId,
+        patientId,
+        amount: Number(svc.price),
+        item: `${svc.categoryName} - ${svc.itemName}`,
+        method,
+        paymentId: payment.id,
+      },
+    }).catch(() => {});
 
     // Laborantlarga Telegram xabar (fire & forget)
     const token = process.env.TELEGRAM_BOT_TOKEN;

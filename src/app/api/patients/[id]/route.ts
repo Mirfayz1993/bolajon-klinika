@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
+import { writeAuditLog } from '@/lib/audit';
 
 export async function GET(
   req: NextRequest,
@@ -54,6 +55,7 @@ export async function PUT(
       houseNumber?: string | null;
       medicalHistory?: string | null;
       allergies?: string | null;
+      chronicConditions?: string | null;
       telegramChatId?: string | null;
     };
 
@@ -68,6 +70,7 @@ export async function PUT(
       houseNumber,
       medicalHistory,
       allergies,
+      chronicConditions,
       telegramChatId,
     } = body;
 
@@ -82,13 +85,14 @@ export async function PUT(
       houseNumber?: string | null;
       medicalHistory?: string | null;
       allergies?: string | null;
+      chronicConditions?: string | null;
       telegramChatId?: string | null;
     } = {};
 
     if (firstName !== undefined) updateData.firstName = firstName;
     if (lastName !== undefined) updateData.lastName = lastName;
     if (fatherName !== undefined) updateData.fatherName = fatherName;
-    if (phone !== undefined) updateData.phone = phone;
+    if (phone !== undefined) updateData.phone = phone.replace(/[\s\-]/g, '');
 
     if (jshshir !== undefined) {
       if (!/^\d{14}$/.test(jshshir)) {
@@ -123,6 +127,7 @@ export async function PUT(
     if (houseNumber !== undefined) updateData.houseNumber = houseNumber;
     if (medicalHistory !== undefined) updateData.medicalHistory = medicalHistory;
     if (allergies !== undefined) updateData.allergies = allergies;
+    if (chronicConditions !== undefined) updateData.chronicConditions = chronicConditions;
     if (telegramChatId !== undefined) updateData.telegramChatId = telegramChatId;
 
     const updated = await prisma.patient.update({
@@ -160,6 +165,13 @@ export async function DELETE(
     await prisma.patient.update({
       where: { id },
       data: { deletedAt: new Date() },
+    });
+
+    await writeAuditLog({
+      userId: session.user.id,
+      action: 'DELETE',
+      module: 'patients',
+      details: { patientId: id, name: `${existing.lastName} ${existing.firstName}` },
     });
 
     return NextResponse.json({ success: true });

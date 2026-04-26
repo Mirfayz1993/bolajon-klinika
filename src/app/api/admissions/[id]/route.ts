@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
+import { calculateInpatientDays } from '@/lib/business-logic';
 
 const ALLOWED_ROLES = ['ADMIN', 'HEAD_DOCTOR', 'HEAD_NURSE'];
 
@@ -40,7 +41,13 @@ export async function GET(
       return NextResponse.json({ error: 'Yotqizish topilmadi' }, { status: 404 });
     }
 
-    return NextResponse.json(admission);
+    // Compute live cost for active admissions
+    const now = admission.dischargeDate ?? new Date();
+    const currentHours = (now.getTime() - admission.admissionDate.getTime()) / (1000 * 60 * 60);
+    const currentDays = calculateInpatientDays(admission.admissionDate, now);
+    const currentAmount = currentDays * Number(admission.dailyRate);
+
+    return NextResponse.json({ ...admission, currentHours: Math.floor(currentHours), currentDays, currentAmount });
   } catch (error) {
     console.error(error);
     return NextResponse.json({ error: 'Server error' }, { status: 500 });

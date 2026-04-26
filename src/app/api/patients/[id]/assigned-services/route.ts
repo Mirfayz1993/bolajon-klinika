@@ -18,6 +18,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
       include: {
         assignedBy: { select: { name: true, role: true } },
         doctor: { select: { name: true, role: true } },
+        admission: { select: { bed: { select: { bedNumber: true, room: { select: { roomNumber: true, floor: true } } } } } },
       },
       orderBy: { assignedAt: 'desc' },
     });
@@ -61,8 +62,27 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   try {
     // Lab xizmat: Payment(PENDING) → LabTest(paymentId) → AssignedService
     if (isLabService && body.itemId) {
-      const testType = await db.labTestType.findUnique({ where: { id: body.itemId } });
+      const testType = await db.labTestType.findUnique({
+        where: { id: body.itemId },
+        include: { children: { select: { id: true } } },
+      });
       if (testType && testType.isActive) {
+        // Duplikat tekshiruvi: bu bemor uchun shu test allaqachon PENDING/IN_PROGRESS bo'lsa, blokla
+        const existingLabTest = await db.labTest.findFirst({
+          where: { patientId, testTypeId: body.itemId, status: { in: ['PENDING', 'IN_PROGRESS'] } },
+        });
+        if (existingLabTest) {
+          return NextResponse.json(
+            { error: 'Bu tahlil ushbu bemor uchun allaqachon buyurtma qilingan va natija kutilmoqda' },
+            { status: 409 }
+          );
+        }
+
+        const isPanel = testType.children.length > 0;
+        const initialResults = isPanel
+          ? Object.fromEntries(testType.children.map((c: { id: string }) => [c.id, '']))
+          : undefined;
+
         const result = await db.$transaction(async (tx: typeof db) => {
           // 1. PENDING to'lov yaratamiz
           const payment = await tx.payment.create({
@@ -80,9 +100,10 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
             data: {
               patientId,
               testTypeId: body.itemId,
-              labTechId: session.user.id,
+              labTechId: null,
               status: 'PENDING',
               paymentId: payment.id,
+              ...(isPanel && { results: initialResults }),
             },
           });
           // 3. AssignedService
@@ -103,8 +124,37 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       }
     }
 
-    // Ambulator xizmat va bedId berilgan bo'lsa
-    if (isAmbulatory && body.bedId) {
+    // Ambulator xizmat
+    if (isAmbulatory) {
+      // Agar bemor allaqachon aktiv ambulator admissiyaga ega bo'lsa — shu to'shakda qoladi
+      const existingAdmission = await db.admission.findFirst({
+        where: { patientId, admissionType: 'AMBULATORY', status: { in: ['PENDING', 'ACTIVE'] }, dischargeDate: null },
+        include: { bed: { select: { id: true, bedNumber: true, room: { select: { roomNumber: true, floor: true } } } } },
+      });
+
+      if (existingAdmission) {
+        // Yangi admission yaratmasdan, mavjud to'shakga yangi xizmat qo'shamiz
+        const service = await db.assignedService.create({
+          data: {
+            patientId,
+            categoryName: body.categoryName.trim(),
+            itemName: body.itemName.trim(),
+            price: body.price,
+            itemId: body.itemId ?? null,
+            assignedById: session.user.id,
+            admissionId: existingAdmission.id,
+            bedId: existingAdmission.bedId,
+          },
+          include: { assignedBy: { select: { name: true, role: true } } },
+        });
+        return NextResponse.json(service, { status: 201 });
+      }
+
+      // Yangi admission — bedId majburiy
+      if (!body.bedId) {
+        return NextResponse.json({ error: "To'shak tanlanmagan" }, { status: 400 });
+      }
+
       const bed = await db.bed.findUnique({
         where: { id: body.bedId },
         include: { room: { select: { isAmbulatory: true, floor: true, roomNumber: true } } },
@@ -135,9 +185,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
             admissionId: admission.id,
             bedId: body.bedId,
           },
-          include: {
-            assignedBy: { select: { name: true, role: true } },
-          },
+          include: { assignedBy: { select: { name: true, role: true } } },
         });
 
         return { service, admission };
@@ -247,13 +295,32 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
     if (!svc) return NextResponse.json({ error: 'Topilmadi' }, { status: 404 });
     if (svc.isPaid) return NextResponse.json({ error: 'To\'langan xizmatni o\'chirib bo\'lmaydi' }, { status: 400 });
 
-    // Agar appointment va queue bo'lsa — ularni ham o'chirish
-    if (svc.appointmentId) {
-      await db.queue.deleteMany({ where: { appointmentId: svc.appointmentId } });
-      await db.appointment.delete({ where: { id: svc.appointmentId } }).catch(() => null);
-    }
+    await db.$transaction(async (tx: typeof db) => {
+      // Agar appointment va queue bo'lsa — ularni ham o'chirish
+      if (svc.appointmentId) {
+        await tx.queue.deleteMany({ where: { appointmentId: svc.appointmentId } });
+        await tx.appointment.delete({ where: { id: svc.appointmentId } }).catch(() => null);
+      }
 
-    await db.assignedService.delete({ where: { id: serviceId } });
+      // Agar lab xizmat bo'lsa — bog'liq LabTest va Payment ni ham o'chirish
+      const catLower = (svc.categoryName ?? '').toLowerCase();
+      const isLabService = catLower.includes('lab') || catLower.includes('laboratoriya') ||
+        catLower.includes('labaratoriya') || catLower.includes('tahlil');
+
+      if (isLabService && svc.itemId) {
+        const labTest = await tx.labTest.findFirst({
+          where: { patientId, testTypeId: svc.itemId, status: { in: ['PENDING', 'IN_PROGRESS'] } },
+        });
+        if (labTest) {
+          await tx.labTest.delete({ where: { id: labTest.id } });
+          if (labTest.paymentId) {
+            await tx.payment.delete({ where: { id: labTest.paymentId } }).catch(() => null);
+          }
+        }
+      }
+
+      await tx.assignedService.delete({ where: { id: serviceId } });
+    });
     return NextResponse.json({ ok: true });
   } catch (err) {
     console.error(err);

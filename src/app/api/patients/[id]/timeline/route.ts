@@ -176,12 +176,15 @@ export async function GET(
 
     // Admissions
     for (const adm of admissions) {
-      const room = `${adm.bed.room.floor}-qavat, ${adm.bed.room.roomNumber}-xona`;
+      const floorNum = adm.bed.room.floor;
+      const floorStr = floorNum === 1 ? 'Podval' : `${floorNum - 1}-qavat`;
+      const room = `${floorStr}, ${adm.bed.room.roomNumber}-xona`;
+      const isAmb = adm.admissionType === 'AMBULATORY';
       events.push({
         id: `adm-${adm.id}`,
         time: adm.admissionDate.toISOString(),
         type: 'admission',
-        title: `Statsionarga yotqizildi — ${room}`,
+        title: `${isAmb ? 'Ambulatorga' : 'Statsionarga'} yotqizildi — ${room}`,
         color: 'orange',
       });
 
@@ -190,7 +193,7 @@ export async function GET(
           id: `adm-out-${adm.id}`,
           time: adm.dischargeDate.toISOString(),
           type: 'discharge',
-          title: `Statsionardan chiqarildi — ${room}`,
+          title: `${isAmb ? 'Ambulatordan' : 'Statsionardan'} chiqarildi — ${room}`,
           color: 'slate',
         });
       }

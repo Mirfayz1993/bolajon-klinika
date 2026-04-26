@@ -4,7 +4,7 @@ import { authOptions } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 import { Role } from '@prisma/client';
 
-const READ_ROLES: Role[] = [Role.ADMIN, Role.HEAD_DOCTOR, Role.DOCTOR, Role.HEAD_NURSE, Role.RECEPTIONIST, Role.HEAD_LAB_TECH, Role.LAB_TECH];
+const READ_ROLES: Role[] = [Role.ADMIN, Role.HEAD_DOCTOR, Role.DOCTOR, Role.HEAD_NURSE, Role.NURSE, Role.RECEPTIONIST, Role.HEAD_LAB_TECH, Role.LAB_TECH, Role.SPEECH_THERAPIST, Role.MASSAGE_THERAPIST];
 const WRITE_ROLES: Role[] = [Role.ADMIN, Role.HEAD_DOCTOR, Role.RECEPTIONIST];
 
 // --- Transliteration helpers --------------------------------------------------
@@ -89,14 +89,19 @@ export async function GET(req: NextRequest) {
     const where: WhereClause = { deletedAt: null };
 
     if (search) {
-      const terms = getSearchTerms(search.trim());
-      where.OR = terms.flatMap(term => [
-        { firstName: { contains: term, mode: 'insensitive' as const } },
-        { lastName: { contains: term, mode: 'insensitive' as const } },
-        { fatherName: { contains: term, mode: 'insensitive' as const } },
-        { phone: { contains: term } },
-        { jshshir: { contains: term } },
-      ]);
+      const raw = search.trim();
+      const terms = getSearchTerms(raw);
+      const phoneNorm = raw.replace(/[\s\-]/g, '');
+      const phoneTerms = new Set<string>([phoneNorm, ...terms.map(t => t.replace(/[\s\-]/g, ''))]);
+      where.OR = [
+        ...terms.flatMap(term => [
+          { firstName: { contains: term, mode: 'insensitive' as const } },
+          { lastName: { contains: term, mode: 'insensitive' as const } },
+          { fatherName: { contains: term, mode: 'insensitive' as const } },
+        ]),
+        ...[...phoneTerms].map(t => ({ phone: { contains: t } })),
+        { jshshir: { contains: raw } },
+      ];
     }
 
     const [data, total] = await Promise.all([
@@ -105,13 +110,24 @@ export async function GET(req: NextRequest) {
         skip,
         take: limit,
         orderBy: { updatedAt: 'desc' },
+        include: {
+          assignedServices: {
+            where: { isPaid: false },
+            select: { price: true },
+          },
+        },
       }),
       prisma.patient.count({ where }),
     ]);
 
     const totalPages = Math.ceil(total / limit);
 
-    return NextResponse.json({ data, total, page, limit, totalPages });
+    const enriched = data.map(({ assignedServices, ...p }) => ({
+      ...p,
+      pendingDebt: assignedServices.reduce((sum, s) => sum + Number(s.price), 0),
+    }));
+
+    return NextResponse.json({ data: enriched, total, page, limit, totalPages });
   } catch (error) {
     console.error(error);
     return NextResponse.json({ error: 'Server error' }, { status: 500 });
@@ -188,7 +204,7 @@ export async function POST(req: NextRequest) {
         firstName,
         lastName,
         fatherName,
-        phone,
+        phone: phone.replace(/[\s\-]/g, ''),
         jshshir,
         birthDate: parsedDate,
         gender: gender ?? undefined,

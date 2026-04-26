@@ -33,6 +33,7 @@ interface Patient {
   telegramChatId: string | null;
   createdAt: string;
   updatedAt: string;
+  pendingDebt?: number;
 }
 
 interface PatientsResponse {
@@ -328,19 +329,20 @@ export default function PatientsPage() {
                 <th className="text-left px-4 py-3 font-semibold text-slate-600">{t.patients.jshshir}</th>
                 <th className="text-left px-4 py-3 font-semibold text-slate-600">{t.patients.age}</th>
                 <th className="text-left px-4 py-3 font-semibold text-slate-600">{t.patients.birthDate}</th>
+                <th className="text-left px-4 py-3 font-semibold text-slate-600">Qarz</th>
                 <th className="text-right px-4 py-3 font-semibold text-slate-600">{t.common.actions}</th>
               </tr>
             </thead>
             <tbody>
               {loading ? (
                 <tr>
-                  <td colSpan={7} className="text-center py-12">
+                  <td colSpan={8} className="text-center py-12">
                     <Loader2 className="w-6 h-6 animate-spin mx-auto text-blue-500" />
                   </td>
                 </tr>
               ) : patients.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="text-center py-12 text-slate-400">
+                  <td colSpan={8} className="text-center py-12 text-slate-400">
                     {t.patients.notFound}
                   </td>
                 </tr>
@@ -366,6 +368,15 @@ export default function PatientsPage() {
                     </td>
                     <td className="px-4 py-3 text-slate-600">
                       {new Date(patient.birthDate).getFullYear()}
+                    </td>
+                    <td className="px-4 py-3">
+                      {patient.pendingDebt && patient.pendingDebt > 0 ? (
+                        <span className="inline-block px-2 py-0.5 rounded-full text-xs font-semibold bg-red-100 text-red-700">
+                          {patient.pendingDebt.toLocaleString()} so'm
+                        </span>
+                      ) : (
+                        <span className="text-slate-300 text-xs">—</span>
+                      )}
                     </td>
                     <td className="px-4 py-3">
                       <div
@@ -676,7 +687,7 @@ export default function PatientsPage() {
                 </p>
                 <p className="text-sm text-slate-500 mt-1">{qrPatient.phone}</p>
                 <p className="text-xs text-slate-400">
-                  {new Date(qrPatient.birthDate).toLocaleDateString('uz-UZ')}
+                  {new Date(qrPatient.birthDate).getFullYear()}
                 </p>
               </div>
 

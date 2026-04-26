@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { useSession } from 'next-auth/react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useLanguage } from '@/hooks/useLanguage';
+import { floorLabel } from '@/lib/utils';
 import {
   ArrowLeft, Pencil, Trash2, Check, X, Loader2, AlertCircle,
   User, Phone, Calendar, MapPin, FileText, AlertTriangle,
@@ -19,6 +20,7 @@ interface Patient {
   phone: string; jshshir: string; birthDate: string;
   district: string | null; houseNumber: string | null;
   medicalHistory: string | null; allergies: string | null;
+  chronicConditions: string | null;
   telegramChatId: string | null; createdAt: string; updatedAt: string;
 }
 
@@ -26,7 +28,7 @@ interface EditForm {
   firstName: string; lastName: string; fatherName: string;
   phone: string; jshshir: string; birthDate: string;
   district: string; houseNumber: string; medicalHistory: string;
-  allergies: string; telegramChatId: string;
+  allergies: string; chronicConditions: string; telegramChatId: string;
 }
 
 interface Prescription {
@@ -57,7 +59,7 @@ interface LabTest {
 }
 
 interface Admission {
-  id: string; admissionType: string; admissionDate: string;
+  id: string; admissionType: string; admissionDate: string; status: string;
   dischargeDate?: string | null; dailyRate: number; notes?: string | null;
   bed: { bedNumber: string; room: { floor: number; roomNumber: string; type: string } };
 }
@@ -89,6 +91,7 @@ interface AssignedService {
   assignedAt: string;
   assignedBy: { name: string; role: string };
   doctor?: { name: string; role: string } | null;
+  admission?: { bed: { bedNumber: string; room: { roomNumber: string; floor: number } } | null } | null;
 }
 
 interface ServiceCategoryItem {
@@ -165,7 +168,21 @@ const APPT_STATUS_COLORS: Record<string, string> = {
 
 // --- Page ---------------------------------------------------------------------
 
-type Tab = 'info' | 'services' | 'records' | 'nurse' | 'lab';
+type Tab = 'info' | 'services' | 'records' | 'nurse' | 'lab' | 'inpatient';
+
+interface InpatientTask {
+  id: string; title: string; description?: string | null; status: string;
+  deadline: string; createdAt: string; startedAt?: string | null; completedAt?: string | null;
+  assigner: { id: string; name: string; role: string };
+  assignee: { id: string; name: string; role: string };
+}
+
+interface DoctorNote {
+  id: string; diagnosis?: string | null; treatment?: string | null; notes?: string | null;
+  createdAt: string;
+  doctor: { id: string; name: string; role: string; specialization?: { name: string } | null };
+  prescriptions: { id: string; medicineName: string; dosage: string; duration: string; instructions?: string | null }[];
+}
 
 interface PageProps { params: Promise<{ id: string }> }
 
@@ -253,6 +270,38 @@ export default function PatientDetailPage({ params }: PageProps) {
   const [bulkPaying, setBulkPaying] = useState(false);
   const [bulkPayMethod, setBulkPayMethod] = useState('CASH');
 
+  // Statsionar tab state
+  const [inpatientTasks, setInpatientTasks] = useState<InpatientTask[]>([]);
+  const [inpatientNotes, setInpatientNotes] = useState<DoctorNote[]>([]);
+  const [inpatientLoading, setInpatientLoading] = useState(false);
+  const [showTaskModal, setShowTaskModal] = useState(false);
+  const [taskForm, setTaskForm] = useState({ title: '', description: '', assigneeId: '' });
+  const [savingTask, setSavingTask] = useState(false);
+  const [taskError, setTaskError] = useState<string | null>(null);
+  const [showNoteModal, setShowNoteModal] = useState(false);
+  const [noteForm, setNoteForm] = useState({ diagnosis: '', treatment: '', notes: '' });
+  const [savingInpatientNote, setSavingInpatientNote] = useState(false);
+  const [noteError, setNoteError] = useState<string | null>(null);
+  const [nurseList, setNurseList] = useState<{ id: string; name: string; role: string }[]>([]);
+  const [currentDays, setCurrentDays] = useState(0);
+  const [currentAmount, setCurrentAmount] = useState(0);
+
+  // Vitals
+  interface Vital {
+    id: string; temperature?: number | null; bloodPressureSystolic?: number | null;
+    bloodPressureDiastolic?: number | null; pulse?: number | null;
+    oxygenSaturation?: number | null; weight?: number | null; notes?: string | null;
+    createdAt: string; recordedBy?: { name: string; role: string } | null;
+  }
+  const [vitals, setVitals] = useState<Vital[]>([]);
+  const [showVitalsModal, setShowVitalsModal] = useState(false);
+  const [vitalsForm, setVitalsForm] = useState({
+    temperature: '', bloodPressureSystolic: '', bloodPressureDiastolic: '',
+    pulse: '', oxygenSaturation: '', weight: '', notes: '',
+  });
+  const [savingVitals, setSavingVitals] = useState(false);
+  const [vitalsError, setVitalsError] = useState<string | null>(null);
+
   useEffect(() => {
     params.then(({ id }) => setPatientId(id));
   }, [params]);
@@ -263,6 +312,7 @@ export default function PatientDetailPage({ params }: PageProps) {
   }, [searchParams]);
 
   const fromQueue = searchParams.get('from') === 'queue';
+  const fromAmbulatory = searchParams.get('from') === 'ambulatory';
   const urlNoteType = searchParams.get('noteType') ?? '';
 
   const fetchProfile = useCallback(async () => {
@@ -296,6 +346,135 @@ export default function PatientDetailPage({ params }: PageProps) {
 
   useEffect(() => { fetchTimeline(); }, [fetchTimeline]);
 
+  // Statsionar tab — data fetch
+  const activeAdmission = profile?.admissions.find(a => !a.dischargeDate) ?? null;
+
+  const fetchInpatientData = useCallback(async () => {
+    if (!activeAdmission) return;
+    setInpatientLoading(true);
+    try {
+      const [tasksRes, notesRes, vitalsRes] = await Promise.all([
+        fetch(`/api/admissions/${activeAdmission.id}/tasks`),
+        fetch(`/api/admissions/${activeAdmission.id}/doctor-notes`),
+        fetch(`/api/admissions/${activeAdmission.id}/vitals`),
+      ]);
+      if (tasksRes.ok) setInpatientTasks(await tasksRes.json());
+      if (notesRes.ok) setInpatientNotes(await notesRes.json());
+      if (vitalsRes.ok) setVitals(await vitalsRes.json());
+    } finally { setInpatientLoading(false); }
+  }, [activeAdmission?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (activeTab === 'inpatient') fetchInpatientData();
+  }, [activeTab, fetchInpatientData]);
+
+  // Live cost calculation for active admission
+  useEffect(() => {
+    if (!activeAdmission || activeAdmission.dischargeDate) return;
+    const calc = () => {
+      const now = new Date();
+      const admDate = new Date(activeAdmission.admissionDate);
+      const hours = (now.getTime() - admDate.getTime()) / (1000 * 60 * 60);
+      const days = hours <= 12 ? 0 : Math.ceil(hours / 24);
+      setCurrentDays(days);
+      setCurrentAmount(days * Number(activeAdmission.dailyRate));
+    };
+    calc();
+    const timer = setInterval(calc, 60000);
+    return () => clearInterval(timer);
+  }, [activeAdmission?.id, activeAdmission?.admissionDate, activeAdmission?.dailyRate, activeAdmission?.dischargeDate]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Load nurses when task modal opens
+  useEffect(() => {
+    if (!showTaskModal || nurseList.length > 0) return;
+    fetch('/api/staff?role=NURSE,HEAD_NURSE')
+      .then(r => r.json())
+      .then(d => setNurseList((d.data ?? d).filter((u: { isActive: boolean }) => u.isActive)))
+      .catch(() => null);
+  }, [showTaskModal, nurseList.length]);
+
+  const handleCreateTask = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!activeAdmission) return;
+    setSavingTask(true); setTaskError(null);
+    try {
+      const res = await fetch(`/api/admissions/${activeAdmission.id}/tasks`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(taskForm),
+      });
+      if (!res.ok) { const d = await res.json(); throw new Error(d.error ?? 'Xatolik'); }
+      setShowTaskModal(false);
+      setTaskForm({ title: '', description: '', assigneeId: '' });
+      await fetchInpatientData();
+    } catch (err) { setTaskError(err instanceof Error ? err.message : 'Xatolik'); }
+    finally { setSavingTask(false); }
+  };
+
+  const handleCompleteTask = async (taskId: string) => {
+    try {
+      await fetch(`/api/tasks/${taskId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'complete' }),
+      });
+      await fetchInpatientData();
+    } catch { /* ignore */ }
+  };
+
+  const handleStartTask = async (taskId: string) => {
+    try {
+      await fetch(`/api/tasks/${taskId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'start' }),
+      });
+      await fetchInpatientData();
+    } catch { /* ignore */ }
+  };
+
+  const handleCreateNote = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!activeAdmission) return;
+    setSavingInpatientNote(true); setNoteError(null);
+    try {
+      const res = await fetch(`/api/admissions/${activeAdmission.id}/doctor-notes`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(noteForm),
+      });
+      if (!res.ok) { const d = await res.json(); throw new Error(d.error ?? 'Xatolik'); }
+      setShowNoteModal(false);
+      setNoteForm({ diagnosis: '', treatment: '', notes: '' });
+      await fetchInpatientData();
+    } catch (err) { setNoteError(err instanceof Error ? err.message : 'Xatolik'); }
+    finally { setSavingInpatientNote(false); }
+  };
+
+  const handleSaveVitals = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!activeAdmission) return;
+    setSavingVitals(true); setVitalsError(null);
+    try {
+      const body: Record<string, number | string | undefined> = {};
+      if (vitalsForm.temperature) body.temperature = parseFloat(vitalsForm.temperature);
+      if (vitalsForm.bloodPressureSystolic) body.bloodPressureSystolic = parseInt(vitalsForm.bloodPressureSystolic);
+      if (vitalsForm.bloodPressureDiastolic) body.bloodPressureDiastolic = parseInt(vitalsForm.bloodPressureDiastolic);
+      if (vitalsForm.pulse) body.pulse = parseInt(vitalsForm.pulse);
+      if (vitalsForm.oxygenSaturation) body.oxygenSaturation = parseFloat(vitalsForm.oxygenSaturation);
+      if (vitalsForm.weight) body.weight = parseFloat(vitalsForm.weight);
+      if (vitalsForm.notes) body.notes = vitalsForm.notes;
+      const res = await fetch(`/api/admissions/${activeAdmission.id}/vitals`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+      });
+      if (!res.ok) { const d = await res.json(); throw new Error(d.error ?? 'Xatolik'); }
+      setShowVitalsModal(false);
+      setVitalsForm({ temperature: '', bloodPressureSystolic: '', bloodPressureDiastolic: '', pulse: '', oxygenSaturation: '', weight: '', notes: '' });
+      await fetchInpatientData();
+    } catch (err) { setVitalsError(err instanceof Error ? err.message : 'Xatolik'); }
+    finally { setSavingVitals(false); }
+  };
+
   const fetchAssigned = useCallback(async () => {
     if (!patientId) return;
     setAssignedLoading(true);
@@ -325,7 +504,7 @@ export default function PatientDetailPage({ params }: PageProps) {
   const isAmbulatoryCat = assignCat ? assignCat.name.toLowerCase().includes('ambulator') : false;
 
   // Ambulatory room + bed selection
-  const [ambRooms, setAmbRooms] = useState<{ id: string; roomNumber: string; floor: number }[]>([]);
+  const [ambRooms, setAmbRooms] = useState<{ id: string; roomNumber: string; floor: number; beds: { id: string; admissions: { id: string }[] }[] }[]>([]);
   const [ambRoomId, setAmbRoomId] = useState('');
   const [ambBeds, setAmbBeds] = useState<{ id: string; bedNumber: string; status: string }[]>([]);
   const [ambBedId, setAmbBedId] = useState('');
@@ -339,8 +518,18 @@ export default function PatientDetailPage({ params }: PageProps) {
       .catch(() => setLabTestTypes([]));
   }, [isLabCat]);
 
+  // Multi-select print (lab tab)
+  const [labPrintSelectedIds, setLabPrintSelectedIds] = useState<string[]>([]);
+  function toggleLabPrint(id: string) {
+    setLabPrintSelectedIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
+  }
+  function printLabSelected() {
+    if (!patientId || labPrintSelectedIds.length === 0) return;
+    router.push(`/lab/print?patientId=${patientId}&testIds=${labPrintSelectedIds.join(',')}`);
+  }
+
   // Lab order modal (from lab tab)
-  interface LabOrderType { id: string; name: string; price: number; category: string | null; }
+  interface LabOrderType { id: string; name: string; price: number; category: string | null; parentId?: string | null; }
   const [showPatientLabOrderModal, setShowPatientLabOrderModal] = useState(false);
   const [patientLabAllTypes, setPatientLabAllTypes] = useState<LabOrderType[]>([]);
   const [patientLabSelectedIds, setPatientLabSelectedIds] = useState<string[]>([]);
@@ -367,11 +556,11 @@ export default function PatientDetailPage({ params }: PageProps) {
     setPatientLabOrderSaving(true);
     setPatientLabOrderError(null);
     try {
-      await Promise.all(
-        patientLabSelectedIds.map(id => {
+      const results = await Promise.all(
+        patientLabSelectedIds.map(async id => {
           const tt = patientLabAllTypes.find(x => x.id === id);
-          if (!tt) return Promise.resolve();
-          return fetch(`/api/patients/${patient.id}/assigned-services`, {
+          if (!tt) return null;
+          const res = await fetch(`/api/patients/${patient.id}/assigned-services`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -381,8 +570,19 @@ export default function PatientDetailPage({ params }: PageProps) {
               itemId: tt.id,
             }),
           });
+          if (!res.ok) {
+            const err = await res.json().catch(() => ({}));
+            return { error: err.error || `${tt.name}: xatolik`, name: tt.name };
+          }
+          return null;
         })
       );
+      const errors = results.filter(Boolean) as { error: string; name: string }[];
+      if (errors.length > 0) {
+        setPatientLabOrderError(errors.map(e => e.error).join('; '));
+        setPatientLabOrderSaving(false);
+        return;
+      }
       setPatientLabOrderDone(true);
     } catch {
       setPatientLabOrderError('Xatolik yuz berdi');
@@ -408,24 +608,39 @@ export default function PatientDetailPage({ params }: PageProps) {
       .catch(() => null);
   }, [showAssignModal, allStaffList.length]);
 
-  // Ambulatory rooms
+  // Ambulatory rooms — faqat bo'sh to'shagi bor xonalar, birinchisi avtomatik tanlanadi
   useEffect(() => {
     if (!isAmbulatoryCat) return;
     if (ambRooms.length > 0) return;
-    fetch('/api/rooms?floor=3&isAmbulatory=true')
+    fetch('/api/rooms?isAmbulatory=true')
       .then(r => r.json())
-      .then(d => setAmbRooms(Array.isArray(d) ? d : (d.data ?? [])))
+      .then(d => {
+        const all = Array.isArray(d) ? d : (d.data ?? []);
+        // Faqat kamida 1 ta bo'sh to'shagi bor xonalar
+        const available = all.filter((r: typeof ambRooms[0]) =>
+          r.beds.some(b => b.admissions.length === 0)
+        );
+        setAmbRooms(available);
+        // Birinchi bo'sh xonani avtomatik tanlash
+        if (available.length > 0) setAmbRoomId(available[0].id);
+      })
       .catch(() => null);
   }, [isAmbulatoryCat, ambRooms.length]);
 
-  // Ambulatory beds
+  // Ambulatory beds — xona o'zgarganda birinchi bo'sh to'shak avtomatik tanlanadi
   useEffect(() => {
     if (!ambRoomId) { setAmbBeds([]); setAmbBedId(''); return; }
     setAmbBedsLoading(true);
     fetch(`/api/rooms/${ambRoomId}/beds?status=AVAILABLE`)
       .then(r => r.json())
-      .then(d => { setAmbBeds(Array.isArray(d) ? d : []); })
-      .catch(() => setAmbBeds([]))
+      .then(d => {
+        const beds = Array.isArray(d) ? d : [];
+        setAmbBeds(beds);
+        // Birinchi bo'sh to'shakni avtomatik tanlash
+        if (beds.length > 0) setAmbBedId(beds[0].id);
+        else setAmbBedId('');
+      })
+      .catch(() => { setAmbBeds([]); setAmbBedId(''); })
       .finally(() => setAmbBedsLoading(false));
   }, [ambRoomId]);
 
@@ -435,7 +650,10 @@ export default function PatientDetailPage({ params }: PageProps) {
   const saveAssign = async () => {
     if (!assignCat || !assignItem) return;
     if (isDoctorCat && !assignDoctorId) { alert('Iltimos, doktor tanlang'); return; }
-    if (isAmbulatoryCat && !ambBedId) { alert("Iltimos, ambulator to'shak tanlang"); return; }
+    const activeAmbAdm = profile?.admissions.find(
+      a => a.admissionType === 'AMBULATORY' && ['PENDING', 'ACTIVE'].includes(a.status) && !a.dischargeDate
+    );
+    if (isAmbulatoryCat && !activeAmbAdm && !ambBedId) { alert("Iltimos, ambulator to'shak tanlang"); return; }
     setAssignSaving(true);
     try {
       const res = await fetch(`/api/patients/${patientId}/assigned-services`, {
@@ -454,7 +672,7 @@ export default function PatientDetailPage({ params }: PageProps) {
       if (!res.ok) { const d = await res.json(); alert(d.error); return; }
       setShowAssignModal(false);
       setAssignCatId(''); setAssignItemId(''); setAssignDoctorId(''); setAssignIsUrgent(false);
-      setAssignStaffId(''); setAmbRoomId(''); setAmbBedId(''); setAmbBeds([]);
+      setAssignStaffId(''); setAmbRoomId(''); setAmbBedId(''); setAmbBeds([]); setAmbRooms([]);
       fetchAssigned();
     } finally { setAssignSaving(false); }
   };
@@ -503,7 +721,8 @@ export default function PatientDetailPage({ params }: PageProps) {
       birthDate: new Date(p.birthDate).getFullYear().toString(),
       district: p.district ?? '', houseNumber: p.houseNumber ?? '',
       medicalHistory: p.medicalHistory ?? '',
-      allergies: p.allergies ?? '', telegramChatId: p.telegramChatId ?? '',
+      allergies: p.allergies ?? '', chronicConditions: p.chronicConditions ?? '',
+      telegramChatId: p.telegramChatId ?? '',
     });
     setEditing(true);
   };
@@ -722,11 +941,17 @@ export default function PatientDetailPage({ params }: PageProps) {
     const paidRows = paid.map(sv => {
       // Faqat shifokor xizmatlarida "Doktor: To'liq Ism" ko'rsatiladi
       const doctorName = sv.doctor?.name ?? '';
+      const isAmb = sv.categoryName.toLowerCase().includes('ambulator');
+      const bed = sv.admission?.bed;
+      const bedInfo = isAmb && bed
+        ? `<div style="font-size:13px;font-weight:bold;margin-top:3px;">Xona: ${bed.room.roomNumber} (${floorLabel(bed.room.floor)}) &nbsp;|&nbsp; Krovat: №${bed.bedNumber}</div>`
+        : '';
       return `<tr>
         <td colspan="2" style="padding:7px 8px;border-bottom:1px dashed #aaa;">
           <div style="font-weight:900;font-size:14px;">${sv.categoryName}</div>
           <div style="font-weight:900;font-size:14px;margin-top:1px;">${sv.itemName}</div>
           ${doctorName ? `<div style="font-size:13px;font-weight:bold;margin-top:3px;">Doktor: ${doctorName}</div>` : ''}
+          ${bedInfo}
         </td>
       </tr>`;
     }).join('');
@@ -868,6 +1093,7 @@ export default function PatientDetailPage({ params }: PageProps) {
     { key: 'records', label: pt.tabs?.records ?? 'Tashxislar', icon: <Stethoscope className="w-4 h-4" />, count: medicalRecords.length },
     { key: 'nurse', label: pt.tabs?.nurse ?? 'Hamshira', icon: <ClipboardList className="w-4 h-4" />, count: nurseNotes.length },
     { key: 'lab', label: pt.tabs?.lab ?? 'Laboratoriya', icon: <FlaskConical className="w-4 h-4" />, count: labTests.length },
+    ...(activeAdmission ? [{ key: 'inpatient' as Tab, label: 'Statsionar', icon: <BedDouble className="w-4 h-4" /> }] : []),
   ];
 
   return (
@@ -885,6 +1111,14 @@ export default function PatientDetailPage({ params }: PageProps) {
               className="flex items-center gap-2 px-3 py-2 text-sm bg-green-600 text-white rounded-lg hover:bg-green-700"
             >
               <ArrowLeft className="w-4 h-4" /> Navbatga qaytish
+            </button>
+          )}
+          {fromAmbulatory && (
+            <button
+              onClick={() => router.push('/ambulatory')}
+              className="flex items-center gap-2 px-3 py-2 text-sm bg-teal-600 text-white rounded-lg hover:bg-teal-700"
+            >
+              <ArrowLeft className="w-4 h-4" /> Ambulatoryaga qaytish
             </button>
           )}
           <button onClick={openQr}
@@ -976,6 +1210,15 @@ export default function PatientDetailPage({ params }: PageProps) {
             </div>
           )}
 
+          {(patient as Patient & { chronicConditions?: string | null }).chronicConditions && (
+            <div className="bg-orange-50 border border-orange-200 rounded-xl p-4">
+              <div className="flex items-center gap-2 text-orange-700 font-medium mb-1">
+                <AlertCircle className="w-4 h-4" /> Surunkali kasalliklar
+              </div>
+              <p className="text-sm text-orange-800">{(patient as Patient & { chronicConditions?: string | null }).chronicConditions}</p>
+            </div>
+          )}
+
           {patient.medicalHistory && (
             <div className="bg-white rounded-xl border border-slate-200 p-4">
               <div className="flex items-center gap-2 text-slate-700 font-medium mb-2">
@@ -996,7 +1239,7 @@ export default function PatientDetailPage({ params }: PageProps) {
                   <div key={a.id} className="flex items-center justify-between text-sm p-2 bg-slate-50 rounded-lg">
                     <span className="text-slate-700">
                       {a.admissionType === 'AMBULATORY' ? 'Ambulator' : 'Statsionar'} —{' '}
-                      {a.bed.room.floor}-qavat, {a.bed.room.roomNumber}-xona, {a.bed.bedNumber}-karavot
+                      {floorLabel(a.bed.room.floor)}, {a.bed.room.roomNumber}-xona, {a.bed.bedNumber}-karavot
                     </span>
                     <span className="text-slate-500 text-xs">
                       {fmtDate(a.admissionDate)} {a.dischargeDate ? `→ ${fmtDate(a.dischargeDate)}` : '(faol)'}
@@ -1383,7 +1626,7 @@ export default function PatientDetailPage({ params }: PageProps) {
           <div className="bg-white rounded-2xl shadow-xl w-full max-w-md p-6">
             <div className="flex items-center justify-between mb-4">
               <h3 className="font-semibold text-slate-800">Xizmat tayinlash</h3>
-              <button type="button" onClick={() => { setShowAssignModal(false); setAssignCatId(''); setAssignItemId(''); setAssignDoctorId(''); setAssignIsUrgent(false); setAmbRoomId(''); setAmbBedId(''); setAmbBeds([]); }}>
+              <button type="button" onClick={() => { setShowAssignModal(false); setAssignCatId(''); setAssignItemId(''); setAssignDoctorId(''); setAssignIsUrgent(false); setAmbRoomId(''); setAmbBedId(''); setAmbBeds([]); setAmbRooms([]); }}>
                 <X className="w-5 h-5 text-slate-400" />
               </button>
             </div>
@@ -1468,56 +1711,74 @@ export default function PatientDetailPage({ params }: PageProps) {
             )}
 
             {/* Ambulator xona tanlash */}
-            {isAmbulatoryCat && assignCat && (
-              <>
-                <div className="mb-3">
-                  <label className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1 block">
-                    Xona (3-qavat ambulator) <span className="text-red-500">*</span>
-                  </label>
-                  <select
-                    value={ambRoomId}
-                    onChange={e => { setAmbRoomId(e.target.value); setAmbBedId(''); }}
-                    className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm text-slate-900 bg-white focus:outline-none focus:ring-2 focus:ring-teal-500"
-                  >
-                    <option value="">— Xona tanlang —</option>
-                    {ambRooms.map(r => (
-                      <option key={r.id} value={r.id}>
-                        {r.floor}-qavat, {r.roomNumber}-xona
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                {ambRoomId && (
+            {isAmbulatoryCat && assignCat && (() => {
+              const activeAmbAdm = profile?.admissions.find(
+                a => a.admissionType === 'AMBULATORY' && ['PENDING', 'ACTIVE'].includes(a.status) && !a.dischargeDate
+              ) ?? null;
+              if (activeAmbAdm) {
+                // Bemor allaqachon to'shakda — yangi to'shak tanlash shart emas
+                return (
+                  <div className="mb-3 px-4 py-3 bg-teal-50 border border-teal-200 rounded-xl text-sm">
+                    <div className="font-semibold text-teal-800 mb-0.5">Bemor allaqachon joylashtirilgan</div>
+                    <div className="text-teal-700">
+                      {floorLabel(activeAmbAdm.bed.room.floor)}, {activeAmbAdm.bed.room.roomNumber}-xona — To&apos;shak №{activeAmbAdm.bed.bedNumber}
+                    </div>
+                    <div className="text-teal-600 text-xs mt-1">Yangi xizmat shu to&apos;shakga qo&apos;shiladi</div>
+                  </div>
+                );
+              }
+              // Yangi joylashtirish — xona/to'shak tanlash
+              return (
+                <>
                   <div className="mb-3">
                     <label className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1 block">
-                      Bo&apos;sh to&apos;shak <span className="text-red-500">*</span>
+                      Xona (ambulator) <span className="text-red-500">*</span>
                     </label>
-                    {ambBedsLoading ? (
-                      <div className="flex items-center gap-2 text-sm text-slate-400 px-3 py-2 border border-slate-200 rounded-xl">
-                        <Loader2 className="w-4 h-4 animate-spin" /> Yuklanmoqda...
-                      </div>
-                    ) : ambBeds.length === 0 ? (
-                      <div className="px-3 py-2 text-sm text-slate-400 border border-slate-200 rounded-xl">
-                        Bu xonada bo&apos;sh to&apos;shak yo&apos;q
-                      </div>
-                    ) : (
-                      <select
-                        value={ambBedId}
-                        onChange={e => setAmbBedId(e.target.value)}
-                        className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm text-slate-900 bg-white focus:outline-none focus:ring-2 focus:ring-teal-500"
-                      >
-                        <option value="">— To&apos;shak tanlang —</option>
-                        {ambBeds.map(b => (
-                          <option key={b.id} value={b.id}>
-                            To&apos;shak {b.bedNumber}
-                          </option>
-                        ))}
-                      </select>
-                    )}
+                    <select
+                      value={ambRoomId}
+                      onChange={e => { setAmbRoomId(e.target.value); setAmbBedId(''); }}
+                      className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm text-slate-900 bg-white focus:outline-none focus:ring-2 focus:ring-teal-500"
+                    >
+                      <option value="">— Xona tanlang —</option>
+                      {ambRooms.map(r => (
+                        <option key={r.id} value={r.id}>
+                          {floorLabel(r.floor)}, {r.roomNumber}-xona
+                        </option>
+                      ))}
+                    </select>
                   </div>
-                )}
-              </>
-            )}
+                  {ambRoomId && (
+                    <div className="mb-3">
+                      <label className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1 block">
+                        Bo&apos;sh to&apos;shak <span className="text-red-500">*</span>
+                      </label>
+                      {ambBedsLoading ? (
+                        <div className="flex items-center gap-2 text-sm text-slate-400 px-3 py-2 border border-slate-200 rounded-xl">
+                          <Loader2 className="w-4 h-4 animate-spin" /> Yuklanmoqda...
+                        </div>
+                      ) : ambBeds.length === 0 ? (
+                        <div className="px-3 py-2 text-sm text-slate-400 border border-slate-200 rounded-xl">
+                          Bu xonada bo&apos;sh to&apos;shak yo&apos;q
+                        </div>
+                      ) : (
+                        <select
+                          value={ambBedId}
+                          onChange={e => setAmbBedId(e.target.value)}
+                          className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm text-slate-900 bg-white focus:outline-none focus:ring-2 focus:ring-teal-500"
+                        >
+                          <option value="">— To&apos;shak tanlang —</option>
+                          {ambBeds.map(b => (
+                            <option key={b.id} value={b.id}>
+                              To&apos;shak {b.bedNumber}
+                            </option>
+                          ))}
+                        </select>
+                      )}
+                    </div>
+                  )}
+                </>
+              );
+            })()}
 
             {assignItem && (
               <div className={`mb-4 px-4 py-3 rounded-xl flex justify-between text-sm ${assignIsUrgent ? 'bg-red-50' : 'bg-blue-50'}`}>
@@ -1529,7 +1790,7 @@ export default function PatientDetailPage({ params }: PageProps) {
             <div className="flex gap-2 justify-end">
               <button
                 type="button"
-                onClick={() => { setShowAssignModal(false); setAssignCatId(''); setAssignItemId(''); setAssignDoctorId(''); setAssignIsUrgent(false); setAmbRoomId(''); setAmbBedId(''); setAmbBeds([]); }}
+                onClick={() => { setShowAssignModal(false); setAssignCatId(''); setAssignItemId(''); setAssignDoctorId(''); setAssignIsUrgent(false); setAmbRoomId(''); setAmbBedId(''); setAmbBeds([]); setAmbRooms([]); }}
                 className="px-4 py-2 text-sm text-slate-600 border border-slate-200 rounded-xl hover:bg-slate-50"
               >
                 Bekor
@@ -1649,7 +1910,7 @@ export default function PatientDetailPage({ params }: PageProps) {
                   )}
                   {n.admission && (
                     <span className="text-xs text-slate-500">
-                      ({n.admission.bed.room.floor}-qavat, {n.admission.bed.room.roomNumber}-xona)
+                      ({floorLabel(n.admission.bed.room.floor)}, {n.admission.bed.room.roomNumber}-xona)
                     </span>
                   )}
                 </div>
@@ -1679,8 +1940,26 @@ export default function PatientDetailPage({ params }: PageProps) {
       {/* -- TAB: LABORATORIYA ----------------------------------------------- */}
       {activeTab === 'lab' && (
         <div className="space-y-4">
-          {canOrderLabTest && (
-            <div className="flex justify-end">
+          <div className="flex items-center justify-between gap-3 flex-wrap">
+            {labPrintSelectedIds.length > 0 ? (
+              <div className="flex items-center gap-3 bg-blue-50 border border-blue-200 rounded-lg px-4 py-2">
+                <span className="text-sm text-blue-700 font-medium">{labPrintSelectedIds.length} ta tanlandi</span>
+                <button
+                  onClick={printLabSelected}
+                  className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold rounded-lg transition-colors"
+                >
+                  <Printer className="w-3.5 h-3.5" />
+                  Chop et ({labPrintSelectedIds.length} ta)
+                </button>
+                <button
+                  onClick={() => setLabPrintSelectedIds([])}
+                  className="text-xs text-slate-500 hover:text-slate-700 transition-colors"
+                >
+                  Bekor
+                </button>
+              </div>
+            ) : <div />}
+            {canOrderLabTest && (
               <button
                 onClick={openPatientLabOrderModal}
                 className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors"
@@ -1688,12 +1967,22 @@ export default function PatientDetailPage({ params }: PageProps) {
                 <Plus className="w-4 h-4" />
                 Tahlil buyurtma
               </button>
-            </div>
-          )}
-          {labTests.length === 0 ? <Empty text="Laboratoriya tahlillari yo'q" /> : labTests.map(lt => (
+            )}
+          </div>
+          {labTests.length === 0 ? <Empty text="Laboratoriya tahlillari yo'q" /> : labTests.map(lt => {
+            const canPrint = lt.status === 'COMPLETED' && (!lt.payment || lt.payment.status === 'PAID');
+            return (
             <div key={lt.id} className="bg-white rounded-xl border border-slate-200 overflow-hidden">
               <div className="px-4 py-3 bg-slate-50 border-b border-slate-100 flex justify-between items-center">
                 <div className="flex items-center gap-2 flex-wrap">
+                  {canPrint && (
+                    <input
+                      type="checkbox"
+                      checked={labPrintSelectedIds.includes(lt.id)}
+                      onChange={() => toggleLabPrint(lt.id)}
+                      className="w-4 h-4 accent-blue-600 cursor-pointer flex-shrink-0"
+                    />
+                  )}
                   <span className="text-sm font-semibold text-slate-800">{lt.testType?.name}</span>
                   <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${LAB_STATUS_COLORS[lt.status] ?? ''}`}>
                     {lt.status === 'PENDING' ? 'Kutilmoqda'
@@ -1778,7 +2067,376 @@ export default function PatientDetailPage({ params }: PageProps) {
                 )}
               </div>
             </div>
-          ))}
+          );
+          })}
+        </div>
+      )}
+
+      {/* -- TAB: STATSIONAR ------------------------------------------------- */}
+      {activeTab === 'inpatient' && activeAdmission && (
+        <div className="space-y-6">
+          {/* Joriy to'lov kartasi */}
+          <div className="bg-white rounded-xl border border-slate-200 p-5">
+            <div className="flex items-start justify-between">
+              <div>
+                <div className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1">Statsionar ma&apos;lumoti</div>
+                <div className="text-sm text-slate-700 flex items-center gap-2">
+                  <BedDouble className="w-4 h-4 text-slate-400" />
+                  {floorLabel(activeAdmission.bed.room.floor)}, Xona {activeAdmission.bed.room.roomNumber}, Krovat {activeAdmission.bed.bedNumber}
+                  <span className="text-xs bg-slate-100 text-slate-600 px-2 py-0.5 rounded-full">{activeAdmission.bed.room.type}</span>
+                </div>
+                <div className="text-xs text-slate-400 mt-1">Yotgan: {fmt(activeAdmission.admissionDate)}</div>
+                {activeAdmission.notes && <div className="text-xs text-slate-500 mt-1">Tashxis: {activeAdmission.notes}</div>}
+              </div>
+              <div className="text-right">
+                <div className="text-xs text-slate-500 mb-0.5">Kunlik narx</div>
+                <div className="text-base font-semibold text-slate-700">{fmtMoney(Number(activeAdmission.dailyRate))}</div>
+              </div>
+            </div>
+            <div className="mt-4 pt-4 border-t border-slate-100 flex items-center justify-between">
+              <div className="text-sm text-slate-500">
+                {currentDays === 0 ? (
+                  <span className="text-green-600 font-medium">12 soat to&apos;lmagan — bepul</span>
+                ) : (
+                  <span>Yig&apos;ilgan: <strong className="text-slate-800">{currentDays} kun</strong></span>
+                )}
+              </div>
+              <div className="text-lg font-bold text-blue-700">{currentDays > 0 ? fmtMoney(currentAmount) : 'Bepul'}</div>
+            </div>
+          </div>
+
+          {/* Ukol / Muolaja buyurtmalari */}
+          <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+            <div className="flex items-center justify-between px-5 py-3 border-b border-slate-100 bg-slate-50">
+              <h3 className="text-sm font-semibold text-slate-800 flex items-center gap-2">
+                <Activity className="w-4 h-4 text-blue-500" /> Ukol / Muolaja buyurtmalari
+                {inpatientTasks.length > 0 && <span className="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full">{inpatientTasks.length}</span>}
+              </h3>
+              {isDoctor && (
+                <button onClick={() => setShowTaskModal(true)}
+                  className="flex items-center gap-1.5 text-xs px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors font-medium">
+                  <Plus className="w-3.5 h-3.5" /> Yangi buyurtma
+                </button>
+              )}
+            </div>
+            {inpatientLoading ? (
+              <div className="flex justify-center py-6"><Loader2 className="w-5 h-5 animate-spin text-blue-500" /></div>
+            ) : inpatientTasks.length === 0 ? (
+              <div className="text-center py-6 text-slate-400 text-sm">Buyurtmalar yo&apos;q</div>
+            ) : (
+              <div className="divide-y divide-slate-100">
+                {inpatientTasks.map(task => {
+                  const statusColors: Record<string, string> = {
+                    PENDING: 'bg-slate-100 text-slate-600',
+                    IN_PROGRESS: 'bg-yellow-100 text-yellow-700',
+                    COMPLETED: 'bg-green-100 text-green-700',
+                  };
+                  const statusLabels: Record<string, string> = {
+                    PENDING: 'Kutilmoqda', IN_PROGRESS: 'Bajarilmoqda', COMPLETED: 'Bajarildi',
+                  };
+                  const isMyTask = task.assignee.id === session?.user?.id;
+                  return (
+                    <div key={task.id} className="px-5 py-3 flex items-start justify-between gap-3">
+                      <div className="flex-1 min-w-0">
+                        <div className="text-sm font-medium text-slate-800">{task.title}</div>
+                        {task.description && <div className="text-xs text-slate-500 mt-0.5">{task.description}</div>}
+                        <div className="flex items-center gap-3 mt-1.5 text-xs text-slate-400">
+                          <span>Hamshira: <strong className="text-slate-600">{task.assignee.name}</strong></span>
+                          <span>{fmt(task.createdAt)}</span>
+                          {task.completedAt && <span className="text-green-600">Bajarildi: {fmt(task.completedAt)}</span>}
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2 flex-shrink-0">
+                        <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${statusColors[task.status] ?? ''}`}>
+                          {statusLabels[task.status] ?? task.status}
+                        </span>
+                        {isMyTask && task.status === 'PENDING' && (
+                          <button onClick={() => handleStartTask(task.id)}
+                            className="text-xs px-2 py-1 bg-yellow-50 hover:bg-yellow-100 text-yellow-700 rounded-md transition-colors">
+                            Boshlash
+                          </button>
+                        )}
+                        {isMyTask && task.status === 'IN_PROGRESS' && (
+                          <button onClick={() => handleCompleteTask(task.id)}
+                            className="flex items-center gap-1 text-xs px-2 py-1 bg-green-50 hover:bg-green-100 text-green-700 rounded-md transition-colors">
+                            <Check className="w-3 h-3" /> Bajarildi
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+
+          {/* Vitals — harorat, bosim, puls */}
+          <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+            <div className="flex items-center justify-between px-5 py-3 border-b border-slate-100 bg-slate-50">
+              <h3 className="text-sm font-semibold text-slate-800 flex items-center gap-2">
+                <Activity className="w-4 h-4 text-rose-500" /> Ko&apos;rsatkichlar (Vitals)
+                {vitals.length > 0 && <span className="text-xs bg-rose-100 text-rose-700 px-2 py-0.5 rounded-full">{vitals.length}</span>}
+              </h3>
+              {isNurse && (
+                <button onClick={() => setShowVitalsModal(true)}
+                  className="flex items-center gap-1.5 text-xs px-3 py-1.5 bg-rose-600 hover:bg-rose-700 text-white rounded-lg transition-colors font-medium">
+                  <Plus className="w-3.5 h-3.5" /> Kiritish
+                </button>
+              )}
+            </div>
+            {vitals.length === 0 ? (
+              <div className="text-center py-6 text-slate-400 text-sm">Ko&apos;rsatkichlar kiritilmagan</div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="min-w-full text-xs">
+                  <thead><tr className="bg-slate-50 border-b border-slate-100">
+                    <th className="px-3 py-2 text-left text-slate-500 font-medium">Sana</th>
+                    <th className="px-3 py-2 text-left text-slate-500 font-medium">T°C</th>
+                    <th className="px-3 py-2 text-left text-slate-500 font-medium">Bosim</th>
+                    <th className="px-3 py-2 text-left text-slate-500 font-medium">Puls</th>
+                    <th className="px-3 py-2 text-left text-slate-500 font-medium">SpO2</th>
+                    <th className="px-3 py-2 text-left text-slate-500 font-medium">Vazn</th>
+                    <th className="px-3 py-2 text-left text-slate-500 font-medium">Kim</th>
+                  </tr></thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {vitals.map(v => (
+                      <tr key={v.id} className="hover:bg-slate-50">
+                        <td className="px-3 py-2 text-slate-500">{fmt(v.createdAt)}</td>
+                        <td className="px-3 py-2">
+                          {v.temperature != null ? (
+                            <span className={`font-medium ${v.temperature >= 37.5 ? 'text-red-600' : v.temperature < 36 ? 'text-blue-600' : 'text-slate-700'}`}>
+                              {v.temperature}°C
+                            </span>
+                          ) : '—'}
+                        </td>
+                        <td className="px-3 py-2 text-slate-700">
+                          {v.bloodPressureSystolic != null && v.bloodPressureDiastolic != null
+                            ? `${v.bloodPressureSystolic}/${v.bloodPressureDiastolic}`
+                            : '—'}
+                        </td>
+                        <td className="px-3 py-2">
+                          {v.pulse != null ? (
+                            <span className={`font-medium ${v.pulse > 100 || v.pulse < 60 ? 'text-orange-600' : 'text-slate-700'}`}>
+                              {v.pulse}
+                            </span>
+                          ) : '—'}
+                        </td>
+                        <td className="px-3 py-2">
+                          {v.oxygenSaturation != null ? (
+                            <span className={`font-medium ${v.oxygenSaturation < 95 ? 'text-red-600' : 'text-slate-700'}`}>
+                              {v.oxygenSaturation}%
+                            </span>
+                          ) : '—'}
+                        </td>
+                        <td className="px-3 py-2 text-slate-700">{v.weight != null ? `${v.weight} kg` : '—'}</td>
+                        <td className="px-3 py-2 text-slate-400">{v.recordedBy?.name ?? '—'}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+
+          {/* Doktor kunlik ko'rik qaydlari */}
+          <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+            <div className="flex items-center justify-between px-5 py-3 border-b border-slate-100 bg-slate-50">
+              <h3 className="text-sm font-semibold text-slate-800 flex items-center gap-2">
+                <Stethoscope className="w-4 h-4 text-purple-500" /> Doktor kunlik ko&apos;rik qaydlari
+                {inpatientNotes.length > 0 && <span className="text-xs bg-purple-100 text-purple-700 px-2 py-0.5 rounded-full">{inpatientNotes.length}</span>}
+              </h3>
+              {isDoctor && (
+                <button onClick={() => setShowNoteModal(true)}
+                  className="flex items-center gap-1.5 text-xs px-3 py-1.5 bg-purple-600 hover:bg-purple-700 text-white rounded-lg transition-colors font-medium">
+                  <Plus className="w-3.5 h-3.5" /> Yangi qayd
+                </button>
+              )}
+            </div>
+            {inpatientLoading ? (
+              <div className="flex justify-center py-6"><Loader2 className="w-5 h-5 animate-spin text-blue-500" /></div>
+            ) : inpatientNotes.length === 0 ? (
+              <div className="text-center py-6 text-slate-400 text-sm">Ko&apos;rik qaydlari yo&apos;q</div>
+            ) : (
+              <div className="divide-y divide-slate-100">
+                {inpatientNotes.map(note => (
+                  <div key={note.id} className="px-5 py-4">
+                    <div className="flex justify-between items-start mb-2">
+                      <div className="text-xs text-slate-500">
+                        <strong className="text-slate-700">{note.doctor.name}</strong>
+                        {note.doctor.specialization && <span className="text-slate-400"> · {note.doctor.specialization.name}</span>}
+                      </div>
+                      <span className="text-xs text-slate-400">{fmt(note.createdAt)}</span>
+                    </div>
+                    {note.diagnosis && (
+                      <div className="text-sm mb-1"><span className="text-xs font-semibold text-slate-500 uppercase">Tashxis: </span><span className="text-slate-800">{note.diagnosis}</span></div>
+                    )}
+                    {note.treatment && (
+                      <div className="text-sm mb-1"><span className="text-xs font-semibold text-slate-500 uppercase">Muolaja: </span><span className="text-slate-800">{note.treatment}</span></div>
+                    )}
+                    {note.notes && (
+                      <div className="text-sm text-slate-600">{note.notes}</div>
+                    )}
+                    {note.prescriptions.length > 0 && (
+                      <div className="mt-2 bg-slate-50 rounded-lg px-3 py-2">
+                        <div className="text-xs font-semibold text-slate-500 uppercase mb-1">Retsept</div>
+                        {note.prescriptions.map(p => (
+                          <div key={p.id} className="text-xs text-slate-700">
+                            {p.medicineName} — {p.dosage}, {p.duration}
+                            {p.instructions && <span className="text-slate-400"> ({p.instructions})</span>}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* -- Task Modal ------------------------------------------------------- */}
+      {showTaskModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-md">
+            <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100">
+              <h2 className="text-base font-semibold text-slate-800">Yangi muolaja buyurtmasi</h2>
+              <button onClick={() => { setShowTaskModal(false); setTaskError(null); }} className="p-1.5 text-slate-400 hover:text-slate-600 rounded-md"><X className="w-5 h-5" /></button>
+            </div>
+            <form onSubmit={handleCreateTask} className="px-6 py-4 space-y-4">
+              {taskError && <div className="flex items-center gap-2 text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2"><AlertCircle className="w-4 h-4 flex-shrink-0" />{taskError}</div>}
+              <div>
+                <label className="block text-xs font-medium text-slate-600 mb-1">Muolaja nomi <span className="text-red-500">*</span></label>
+                <input value={taskForm.title} onChange={e => setTaskForm(f => ({ ...f, title: e.target.value }))} required
+                  placeholder="Masalan: Ampisillin 500mg ukoli"
+                  className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-slate-600 mb-1">Izoh</label>
+                <textarea value={taskForm.description} onChange={e => setTaskForm(f => ({ ...f, description: e.target.value }))} rows={2}
+                  placeholder="Qo'shimcha ko'rsatmalar..."
+                  className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none" />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-slate-600 mb-1">Hamshira <span className="text-red-500">*</span></label>
+                <select value={taskForm.assigneeId} onChange={e => setTaskForm(f => ({ ...f, assigneeId: e.target.value }))} required
+                  className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+                  <option value="">Hamshirani tanlang</option>
+                  {nurseList.length === 0 && allStaffList.filter(s => ['NURSE','HEAD_NURSE'].includes(s.role)).map(s => (
+                    <option key={s.id} value={s.id}>{s.name} ({s.role})</option>
+                  ))}
+                  {nurseList.map(s => <option key={s.id} value={s.id}>{s.name} ({s.role})</option>)}
+                </select>
+              </div>
+              <div className="flex justify-end gap-3 pt-2">
+                <button type="button" onClick={() => { setShowTaskModal(false); setTaskError(null); }} className="px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100 rounded-lg">Bekor</button>
+                <button type="submit" disabled={savingTask}
+                  className="flex items-center gap-2 px-5 py-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-60 text-white text-sm font-medium rounded-lg transition-colors">
+                  {savingTask && <Loader2 className="w-4 h-4 animate-spin" />} Saqlash
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* -- Doctor Note Modal ----------------------------------------------- */}
+      {showNoteModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-md">
+            <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100">
+              <h2 className="text-base font-semibold text-slate-800">Kunlik ko&apos;rik qaydı</h2>
+              <button onClick={() => { setShowNoteModal(false); setNoteError(null); }} className="p-1.5 text-slate-400 hover:text-slate-600 rounded-md"><X className="w-5 h-5" /></button>
+            </div>
+            <form onSubmit={handleCreateNote} className="px-6 py-4 space-y-4">
+              {noteError && <div className="flex items-center gap-2 text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2"><AlertCircle className="w-4 h-4 flex-shrink-0" />{noteError}</div>}
+              <div>
+                <label className="block text-xs font-medium text-slate-600 mb-1">Tashxis</label>
+                <input value={noteForm.diagnosis} onChange={e => setNoteForm(f => ({ ...f, diagnosis: e.target.value }))}
+                  placeholder="Masalan: O'tkir bronxit"
+                  className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500" />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-slate-600 mb-1">Muolaja</label>
+                <input value={noteForm.treatment} onChange={e => setNoteForm(f => ({ ...f, treatment: e.target.value }))}
+                  placeholder="Masalan: Ampisillin 2x1"
+                  className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500" />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-slate-600 mb-1">Izohlar</label>
+                <textarea value={noteForm.notes} onChange={e => setNoteForm(f => ({ ...f, notes: e.target.value }))} rows={3}
+                  placeholder="Bemorning holati, kuzatuvlar..."
+                  className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500 resize-none" />
+              </div>
+              <div className="flex justify-end gap-3 pt-2">
+                <button type="button" onClick={() => { setShowNoteModal(false); setNoteError(null); }} className="px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100 rounded-lg">Bekor</button>
+                <button type="submit" disabled={savingInpatientNote}
+                  className="flex items-center gap-2 px-5 py-2 bg-purple-600 hover:bg-purple-700 disabled:opacity-60 text-white text-sm font-medium rounded-lg transition-colors">
+                  {savingInpatientNote && <Loader2 className="w-4 h-4 animate-spin" />} Saqlash
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* -- Vitals Modal ---------------------------------------------------- */}
+      {showVitalsModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-md">
+            <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100">
+              <h2 className="text-base font-semibold text-slate-800">Ko&apos;rsatkichlarni kiritish</h2>
+              <button onClick={() => { setShowVitalsModal(false); setVitalsError(null); }} className="p-1.5 text-slate-400 hover:text-slate-600 rounded-md"><X className="w-5 h-5" /></button>
+            </div>
+            <form onSubmit={handleSaveVitals} className="px-6 py-4 space-y-4">
+              {vitalsError && <div className="flex items-center gap-2 text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2"><AlertCircle className="w-4 h-4 flex-shrink-0" />{vitalsError}</div>}
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-medium text-slate-600 mb-1">Harorat (°C)</label>
+                  <input type="number" step="0.1" value={vitalsForm.temperature} onChange={e => setVitalsForm(f => ({ ...f, temperature: e.target.value }))}
+                    placeholder="36.6" className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-rose-400" />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-slate-600 mb-1">Puls (urish/daqiqa)</label>
+                  <input type="number" value={vitalsForm.pulse} onChange={e => setVitalsForm(f => ({ ...f, pulse: e.target.value }))}
+                    placeholder="72" className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-rose-400" />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-slate-600 mb-1">Bosim sistolik (mmHg)</label>
+                  <input type="number" value={vitalsForm.bloodPressureSystolic} onChange={e => setVitalsForm(f => ({ ...f, bloodPressureSystolic: e.target.value }))}
+                    placeholder="120" className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-rose-400" />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-slate-600 mb-1">Bosim diastolik (mmHg)</label>
+                  <input type="number" value={vitalsForm.bloodPressureDiastolic} onChange={e => setVitalsForm(f => ({ ...f, bloodPressureDiastolic: e.target.value }))}
+                    placeholder="80" className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-rose-400" />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-slate-600 mb-1">SpO2 (%)</label>
+                  <input type="number" step="0.1" value={vitalsForm.oxygenSaturation} onChange={e => setVitalsForm(f => ({ ...f, oxygenSaturation: e.target.value }))}
+                    placeholder="98" className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-rose-400" />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-slate-600 mb-1">Vazn (kg)</label>
+                  <input type="number" step="0.1" value={vitalsForm.weight} onChange={e => setVitalsForm(f => ({ ...f, weight: e.target.value }))}
+                    placeholder="70" className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-rose-400" />
+                </div>
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-slate-600 mb-1">Izoh</label>
+                <textarea value={vitalsForm.notes} onChange={e => setVitalsForm(f => ({ ...f, notes: e.target.value }))} rows={2}
+                  placeholder="Qo'shimcha kuzatuvlar..."
+                  className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-rose-400 resize-none" />
+              </div>
+              <div className="flex justify-end gap-3 pt-2">
+                <button type="button" onClick={() => { setShowVitalsModal(false); setVitalsError(null); }} className="px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100 rounded-lg">Bekor</button>
+                <button type="submit" disabled={savingVitals}
+                  className="flex items-center gap-2 px-5 py-2 bg-rose-600 hover:bg-rose-700 disabled:opacity-60 text-white text-sm font-medium rounded-lg transition-colors">
+                  {savingVitals && <Loader2 className="w-4 h-4 animate-spin" />} Saqlash
+                </button>
+              </div>
+            </form>
+          </div>
         </div>
       )}
 
@@ -1966,6 +2624,13 @@ export default function PatientDetailPage({ params }: PageProps) {
               <textarea value={editForm.allergies}
                 onChange={e => setEditForm(f => f ? { ...f, allergies: e.target.value } : f)}
                 rows={2}
+                className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+            </div>
+            <div className="col-span-2">
+              <label className="block text-xs font-medium text-slate-600 mb-1">Surunkali kasalliklar</label>
+              <textarea value={editForm.chronicConditions}
+                onChange={e => setEditForm(f => f ? { ...f, chronicConditions: e.target.value } : f)}
+                rows={2} placeholder="Diabet, gipertoniya, astma..."
                 className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
             </div>
             <div className="col-span-2">
@@ -2188,26 +2853,51 @@ function Modal({ title, onClose, children }: { title: string; onClose: () => voi
   );
 }
 
-function printPrescription(rx: { medicineName: string; dosage: string; duration: string; instructions?: string; createdAt: string }) {
+async function printPrescription(rx: { medicineName: string; dosage: string; duration: string; instructions?: string; createdAt: string }) {
+  let logoDataUrl = '';
+  try {
+    const logoRes = await fetch('/api/clinic-logo');
+    if (logoRes.ok) { const j = await logoRes.json(); logoDataUrl = j.dataUrl ?? ''; }
+  } catch { /* logosiz */ }
+
+  const logoHtml = logoDataUrl
+    ? `<div style="text-align:center;margin-bottom:8px"><img src="${logoDataUrl}" style="max-height:70px;max-width:180px;object-fit:contain"/></div>`
+    : '';
+
   const html = `<html><head><meta charset="utf-8"/><title>Retsept</title>
-    <style>body{font-family:sans-serif;padding:24px}h2{margin-bottom:16px}p{margin:8px 0}</style>
+    <style>
+      body{font-family:sans-serif;padding:24px;max-width:400px;margin:0 auto}
+      h2{margin:8px 0 16px;text-align:center;font-size:18px}
+      .divider{border:none;border-top:1px dashed #999;margin:12px 0}
+      p{margin:8px 0}
+      .clinic-name{text-align:center;font-size:13px;color:#555;margin-bottom:4px}
+      img{print-color-adjust:exact;-webkit-print-color-adjust:exact}
+      @media print{body{padding:16px}}
+    </style>
     </head><body>
+    ${logoHtml}
+    <div class="clinic-name">BOLAJON KLINIKASI</div>
+    <hr class="divider"/>
     <h2>Retsept</h2>
     <p><strong>Dori:</strong> ${rx.medicineName}</p>
     <p><strong>Dozasi:</strong> ${rx.dosage}</p>
     <p><strong>Muddati:</strong> ${rx.duration}</p>
     ${rx.instructions ? `<p><strong>Ko'rsatma:</strong> ${rx.instructions}</p>` : ''}
-    <p style="margin-top:24px;color:#888;font-size:12px">Sana: ${new Date(rx.createdAt).toLocaleDateString('uz-UZ')}</p>
+    <hr class="divider"/>
+    <p style="color:#888;font-size:12px">Sana: ${new Date(rx.createdAt).toLocaleDateString('uz-UZ')}</p>
+    <p style="margin-top:32px;font-size:12px">Shifokor imzosi: ___________</p>
     </body></html>`;
   const iframe = document.createElement('iframe');
-  iframe.style.cssText = 'position:fixed;top:-9999px;left:-9999px;width:400px;height:400px;border:none;';
+  iframe.style.cssText = 'position:fixed;top:-9999px;left:-9999px;width:400px;height:500px;border:none;';
   document.body.appendChild(iframe);
   const doc = iframe.contentDocument ?? iframe.contentWindow?.document;
   if (!doc) { document.body.removeChild(iframe); return; }
   doc.open(); doc.write(html); doc.close();
-  iframe.contentWindow?.focus();
-  iframe.contentWindow?.print();
-  setTimeout(() => { try { document.body.removeChild(iframe); } catch { /* ignore */ } }, 2000);
+  setTimeout(() => {
+    iframe.contentWindow?.focus();
+    iframe.contentWindow?.print();
+    setTimeout(() => { try { document.body.removeChild(iframe); } catch { /* ignore */ } }, 2000);
+  }, 300);
 }
 
 function printPrescriptions(
