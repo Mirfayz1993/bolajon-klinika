@@ -1,8 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getServerSession } from 'next-auth';
-import { authOptions } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 import { writeAuditLog } from '@/lib/audit';
+import { requireRole } from '@/lib/api-auth';
+import { validateBody } from '@/lib/validate';
+import { z } from 'zod';
+
+const paySchema = z.object({
+  method: z.enum(['CASH', 'CARD', 'BANK_TRANSFER', 'CLICK', 'PAYME']).default('CASH'),
+});
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const db = prisma as any;
@@ -27,22 +32,15 @@ export async function POST(
   req: NextRequest,
   { params }: { params: Promise<{ id: string; serviceId: string }> }
 ) {
-  const session = await getServerSession(authOptions);
-  if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-
-  const ALLOWED = ['ADMIN', 'RECEPTIONIST', 'HEAD_DOCTOR', 'HEAD_NURSE'];
-  if (!ALLOWED.includes(session.user.role)) {
-    return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
-  }
+  const auth = await requireRole(['ADMIN', 'RECEPTIONIST', 'HEAD_DOCTOR', 'HEAD_NURSE']);
+  if (!auth.ok) return auth.response;
+  const { session } = auth;
 
   const { id: patientId, serviceId } = await params;
-  const body = await req.json() as { method: string };
 
-  const method = body.method ?? 'CASH';
-  const VALID_METHODS = ['CASH', 'CARD', 'BANK_TRANSFER', 'CLICK', 'PAYME'];
-  if (!VALID_METHODS.includes(method)) {
-    return NextResponse.json({ error: "Notogri tolov usuli" }, { status: 400 });
-  }
+  const parsed = await validateBody(req, paySchema);
+  if (!parsed.ok) return parsed.response;
+  const { method } = parsed.data;
 
   try {
     const svc = await db.assignedService.findFirst({ where: { id: serviceId, patientId } });

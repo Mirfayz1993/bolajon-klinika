@@ -36,7 +36,18 @@ export const patientUpdateSchema = patientCreateSchema.partial();
 
 export const admissionCreateSchema = z.object({
   patientId: z.string().min(1),
-  bedId: z.string().min(1).optional(),
+  bedId: z.string().min(1),
+  doctorId: z.string().min(1).optional(),
+  diagnosis: z.string().trim().max(2000).optional(),
+  dailyRate: z.number().nonnegative(),
+});
+
+export const admissionDischargeSchema = z.object({
+  reason: z.string().trim().max(1000).optional(),
+  notes: z.string().trim().max(2000).optional(),
+});
+
+export const admissionUpdateSchema = z.object({
   diagnosis: z.string().trim().max(2000).optional(),
   notes: z.string().trim().max(2000).optional(),
 });

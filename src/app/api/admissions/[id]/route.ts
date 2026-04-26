@@ -1,17 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getServerSession } from 'next-auth';
-import { authOptions } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 import { calculateInpatientDays } from '@/lib/business-logic';
-
-const ALLOWED_ROLES = ['ADMIN', 'HEAD_DOCTOR', 'HEAD_NURSE'];
+import { requireRole, requireSession } from '@/lib/api-auth';
+import { validateBody } from '@/lib/validate';
+import { admissionUpdateSchema } from '@/lib/schemas';
 
 export async function GET(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const session = await getServerSession(authOptions);
-  if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  const auth = await requireSession();
+  if (!auth.ok) return auth.response;
 
   try {
     const { id } = await params;
@@ -58,12 +57,8 @@ export async function PUT(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const session = await getServerSession(authOptions);
-  if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-
-  if (!ALLOWED_ROLES.includes(session.user.role)) {
-    return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
-  }
+  const auth = await requireRole(['ADMIN', 'HEAD_DOCTOR', 'HEAD_NURSE']);
+  if (!auth.ok) return auth.response;
 
   try {
     const { id } = await params;
@@ -80,12 +75,9 @@ export async function PUT(
       );
     }
 
-    const body = await req.json() as {
-      diagnosis?: string;
-      notes?: string;
-    };
-
-    const { diagnosis, notes } = body;
+    const parsed = await validateBody(req, admissionUpdateSchema);
+    if (!parsed.ok) return parsed.response;
+    const { diagnosis, notes } = parsed.data;
 
     const updateData: { notes?: string } = {};
 

@@ -1,23 +1,24 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getServerSession } from 'next-auth';
-import { authOptions } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 import { BedStatus } from '@prisma/client';
 import type { Admission } from '@prisma/client';
 import { calculateInpatientDays } from '@/lib/business-logic';
 import { writeAuditLog } from '@/lib/audit';
+import { requireRole } from '@/lib/api-auth';
+import { validateBody } from '@/lib/validate';
+import { z } from 'zod';
+
+const dischargeSchema = z.object({
+  dischargeNotes: z.string().trim().max(2000).optional(),
+});
 
 export async function POST(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const session = await getServerSession(authOptions);
-  if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-
-  const ALLOWED_ROLES = ['ADMIN', 'HEAD_DOCTOR', 'HEAD_NURSE'];
-  if (!ALLOWED_ROLES.includes(session.user.role)) {
-    return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
-  }
+  const auth = await requireRole(['ADMIN', 'HEAD_DOCTOR', 'HEAD_NURSE']);
+  if (!auth.ok) return auth.response;
+  const { session } = auth;
 
   try {
     const { id } = await params;
@@ -45,11 +46,9 @@ export async function POST(
       );
     }
 
-    const body = await req.json() as {
-      dischargeNotes?: string;
-    };
-
-    const { dischargeNotes } = body;
+    const parsed = await validateBody(req, dischargeSchema);
+    if (!parsed.ok) return parsed.response;
+    const { dischargeNotes } = parsed.data;
 
     const dischargeAt = new Date();
 

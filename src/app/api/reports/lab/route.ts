@@ -1,19 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getServerSession } from 'next-auth';
-import { authOptions } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
-import { Role, LabTestStatus } from '@prisma/client';
-
-const ALLOWED_ROLES: Role[] = [Role.ADMIN, Role.HEAD_DOCTOR, Role.HEAD_LAB_TECH];
+import { LabTestStatus } from '@prisma/client';
+import { requireRole } from '@/lib/api-auth';
 
 export async function GET(req: NextRequest) {
-  const session = await getServerSession(authOptions);
-  if (!session) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  }
-  if (!ALLOWED_ROLES.includes(session.user.role as Role)) {
-    return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
-  }
+  const auth = await requireRole(['ADMIN', 'HEAD_DOCTOR', 'HEAD_LAB_TECH']);
+  if (!auth.ok) return auth.response;
 
   try {
     const { searchParams } = new URL(req.url);

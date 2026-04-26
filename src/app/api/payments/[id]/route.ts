@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getServerSession } from 'next-auth';
-import { authOptions } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 import { PaymentStatus } from '@prisma/client';
+import { requireRole, requireSession } from '@/lib/api-auth';
+import { validateBody } from '@/lib/validate';
+import { z } from 'zod';
 
 const ALLOWED_TRANSITIONS: Record<string, string[]> = {
   PENDING: ['PAID', 'PARTIAL', 'CANCELLED'],
@@ -12,14 +13,20 @@ const ALLOWED_TRANSITIONS: Record<string, string[]> = {
   REFUNDED: [],
 };
 
-const ALLOWED_ROLES_FOR_PUT = ['ADMIN', 'HEAD_DOCTOR', 'RECEPTIONIST'];
+const paymentUpdateSchema = z.object({
+  status: z.nativeEnum(PaymentStatus).optional(),
+  description: z.string().trim().max(2000).optional(),
+  confirmedFullPayment: z.boolean().optional(),
+}).refine((d) => d.status !== undefined || d.description !== undefined, {
+  message: 'Kamida status yoki description kerak',
+});
 
 export async function GET(
   _req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const session = await getServerSession(authOptions);
-  if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  const auth = await requireSession();
+  if (!auth.ok) return auth.response;
 
   try {
     const { id } = await params;
@@ -65,35 +72,16 @@ export async function PUT(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const session = await getServerSession(authOptions);
-  if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-
-  const userRole = (session.user as { role?: string }).role ?? '';
-  if (!ALLOWED_ROLES_FOR_PUT.includes(userRole)) {
-    return NextResponse.json({ error: 'Ruxsat yo\'q' }, { status: 403 });
-  }
+  const auth = await requireRole(['ADMIN', 'HEAD_DOCTOR', 'RECEPTIONIST']);
+  if (!auth.ok) return auth.response;
 
   try {
     const { id } = await params;
 
-    const body = await req.json() as {
-      status?: PaymentStatus;
-      description?: string;
-      confirmedFullPayment?: boolean;
-    };
-
+    const parsed = await validateBody(req, paymentUpdateSchema);
+    if (!parsed.ok) return parsed.response;
+    const body = parsed.data;
     const { status, description } = body;
-
-    if (status === undefined && description === undefined) {
-      return NextResponse.json(
-        { error: 'Kamida status yoki description kerak' },
-        { status: 400 }
-      );
-    }
-
-    if (status !== undefined && !Object.values(PaymentStatus).includes(status)) {
-      return NextResponse.json({ error: 'status noto\'g\'ri' }, { status: 400 });
-    }
 
     const existing = await prisma.payment.findUnique({ where: { id } });
     if (!existing) {

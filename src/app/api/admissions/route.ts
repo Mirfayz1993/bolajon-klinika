@@ -1,14 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getServerSession } from 'next-auth';
-import { authOptions } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 import { BedStatus, Prisma } from '@prisma/client';
-
-const ALLOWED_ROLES = ['ADMIN', 'HEAD_DOCTOR', 'HEAD_NURSE'];
+import { requireRole, requireSession } from '@/lib/api-auth';
+import { validateBody } from '@/lib/validate';
+import { admissionCreateSchema } from '@/lib/schemas';
 
 export async function GET(req: NextRequest) {
-  const session = await getServerSession(authOptions);
-  if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  const auth = await requireSession();
+  if (!auth.ok) return auth.response;
 
   try {
     const { searchParams } = new URL(req.url);
@@ -69,30 +68,13 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
-  const session = await getServerSession(authOptions);
-  if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-
-  if (!ALLOWED_ROLES.includes(session.user.role)) {
-    return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
-  }
+  const auth = await requireRole(['ADMIN', 'HEAD_DOCTOR', 'HEAD_NURSE']);
+  if (!auth.ok) return auth.response;
 
   try {
-    const body = await req.json() as {
-      patientId?: string;
-      bedId?: string;
-      doctorId?: string;
-      diagnosis?: string;
-      dailyRate?: number;
-    };
-
-    const { patientId, bedId, diagnosis, dailyRate } = body;
-
-    if (!patientId || !bedId || !dailyRate) {
-      return NextResponse.json(
-        { error: 'patientId, bedId va dailyRate majburiy' },
-        { status: 400 }
-      );
-    }
+    const parsed = await validateBody(req, admissionCreateSchema);
+    if (!parsed.ok) return parsed.response;
+    const { patientId, bedId, diagnosis, dailyRate } = parsed.data;
 
     const patient = await prisma.patient.findUnique({ where: { id: patientId } });
     if (!patient) {

@@ -1,9 +1,18 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getServerSession } from 'next-auth';
-import { authOptions } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
+import { requireRole, requireSession } from '@/lib/api-auth';
+import { validateBody } from '@/lib/validate';
+import { z } from 'zod';
 
-const ALLOWED = ['ADMIN', 'RECEPTIONIST', 'HEAD_DOCTOR', 'HEAD_NURSE', 'DOCTOR', 'NURSE', 'HEAD_LAB_TECH', 'LAB_TECH', 'SPEECH_THERAPIST', 'MASSAGE_THERAPIST', 'SANITARY_WORKER'];
+const ATTENDANCE_ROLES = [
+  'ADMIN', 'RECEPTIONIST', 'HEAD_DOCTOR', 'HEAD_NURSE', 'DOCTOR', 'NURSE',
+  'HEAD_LAB_TECH', 'LAB_TECH', 'SPEECH_THERAPIST', 'MASSAGE_THERAPIST', 'SANITARY_WORKER',
+] as const;
+
+const checkInSchema = z.object({
+  userId: z.string().min(1),
+  roomId: z.string().min(1).optional(),
+});
 
 function dayStart(d: Date) {
   const s = new Date(d);
@@ -18,8 +27,8 @@ function dayEnd(d: Date) {
 
 // GET /api/attendance?date=2026-04-07
 export async function GET(req: NextRequest) {
-  const session = await getServerSession(authOptions);
-  if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  const auth = await requireSession();
+  if (!auth.ok) return auth.response;
 
   const dateParam = new URL(req.url).searchParams.get('date');
   const day = dateParam ? new Date(dateParam) : new Date();
@@ -45,14 +54,12 @@ export async function GET(req: NextRequest) {
 
 // POST /api/attendance  { userId, roomId? }  → check-in
 export async function POST(req: NextRequest) {
-  const session = await getServerSession(authOptions);
-  if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  if (!ALLOWED.includes(session.user.role)) {
-    return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
-  }
+  const auth = await requireRole(ATTENDANCE_ROLES);
+  if (!auth.ok) return auth.response;
 
-  const body = await req.json() as { userId: string; roomId?: string };
-  if (!body.userId) return NextResponse.json({ error: 'userId majburiy' }, { status: 400 });
+  const parsed = await validateBody(req, checkInSchema);
+  if (!parsed.ok) return parsed.response;
+  const body = parsed.data;
 
   const today = new Date();
 
