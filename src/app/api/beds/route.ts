@@ -15,10 +15,12 @@ export async function GET(req: NextRequest) {
 
     const ambulatoryParam = searchParams.get('ambulatory');
 
+    const floorParam = searchParams.get('floor');
+
     const where: {
       roomId?: string;
       status?: BedStatus;
-      room?: { isAmbulatory?: boolean };
+      room?: { isAmbulatory?: boolean; floor?: number };
     } = {};
 
     if (roomId) where.roomId = roomId;
@@ -34,13 +36,28 @@ export async function GET(req: NextRequest) {
     }
 
     if (ambulatoryParam === 'true') {
-      where.room = { isAmbulatory: true };
+      where.room = { ...where.room, isAmbulatory: true };
     } else if (ambulatoryParam === 'false') {
-      where.room = { isAmbulatory: false };
+      where.room = { ...where.room, isAmbulatory: false };
+    }
+
+    if (floorParam) {
+      const floorNum = parseInt(floorParam, 10);
+      if (!isNaN(floorNum)) {
+        where.room = { ...where.room, floor: floorNum };
+      }
+    }
+
+    // status=AVAILABLE so'rovida aktiv admissionli to'shaklarni ham chiqarib tashlash
+    const whereWithAdmission: typeof where & {
+      NOT?: { admissions: { some: { dischargeDate: null } } };
+    } = { ...where };
+    if (statusParam === 'AVAILABLE') {
+      whereWithAdmission.NOT = { admissions: { some: { dischargeDate: null } } };
     }
 
     const beds = await prisma.bed.findMany({
-      where,
+      where: whereWithAdmission,
       include: {
         room: {
           select: {

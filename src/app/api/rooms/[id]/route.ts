@@ -86,6 +86,10 @@ export async function PUT(
       }
     }
 
+    // floor o'zgarsa isAmbulatory avtomatik qayta hisoblanadi
+    const effectiveFloor = floor ?? existing.floor;
+    const computedIsAmbulatory = floor !== undefined ? effectiveFloor === 3 : (isAmbulatory ?? undefined);
+
     const room = await prisma.room.update({
       where: { id },
       data: {
@@ -94,7 +98,7 @@ export async function PUT(
         type: type ?? undefined,
         capacity: capacity ?? undefined,
         isActive: isActive ?? undefined,
-        isAmbulatory: isAmbulatory ?? undefined,
+        isAmbulatory: computedIsAmbulatory,
       },
       include: {
         beds: true,

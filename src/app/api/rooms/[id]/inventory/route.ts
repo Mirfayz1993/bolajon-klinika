@@ -47,17 +47,49 @@ export async function POST(req: NextRequest, { params }: Ctx) {
     const room = await prisma.room.findUnique({ where: { id } });
     if (!room) return NextResponse.json({ error: 'Xona topilmadi' }, { status: 404 });
 
-    const item = await prisma.roomInventoryItem.create({
-      data: {
-        roomId: id,
-        name,
-        description: body.description?.trim() || null,
-        quantity,
-        unitPrice: body.unitPrice ? body.unitPrice : null,
-        purchaseDate: body.purchaseDate ? new Date(body.purchaseDate) : new Date(),
-        addedById: session.user.id,
-      },
-      include: { addedBy: { select: { name: true } } },
+    const totalAmount = body.unitPrice ? body.unitPrice * quantity : null;
+
+    const item = await prisma.$transaction(async (tx) => {
+      const created = await tx.roomInventoryItem.create({
+        data: {
+          roomId: id,
+          name,
+          description: body.description?.trim() || null,
+          quantity,
+          unitPrice: body.unitPrice ? body.unitPrice : null,
+          purchaseDate: body.purchaseDate ? new Date(body.purchaseDate) : new Date(),
+          addedById: session.user.id,
+        },
+        include: { addedBy: { select: { name: true } } },
+      });
+
+      // Inventar tarixi yozuvi
+      await tx.roomInventoryLog.create({
+        data: {
+          roomId: id,
+          inventoryItemId: created.id,
+          action: 'ADDED',
+          quantity,
+          comment: body.description?.trim() || null,
+          performedById: session.user.id,
+        },
+      });
+
+      // Agar narx bo'lsa — xarajat yozuvi (Moliya/Xarajatlar)
+      if (totalAmount && totalAmount > 0) {
+        await tx.roomExpense.create({
+          data: {
+            roomId: id,
+            type: 'INVENTORY',
+            amount: totalAmount,
+            description: `Inventar xarajati: ${name} (${quantity} dona)`,
+            date: body.purchaseDate ? new Date(body.purchaseDate) : new Date(),
+            createdById: session.user.id,
+          },
+        });
+      }
+
+      return created;
     });
 
     return NextResponse.json(item, { status: 201 });

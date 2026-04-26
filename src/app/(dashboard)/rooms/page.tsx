@@ -15,6 +15,7 @@ import {
   Trash2,
   Info,
 } from 'lucide-react';
+import { floorLabel } from '@/lib/utils';
 
 // --- Types --------------------------------------------------------------------
 
@@ -83,19 +84,8 @@ function BedCard({
   const { t } = useLanguage();
   const patient = bed.admissions?.[0]?.patient;
 
-  if (bed.status === 'AVAILABLE') {
-    return (
-      <div className="flex flex-col items-center gap-0.5 p-2 bg-green-50 border border-green-200 rounded-lg min-w-[68px]">
-        <BedDouble className="w-4 h-4 text-green-600" />
-        <span className="text-xs font-semibold text-green-700">{bed.bedNumber}</span>
-        <span className="text-[10px] font-medium text-green-600 bg-green-100 px-1.5 py-0.5 rounded-full whitespace-nowrap">
-          {t.rooms.available}
-        </span>
-      </div>
-    );
-  }
-
-  if (bed.status === 'OCCUPIED' && patient) {
+  // Aktiv admission mavjud bo'lsa — har qanday bed.status bo'lsa ham band deb ko'rsat
+  if (patient) {
     return (
       <button
         onClick={() => onOccupiedClick(patient.id, isAmbulatory)}
@@ -111,12 +101,24 @@ function BedCard({
     );
   }
 
+  if (bed.status === 'MAINTENANCE') {
+    return (
+      <div className="flex flex-col items-center gap-0.5 p-2 bg-yellow-50 border border-yellow-200 rounded-lg min-w-[68px]">
+        <BedDouble className="w-4 h-4 text-yellow-600" />
+        <span className="text-xs font-semibold text-yellow-700">{bed.bedNumber}</span>
+        <span className="text-[10px] font-medium text-yellow-600 bg-yellow-100 px-1.5 py-0.5 rounded-full whitespace-nowrap">
+          {t.rooms.maintenance}
+        </span>
+      </div>
+    );
+  }
+
   return (
-    <div className="flex flex-col items-center gap-0.5 p-2 bg-yellow-50 border border-yellow-200 rounded-lg min-w-[68px]">
-      <BedDouble className="w-4 h-4 text-yellow-600" />
-      <span className="text-xs font-semibold text-yellow-700">{bed.bedNumber}</span>
-      <span className="text-[10px] font-medium text-yellow-600 bg-yellow-100 px-1.5 py-0.5 rounded-full whitespace-nowrap">
-        {bed.status === 'MAINTENANCE' ? t.rooms.maintenance : t.rooms.occupied}
+    <div className="flex flex-col items-center gap-0.5 p-2 bg-green-50 border border-green-200 rounded-lg min-w-[68px]">
+      <BedDouble className="w-4 h-4 text-green-600" />
+      <span className="text-xs font-semibold text-green-700">{bed.bedNumber}</span>
+      <span className="text-[10px] font-medium text-green-600 bg-green-100 px-1.5 py-0.5 rounded-full whitespace-nowrap">
+        {t.rooms.available}
       </span>
     </div>
   );
@@ -319,7 +321,7 @@ export default function RoomsPage() {
                 : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-50'
             }`}
           >
-            {f}{t.rooms.floorLabel}
+            {floorLabel(f)}
           </button>
         ))}
 
@@ -388,7 +390,7 @@ export default function RoomsPage() {
                         {t.rooms.number} {room.roomNumber}
                       </h3>
                       <span className="text-xs text-slate-500">
-                        {room.floor}{t.rooms.floorLabel}
+                        {floorLabel(room.floor)}
                       </span>
                     </div>
                   </div>
@@ -442,7 +444,7 @@ export default function RoomsPage() {
 
                 {/* Actions — admin only */}
                 {isAdmin && (
-                  <div className="flex items-center gap-2 mt-auto pt-3 border-t border-slate-100">
+                  <div className="flex items-center gap-2 mt-auto pt-3 border-t border-slate-100 flex-wrap">
                     <button
                       onClick={() => router.push(`/rooms/${room.id}`)}
                       className="flex items-center gap-1.5 text-xs font-medium text-blue-600 hover:text-blue-700 hover:bg-blue-50 px-3 py-1.5 rounded-lg transition-colors"
@@ -457,6 +459,40 @@ export default function RoomsPage() {
                       <Pencil className="w-3.5 h-3.5" />
                       {t.common.edit}
                     </button>
+                    {/* Krovat qo'shish */}
+                    <button
+                      onClick={async (e) => {
+                        e.stopPropagation();
+                        const nextNum = String(room.beds.length + 1);
+                        const res = await fetch(`/api/rooms/${room.id}/beds`, {
+                          method: 'POST',
+                          headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify({ bedNumber: nextNum }),
+                        });
+                        if (res.ok) fetchRooms();
+                        else { const d = await res.json(); alert(d.error ?? 'Xatolik'); }
+                      }}
+                      className="flex items-center gap-1 text-xs font-medium text-green-600 hover:text-green-700 hover:bg-green-50 px-2 py-1.5 rounded-lg transition-colors"
+                      title="Krovat qo'shish"
+                    >
+                      <Plus className="w-3.5 h-3.5" /> Krovat
+                    </button>
+                    {/* Oxirgi bo'sh krovatni o'chirish */}
+                    {room.beds.some(b => b.status === 'AVAILABLE' && b.admissions.length === 0) && (
+                      <button
+                        onClick={async (e) => {
+                          e.stopPropagation();
+                          if (!confirm("Oxirgi bo'sh krovatni o'chirasizmi?")) return;
+                          const res = await fetch(`/api/rooms/${room.id}/beds`, { method: 'DELETE' });
+                          if (res.ok) fetchRooms();
+                          else { const d = await res.json(); alert(d.error ?? 'Xatolik'); }
+                        }}
+                        className="flex items-center gap-1 text-xs font-medium text-orange-500 hover:text-orange-700 hover:bg-orange-50 px-2 py-1.5 rounded-lg transition-colors"
+                        title="Bo'sh krovatni o'chirish"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" /> Krovat
+                      </button>
+                    )}
                     <button
                       onClick={(e) => handleDeleteRoom(room.id, e)}
                       className="flex items-center gap-1.5 text-xs font-medium text-red-500 hover:text-red-700 hover:bg-red-50 px-3 py-1.5 rounded-lg transition-colors ml-auto"
@@ -511,7 +547,7 @@ export default function RoomsPage() {
                   >
                     {FLOORS.map((f) => (
                       <option key={f} value={f}>
-                        {f}{t.rooms.floorLabel}
+                        {floorLabel(f)}
                       </option>
                     ))}
                   </select>

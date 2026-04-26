@@ -13,6 +13,9 @@ export async function PUT(req: NextRequest, { params }: Ctx) {
 
   try {
     const body = await req.json() as {
+      action?: 'WRITE_OFF';
+      writeOffQuantity?: number;
+      comment?: string;
       name?: string;
       description?: string;
       quantity?: number;
@@ -22,6 +25,37 @@ export async function PUT(req: NextRequest, { params }: Ctx) {
 
     const existing = await prisma.roomInventoryItem.findFirst({ where: { id: itemId, roomId: id } });
     if (!existing) return NextResponse.json({ error: 'Topilmadi' }, { status: 404 });
+
+    // Hisobdan chiqarish
+    if (body.action === 'WRITE_OFF') {
+      const writeOffQty = Number(body.writeOffQuantity ?? 1);
+      if (writeOffQty < 1) return NextResponse.json({ error: 'Miqdor 1 dan kam bo\'lmasin' }, { status: 400 });
+      if (writeOffQty > existing.quantity) return NextResponse.json({ error: 'Mavjud miqdordan ko\'p' }, { status: 400 });
+
+      const newQty = existing.quantity - writeOffQty;
+      const updated = await prisma.$transaction(async (tx) => {
+        const upd = await tx.roomInventoryItem.update({
+          where: { id: itemId },
+          data: {
+            quantity: newQty,
+            ...(newQty === 0 && { status: 'WRITTEN_OFF' }),
+          },
+          include: { addedBy: { select: { name: true } } },
+        });
+        await tx.roomInventoryLog.create({
+          data: {
+            roomId: id,
+            inventoryItemId: itemId,
+            action: 'WRITTEN_OFF',
+            quantity: writeOffQty,
+            comment: body.comment?.trim() || null,
+            performedById: session.user.id,
+          },
+        });
+        return upd;
+      });
+      return NextResponse.json(updated);
+    }
 
     const updated = await prisma.roomInventoryItem.update({
       where: { id: itemId },
