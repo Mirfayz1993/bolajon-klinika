@@ -350,7 +350,17 @@ function FinancialTab() {
             <SimpleTable
               headers={[t.payments.category, t.common.total + " (" + t.common.sum + ")"]}
               rows={Object.entries(data.byCategory).map(([category, total]) => [
-                category,
+                ({
+                  CHECKUP: "Qabulxona / Ko'rik",
+                  LAB_TEST: "Laboratoriya tahlili",
+                  SPEECH_THERAPY: "Logoped",
+                  MASSAGE: "Massaj",
+                  TREATMENT: "Muolaja",
+                  INPATIENT: "Statsionar",
+                  AMBULATORY: "Ambulator",
+                  MEDICINE: "Dori",
+                  OTHER: "Boshqa",
+                } as Record<string, string>)[category] ?? category,
                 formatMoney(total),
               ])}
               noDataLabel={t.reports.noData}
@@ -365,7 +375,13 @@ function FinancialTab() {
             <SimpleTable
               headers={[t.payments.method, t.common.total + " (" + t.common.sum + ")"]}
               rows={Object.entries(data.byMethod).map(([method, total]) => [
-                method,
+                ({
+                  CASH: "Naqd pul",
+                  CARD: "Karta",
+                  BANK_TRANSFER: "Bank o'tkazma",
+                  CLICK: "Click",
+                  PAYME: "Payme",
+                } as Record<string, string>)[method] ?? method,
                 formatMoney(total),
               ])}
               noDataLabel={t.reports.noData}

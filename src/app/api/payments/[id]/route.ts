@@ -34,7 +34,15 @@ export async function GET(
           select: { id: true, type: true },
         },
         admission: {
-          select: { id: true },
+          select: {
+            id: true,
+            bed: {
+              select: {
+                bedNumber: true,
+                room: { select: { roomNumber: true, floor: true } },
+              },
+            },
+          },
         },
         receivedBy: {
           select: { id: true, name: true },

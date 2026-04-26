@@ -25,15 +25,6 @@ export const MANAGED_PAGES: NavPage[] = [
     ],
   },
   {
-    path: '/appointments',
-    label: 'Qabullar',
-    actions: [
-      { key: 'create', label: "Qo'shish" },
-      { key: 'edit', label: 'Tahrirlash' },
-      { key: 'cancel', label: 'Bekor qilish' },
-    ],
-  },
-  {
     path: '/payments',
     label: "To'lovlar",
     actions: [
@@ -86,12 +77,19 @@ export const MANAGED_PAGES: NavPage[] = [
   { path: '/schedule', label: 'Jadval' },
   { path: '/attendance', label: 'Davomat' },
   { path: '/tasks', label: 'Vazifalar' },
-  { path: '/doctor-queue', label: 'Doktor navbati' },
+  { path: '/doctor-queue', label: 'Mutaxassis navbati' },
   { path: '/reports', label: 'Hisobotlar' },
   { path: '/settings', label: 'Sozlamalar' },
   { path: '/audit-logs', label: 'Audit log' },
   { path: '/settings/permissions', label: 'Ruxsatlar' },
-  { path: '/medical-records', label: 'Tibbiy kartalar' },
-  { path: '/services', label: 'Xizmatlar va narxlar' },
   { path: '/expenses', label: 'Xarajatlar' },
+  {
+    path: '/pharmacy',
+    label: 'Dorixona',
+    actions: [
+      { key: 'create', label: "Dori qo'shish" },
+      { key: 'dispense', label: 'Berish' },
+      { key: 'writeoff', label: 'Hisobdan chiqarish' },
+    ],
+  },
 ];

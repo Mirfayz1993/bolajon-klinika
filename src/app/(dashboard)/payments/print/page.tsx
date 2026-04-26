@@ -23,6 +23,13 @@ interface PaymentData {
     phone?: string | null;
   };
   receivedBy?: { id: string; name: string } | null;
+  admission?: {
+    id: string;
+    bed?: {
+      bedNumber: string;
+      room: { roomNumber: string; floor: number };
+    } | null;
+  } | null;
 }
 
 // --- Constants ----------------------------------------------------------------
@@ -247,6 +254,12 @@ function PrintContent() {
                 <div style={{ fontWeight: 'bold' }}>{CATEGORY_LABELS[data.category] ?? data.category}</div>
                 {data.description && (
                   <div style={{ fontSize: '11px', color: '#555', marginTop: '2px' }}>{data.description}</div>
+                )}
+                {data.category === 'AMBULATORY' && data.admission?.bed && (
+                  <div style={{ fontSize: '11px', color: '#166534', marginTop: '4px', display: 'flex', gap: '12px' }}>
+                    <span><strong>Xona:</strong> {data.admission.bed.room.roomNumber} ({data.admission.bed.room.floor}-qavat)</span>
+                    <span><strong>Krovat:</strong> №{data.admission.bed.bedNumber}</span>
+                  </div>
                 )}
               </td>
               <td style={cellStyle({ textAlign: 'center' })}>{METHOD_LABELS[data.method] ?? data.method}</td>

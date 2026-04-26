@@ -9,7 +9,6 @@ import Image from 'next/image';
 import {
   LayoutDashboard,
   Users,
-  CalendarDays,
   MonitorPlay,
   BedDouble,
   Hospital,
@@ -20,7 +19,6 @@ import {
   UserCog,
   CalendarRange,
   BarChart3,
-  FolderHeart,
   ShieldCheck,
   Settings,
   KeyRound,
@@ -31,7 +29,6 @@ import {
   LogOut,
   Stethoscope,
   ActivitySquare,
-  Tag,
   Clock,
   PhoneCall,
   ClipboardList,
@@ -104,12 +101,6 @@ export default function Sidebar({ collapsed, onToggle, userName, userRole }: Sid
       href: '/patients',
       icon: <Users size={20} />,
       labelKey: 'patients',
-    },
-    {
-      key: 'appointments',
-      href: '/appointments',
-      icon: <CalendarDays size={20} />,
-      labelKey: 'appointments',
     },
     {
       key: 'queue',
@@ -209,18 +200,6 @@ export default function Sidebar({ collapsed, onToggle, userName, userRole }: Sid
       href: '/reports',
       icon: <BarChart3 size={20} />,
       labelKey: 'reports',
-    },
-    {
-      key: 'services',
-      href: '/services',
-      icon: <Tag size={20} />,
-      labelKey: 'services',
-    },
-    {
-      key: 'medicalRecords',
-      href: '/medical-records',
-      icon: <FolderHeart size={20} />,
-      labelKey: 'medicalRecords',
     },
     {
       key: 'audit',
