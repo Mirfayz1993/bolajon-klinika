@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useLanguage } from '@/hooks/useLanguage';
+import { usePermissions } from '@/hooks/usePermissions';
 import { useRouter } from 'next/navigation';
 import {
   Plus,
@@ -117,6 +118,7 @@ function formatMoney(n: number): string {
 export default function PaymentsPage() {
   const { t } = useLanguage();
   const router = useRouter();
+  const { can } = usePermissions();
 
   const METHOD_LABELS = t.payments.methods as Record<string, string>;
   const CATEGORY_LABELS = t.payments.categories as Record<string, string>;
@@ -383,13 +385,15 @@ export default function PaymentsPage() {
       {/* Header */}
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-2xl font-bold text-slate-800">{t.payments.title}</h1>
-        <button
-          onClick={openAddModal}
-          className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg transition-colors text-sm font-medium"
-        >
-          <Plus className="w-4 h-4" />
-          {t.payments.addPayment}
-        </button>
+        {can('/payments:create') && (
+          <button
+            onClick={openAddModal}
+            className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg transition-colors text-sm font-medium"
+          >
+            <Plus className="w-4 h-4" />
+            {t.payments.addPayment}
+          </button>
+        )}
       </div>
 
       {/* Summary Cards */}
@@ -625,13 +629,15 @@ export default function PaymentsPage() {
                         >
                           <Printer className="w-4 h-4" />
                         </button>
-                        <button
-                          onClick={() => openEditModal(payment)}
-                          className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-md transition-colors"
-                          title={t.common.edit}
-                        >
-                          <Edit2 className="w-4 h-4" />
-                        </button>
+                        {can('/payments:edit') && (
+                          <button
+                            onClick={() => openEditModal(payment)}
+                            className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-md transition-colors"
+                            title={t.common.edit}
+                          >
+                            <Edit2 className="w-4 h-4" />
+                          </button>
+                        )}
                       </div>
                     </td>
                   </tr>

@@ -1,18 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getServerSession } from 'next-auth';
-import { authOptions } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
-import { PaymentMethod, PaymentCategory, PaymentStatus, Role } from '@prisma/client';
-
-const READ_ROLES: Role[] = [Role.ADMIN, Role.HEAD_DOCTOR, Role.RECEPTIONIST];
-const WRITE_ROLES: Role[] = [Role.ADMIN, Role.RECEPTIONIST];
+import { PaymentMethod, PaymentCategory, PaymentStatus } from '@prisma/client';
+import { requireAction } from '@/lib/api-auth';
+import { writeAuditLog } from '@/lib/audit';
 
 export async function GET(req: NextRequest) {
-  const session = await getServerSession(authOptions);
-  if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  if (!READ_ROLES.includes(session.user.role as Role)) {
-    return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
-  }
+  const auth = await requireAction('/payments:see_all');
+  if (!auth.ok) return auth.response;
 
   try {
     const { searchParams } = new URL(req.url);
@@ -100,11 +94,9 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
-  const session = await getServerSession(authOptions);
-  if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  if (!WRITE_ROLES.includes(session.user.role as Role)) {
-    return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
-  }
+  const auth = await requireAction('/payments:create');
+  if (!auth.ok) return auth.response;
+  const { session } = auth;
 
   try {
     const body = await req.json() as {
@@ -176,6 +168,20 @@ export async function POST(req: NextRequest) {
         receivedBy: {
           select: { id: true, name: true, role: true },
         },
+      },
+    });
+
+    await writeAuditLog({
+      userId: session.user.id,
+      action: 'CREATE',
+      module: 'payments',
+      details: {
+        paymentId: payment.id,
+        amount: Number(payment.amount),
+        method: payment.method,
+        category: payment.category,
+        status: payment.status,
+        patientId: payment.patientId,
       },
     });
 

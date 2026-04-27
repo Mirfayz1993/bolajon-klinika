@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { PaymentStatus } from '@prisma/client';
-import { requireRole, requireSession } from '@/lib/api-auth';
+import { requireAction, requireSession } from '@/lib/api-auth';
 import { validateBody } from '@/lib/validate';
+import { writeAuditLog } from '@/lib/audit';
 import { z } from 'zod';
 
 const ALLOWED_TRANSITIONS: Record<string, string[]> = {
@@ -72,8 +73,9 @@ export async function PUT(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const auth = await requireRole(['ADMIN', 'HEAD_DOCTOR', 'RECEPTIONIST']);
+  const auth = await requireAction('/payments:edit');
   if (!auth.ok) return auth.response;
+  const { session } = auth;
 
   try {
     const { id } = await params;
@@ -124,6 +126,20 @@ export async function PUT(
         admission: {
           select: { id: true },
         },
+      },
+    });
+
+    await writeAuditLog({
+      userId: session.user.id,
+      action: 'UPDATE',
+      module: 'payments',
+      details: {
+        paymentId: id,
+        oldStatus: existing.status,
+        newStatus: updated.status,
+        oldAmount: Number(existing.amount),
+        newAmount: Number(updated.amount),
+        description: updated.description,
       },
     });
 

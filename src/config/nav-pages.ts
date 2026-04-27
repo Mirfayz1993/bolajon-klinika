@@ -35,6 +35,7 @@ export const MANAGED_PAGES: NavPage[] = [
     label: "To'lovlar",
     actions: [
       { key: 'create', label: "To'lov qo'shish" },
+      { key: 'edit', label: 'Tahrirlash' },
       { key: 'refund', label: "Qaytarish" },
       { key: 'delete', label: "O'chirish" },
       { key: 'see_all', label: "Hammaning to'lovlarini ko'rish" },

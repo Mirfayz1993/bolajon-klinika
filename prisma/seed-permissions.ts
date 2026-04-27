@@ -28,9 +28,10 @@ export const ACTION_ACCESS: Record<string, Role[]> = {
 
   // /payments
   '/payments:create': ['ADMIN', 'RECEPTIONIST'],
+  '/payments:edit': ['ADMIN', 'HEAD_DOCTOR', 'RECEPTIONIST'],
   '/payments:refund': ['ADMIN'],
   '/payments:delete': ['ADMIN'],
-  '/payments:see_all': ['ADMIN', 'RECEPTIONIST'],
+  '/payments:see_all': ['ADMIN', 'HEAD_DOCTOR', 'RECEPTIONIST'],
 
   // /lab
   '/lab:create': ['ADMIN', 'HEAD_LAB_TECH', 'HEAD_DOCTOR', 'DOCTOR', 'RECEPTIONIST'],
