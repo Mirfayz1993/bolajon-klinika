@@ -1,5 +1,6 @@
 import { PrismaClient, Role } from '@prisma/client';
 import bcrypt from 'bcryptjs';
+import { seedActionPermissions } from './seed-permissions';
 
 // prisma generate ishlagandan keyin bu cast kerak bo'lmaydi
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -83,6 +84,9 @@ async function main() {
   }
 
   console.log(`RolePermission seed completed: ${upsertCount} yozuv upsert qilindi`);
+
+  // Action-level RolePermission seed (page-level seedga qo'shimcha)
+  await seedActionPermissions(prisma);
 }
 
 main()

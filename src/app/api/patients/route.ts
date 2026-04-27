@@ -3,9 +3,9 @@ import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 import { Role } from '@prisma/client';
+import { requireAction } from '@/lib/api-auth';
 
 const READ_ROLES: Role[] = [Role.ADMIN, Role.HEAD_DOCTOR, Role.DOCTOR, Role.HEAD_NURSE, Role.NURSE, Role.RECEPTIONIST, Role.HEAD_LAB_TECH, Role.LAB_TECH, Role.SPEECH_THERAPIST, Role.MASSAGE_THERAPIST];
-const WRITE_ROLES: Role[] = [Role.ADMIN, Role.HEAD_DOCTOR, Role.RECEPTIONIST];
 
 // --- Transliteration helpers --------------------------------------------------
 
@@ -135,11 +135,8 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
-  const session = await getServerSession(authOptions);
-  if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  if (!WRITE_ROLES.includes(session.user.role as Role)) {
-    return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
-  }
+  const auth = await requireAction('/patients:create');
+  if (!auth.ok) return auth.response;
 
   try {
     const body = await req.json() as {

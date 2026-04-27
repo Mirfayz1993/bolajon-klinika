@@ -8,6 +8,7 @@ import Sidebar from '@/components/layout/Sidebar';
 import Header from '@/components/layout/Header';
 import { useLanguage } from '@/hooks/useLanguage';
 import { useQRScanner } from '@/hooks/useQRScanner';
+import { PermissionsProvider } from '@/components/auth/PermissionsProvider';
 
 function DashboardContent({ children }: { children: React.ReactNode }) {
   const { data: session, status } = useSession();
@@ -68,5 +69,9 @@ function DashboardContent({ children }: { children: React.ReactNode }) {
 }
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
-  return <DashboardContent>{children}</DashboardContent>;
+  return (
+    <PermissionsProvider>
+      <DashboardContent>{children}</DashboardContent>
+    </PermissionsProvider>
+  );
 }
