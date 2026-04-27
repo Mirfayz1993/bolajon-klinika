@@ -488,6 +488,31 @@ export default function PatientDetailPage({ params }: PageProps) {
 
   const openAssignModal = async () => {
     setShowAssignModal(true);
+    // Round-robin: rooms va recommendedBed ni atomik (Promise.all) yuklaymiz —
+    // race condition'ning oldini olish uchun setAmbRooms va setRecommendedBed
+    // bir vaqtda ketma-ket o'rnatiladi, useEffect qayta-qayta trigger bo'lmaydi.
+    Promise.all([
+      fetch('/api/rooms?isAmbulatory=true').then(r => r.ok ? r.json() : []),
+      fetch('/api/rooms/next-ambulatory-bed').then(r => r.ok ? r.json() : null),
+    ])
+      .then(([roomsData, rec]: [unknown, { roomId: string | null; bedId: string | null } | null]) => {
+        const all = Array.isArray(roomsData)
+          ? (roomsData as typeof ambRooms)
+          : (((roomsData as { data?: typeof ambRooms } | null)?.data) ?? []);
+        // Faqat kamida 1 ta bo'sh to'shagi bor xonalar
+        const available = all.filter(r => r.beds.some(b => b.admissions.length === 0));
+        setAmbRooms(available);
+        const recBed = rec && (rec.roomId || rec.bedId)
+          ? { roomId: rec.roomId, bedId: rec.bedId }
+          : null;
+        setRecommendedBed(recBed);
+        // Xona tanlash: tavsiyada bo'lsa va available ichida bo'lsa shu, aks holda available[0]
+        const targetRoomId = recBed && recBed.roomId && available.some(r => r.id === recBed.roomId)
+          ? recBed.roomId
+          : (available[0]?.id ?? '');
+        if (targetRoomId) setAmbRoomId(targetRoomId);
+      })
+      .catch(() => null);
     if (serviceCategories.length > 0) return;
     try {
       const res = await fetch('/api/service-categories');
@@ -509,6 +534,8 @@ export default function PatientDetailPage({ params }: PageProps) {
   const [ambBeds, setAmbBeds] = useState<{ id: string; bedNumber: string; status: string }[]>([]);
   const [ambBedId, setAmbBedId] = useState('');
   const [ambBedsLoading, setAmbBedsLoading] = useState(false);
+  // Server tomonidan tavsiya etilgan keyingi bo'sh to'shak (round-robin)
+  const [recommendedBed, setRecommendedBed] = useState<{ roomId: string | null; bedId: string | null } | null>(null);
 
   useEffect(() => {
     if (!isLabCat) return;
@@ -608,26 +635,10 @@ export default function PatientDetailPage({ params }: PageProps) {
       .catch(() => null);
   }, [showAssignModal, allStaffList.length]);
 
-  // Ambulatory rooms — faqat bo'sh to'shagi bor xonalar, birinchisi avtomatik tanlanadi
-  useEffect(() => {
-    if (!isAmbulatoryCat) return;
-    if (ambRooms.length > 0) return;
-    fetch('/api/rooms?isAmbulatory=true')
-      .then(r => r.json())
-      .then(d => {
-        const all = Array.isArray(d) ? d : (d.data ?? []);
-        // Faqat kamida 1 ta bo'sh to'shagi bor xonalar
-        const available = all.filter((r: typeof ambRooms[0]) =>
-          r.beds.some(b => b.admissions.length === 0)
-        );
-        setAmbRooms(available);
-        // Birinchi bo'sh xonani avtomatik tanlash
-        if (available.length > 0) setAmbRoomId(available[0].id);
-      })
-      .catch(() => null);
-  }, [isAmbulatoryCat, ambRooms.length]);
+  // Ambulatory rooms va recommendedBed — atomik tarzda openAssignModal'da yuklanadi
+  // (race condition'ning oldini olish uchun useEffect bu yerdan olib tashlandi).
 
-  // Ambulatory beds — xona o'zgarganda birinchi bo'sh to'shak avtomatik tanlanadi
+  // Ambulatory beds — xona o'zgarganda server tavsiyasiga asosan to'shak avtomatik tanlanadi
   useEffect(() => {
     if (!ambRoomId) { setAmbBeds([]); setAmbBedId(''); return; }
     setAmbBedsLoading(true);
@@ -636,13 +647,19 @@ export default function PatientDetailPage({ params }: PageProps) {
       .then(d => {
         const beds = Array.isArray(d) ? d : [];
         setAmbBeds(beds);
-        // Birinchi bo'sh to'shakni avtomatik tanlash
-        if (beds.length > 0) setAmbBedId(beds[0].id);
-        else setAmbBedId('');
+        if (beds.length === 0) { setAmbBedId(''); return; }
+        // Round-robin: agar server tavsiyasi shu xonadagi mavjud to'shakka mos kelsa — uni tanlash
+        const recBedId = recommendedBed?.bedId ?? null;
+        const recRoomId = recommendedBed?.roomId ?? null;
+        const recommendedFits = recBedId !== null
+          && recRoomId === ambRoomId
+          && beds.some((b: { id: string }) => b.id === recBedId);
+        if (recommendedFits && recBedId) setAmbBedId(recBedId);
+        else setAmbBedId(beds[0].id);
       })
       .catch(() => { setAmbBeds([]); setAmbBedId(''); })
       .finally(() => setAmbBedsLoading(false));
-  }, [ambRoomId]);
+  }, [ambRoomId, recommendedBed]);
 
   const visibleItems: ServiceCategoryItem[] = isLabCat ? labTestTypes : (assignCat?.items ?? []);
   const assignItem = visibleItems.find(i => i.id === assignItemId);
@@ -673,6 +690,7 @@ export default function PatientDetailPage({ params }: PageProps) {
       setShowAssignModal(false);
       setAssignCatId(''); setAssignItemId(''); setAssignDoctorId(''); setAssignIsUrgent(false);
       setAssignStaffId(''); setAmbRoomId(''); setAmbBedId(''); setAmbBeds([]); setAmbRooms([]);
+      setRecommendedBed(null);
       fetchAssigned();
     } finally { setAssignSaving(false); }
   };
@@ -1626,7 +1644,7 @@ export default function PatientDetailPage({ params }: PageProps) {
           <div className="bg-white rounded-2xl shadow-xl w-full max-w-md p-6">
             <div className="flex items-center justify-between mb-4">
               <h3 className="font-semibold text-slate-800">Xizmat tayinlash</h3>
-              <button type="button" onClick={() => { setShowAssignModal(false); setAssignCatId(''); setAssignItemId(''); setAssignDoctorId(''); setAssignIsUrgent(false); setAmbRoomId(''); setAmbBedId(''); setAmbBeds([]); setAmbRooms([]); }}>
+              <button type="button" onClick={() => { setShowAssignModal(false); setAssignCatId(''); setAssignItemId(''); setAssignDoctorId(''); setAssignIsUrgent(false); setAmbRoomId(''); setAmbBedId(''); setAmbBeds([]); setAmbRooms([]); setRecommendedBed(null); }}>
                 <X className="w-5 h-5 text-slate-400" />
               </button>
             </div>
@@ -1790,7 +1808,7 @@ export default function PatientDetailPage({ params }: PageProps) {
             <div className="flex gap-2 justify-end">
               <button
                 type="button"
-                onClick={() => { setShowAssignModal(false); setAssignCatId(''); setAssignItemId(''); setAssignDoctorId(''); setAssignIsUrgent(false); setAmbRoomId(''); setAmbBedId(''); setAmbBeds([]); setAmbRooms([]); }}
+                onClick={() => { setShowAssignModal(false); setAssignCatId(''); setAssignItemId(''); setAssignDoctorId(''); setAssignIsUrgent(false); setAmbRoomId(''); setAmbBedId(''); setAmbBeds([]); setAmbRooms([]); setRecommendedBed(null); }}
                 className="px-4 py-2 text-sm text-slate-600 border border-slate-200 rounded-xl hover:bg-slate-50"
               >
                 Bekor
