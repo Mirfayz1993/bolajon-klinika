@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { useSession } from 'next-auth/react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useLanguage } from '@/hooks/useLanguage';
+import { usePermissions } from '@/hooks/usePermissions';
 import { floorLabel } from '@/lib/utils';
 import {
   ArrowLeft, Pencil, Trash2, Check, X, Loader2, AlertCircle,
@@ -235,16 +236,12 @@ export default function PatientDetailPage({ params }: PageProps) {
   });
   const [savingNote, setSavingNote] = useState(false);
 
-  const isAdmin = session?.user?.role === 'ADMIN';
-  const canSeePrices = ['ADMIN', 'RECEPTIONIST'].includes(session?.user?.role ?? '');
-  const canManageServices = ['ADMIN', 'RECEPTIONIST', 'HEAD_DOCTOR', 'HEAD_NURSE'].includes(
-    session?.user?.role ?? ''
-  );
-  const isNurse = ['ADMIN', 'HEAD_NURSE', 'NURSE', 'HEAD_DOCTOR', 'DOCTOR'].includes(
-    session?.user?.role ?? ''
-  );
-  const isDoctor = ['ADMIN', 'HEAD_DOCTOR', 'DOCTOR'].includes(session?.user?.role ?? '');
-  const canOrderLabTest = ['ADMIN', 'HEAD_DOCTOR', 'DOCTOR', 'RECEPTIONIST'].includes(session?.user?.role ?? '');
+  const { can, isAdmin } = usePermissions();
+  const canSeePrices = can('/patients:see_prices');
+  const canManageServices = can('/patients:manage_services');
+  const isNurse = can('/patients:tab:hamshira');
+  const isDoctor = can('/patients:tab:tashxislar');
+  const canOrderLabTest = can('/patients:order_lab');
 
   // Assigned services
   const [assignedServices, setAssignedServices] = useState<AssignedService[]>([]);
@@ -912,6 +909,7 @@ export default function PatientDetailPage({ params }: PageProps) {
 
   // -- Print receipt ---------------------------------------------------------
   const printReceipt = async (justPaidIds?: string[]) => {
+    if (!canSeePrices) return;
     if (!profile) return;
     const p = profile.patient;
 
@@ -1105,14 +1103,14 @@ export default function PatientDetailPage({ params }: PageProps) {
     sections: { services: string; records: string; nurseNotes: string; labTests: string; payments: string; admissions: string; appointments: string };
   };
 
-  const tabs: { key: Tab; label: string; icon: React.ReactNode; count?: number }[] = [
-    { key: 'info', label: pt.tabs?.general ?? 'Umumiy', icon: <User className="w-4 h-4" /> },
-    { key: 'services', label: pt.tabs?.services ?? 'Xizmatlar', icon: <CreditCard className="w-4 h-4" />, count: assignedServices.length },
-    { key: 'records', label: pt.tabs?.records ?? 'Tashxislar', icon: <Stethoscope className="w-4 h-4" />, count: medicalRecords.length },
-    { key: 'nurse', label: pt.tabs?.nurse ?? 'Hamshira', icon: <ClipboardList className="w-4 h-4" />, count: nurseNotes.length },
-    { key: 'lab', label: pt.tabs?.lab ?? 'Laboratoriya', icon: <FlaskConical className="w-4 h-4" />, count: labTests.length },
-    ...(activeAdmission ? [{ key: 'inpatient' as Tab, label: 'Statsionar', icon: <BedDouble className="w-4 h-4" /> }] : []),
-  ];
+  const tabs: { key: Tab; label: string; icon: React.ReactNode; count?: number; requires?: string }[] = [
+    { key: 'info' as Tab, label: pt.tabs?.general ?? 'Umumiy', icon: <User className="w-4 h-4" /> },
+    { key: 'services' as Tab, label: pt.tabs?.services ?? 'Xizmatlar', icon: <CreditCard className="w-4 h-4" />, count: assignedServices.length, requires: '/patients:tab:xizmatlar' },
+    { key: 'records' as Tab, label: pt.tabs?.records ?? 'Tashxislar', icon: <Stethoscope className="w-4 h-4" />, count: medicalRecords.length, requires: '/patients:tab:tashxislar' },
+    { key: 'nurse' as Tab, label: pt.tabs?.nurse ?? 'Hamshira', icon: <ClipboardList className="w-4 h-4" />, count: nurseNotes.length, requires: '/patients:tab:hamshira' },
+    { key: 'lab' as Tab, label: pt.tabs?.lab ?? 'Laboratoriya', icon: <FlaskConical className="w-4 h-4" />, count: labTests.length, requires: '/patients:tab:laboratoriya' },
+    ...(activeAdmission ? [{ key: 'inpatient' as Tab, label: 'Statsionar', icon: <BedDouble className="w-4 h-4" />, requires: '/patients:tab:statsionar' }] : []),
+  ].filter(tab => !tab.requires || can(tab.requires));
 
   return (
     <div className="p-6 max-w-5xl mx-auto">
@@ -1368,7 +1366,7 @@ export default function PatientDetailPage({ params }: PageProps) {
                           {svc.isPaid ? "To'langan" : "Kutilmoqda"}
                         </span>
                       )}
-                      {svc.isPaid && (
+                      {svc.isPaid && canSeePrices && (
                         <button
                           type="button"
                           onClick={() => printReceipt([svc.id])}
@@ -2106,10 +2104,12 @@ export default function PatientDetailPage({ params }: PageProps) {
                 <div className="text-xs text-slate-400 mt-1">Yotgan: {fmt(activeAdmission.admissionDate)}</div>
                 {activeAdmission.notes && <div className="text-xs text-slate-500 mt-1">Tashxis: {activeAdmission.notes}</div>}
               </div>
-              <div className="text-right">
-                <div className="text-xs text-slate-500 mb-0.5">Kunlik narx</div>
-                <div className="text-base font-semibold text-slate-700">{fmtMoney(Number(activeAdmission.dailyRate))}</div>
-              </div>
+              {canSeePrices && (
+                <div className="text-right">
+                  <div className="text-xs text-slate-500 mb-0.5">Kunlik narx</div>
+                  <div className="text-base font-semibold text-slate-700">{fmtMoney(Number(activeAdmission.dailyRate))}</div>
+                </div>
+              )}
             </div>
             <div className="mt-4 pt-4 border-t border-slate-100 flex items-center justify-between">
               <div className="text-sm text-slate-500">
@@ -2119,7 +2119,9 @@ export default function PatientDetailPage({ params }: PageProps) {
                   <span>Yig&apos;ilgan: <strong className="text-slate-800">{currentDays} kun</strong></span>
                 )}
               </div>
-              <div className="text-lg font-bold text-blue-700">{currentDays > 0 ? fmtMoney(currentAmount) : 'Bepul'}</div>
+              {canSeePrices && (
+                <div className="text-lg font-bold text-blue-700">{currentDays > 0 ? fmtMoney(currentAmount) : 'Bepul'}</div>
+              )}
             </div>
           </div>
 
@@ -2479,7 +2481,7 @@ export default function PatientDetailPage({ params }: PageProps) {
                       <div key={id} className="flex items-center justify-between px-4 py-2.5 bg-slate-50 rounded-xl border border-slate-100">
                         <span className="text-sm text-slate-800">{tt.name}</span>
                         <div className="flex items-center gap-3">
-                          <span className="text-sm text-slate-500">{Number(tt.price).toLocaleString()} so&apos;m</span>
+                          {canSeePrices && <span className="text-sm text-slate-500">{Number(tt.price).toLocaleString()} so&apos;m</span>}
                           <span className="text-xs font-medium bg-yellow-100 text-yellow-700 px-2 py-0.5 rounded-full">To&apos;lanmagan</span>
                         </div>
                       </div>
@@ -2541,7 +2543,7 @@ export default function PatientDetailPage({ params }: PageProps) {
                                 <label key={tt.id} className={`flex items-center gap-3 px-4 py-2.5 cursor-pointer hover:bg-slate-50 transition-colors ${checked ? 'bg-blue-50/50' : ''}`}>
                                   <input type="checkbox" checked={checked} onChange={() => setPatientLabSelectedIds(prev => prev.includes(tt.id) ? prev.filter(x => x !== tt.id) : [...prev, tt.id])} className="w-4 h-4 accent-blue-600 flex-shrink-0" />
                                   <span className="flex-1 text-sm text-slate-800">{tt.name}</span>
-                                  <span className="text-sm text-slate-500 font-medium">{tt.price.toLocaleString()} so&apos;m</span>
+                                  {canSeePrices && <span className="text-sm text-slate-500 font-medium">{tt.price.toLocaleString()} so&apos;m</span>}
                                 </label>
                               );
                             })}
@@ -2553,7 +2555,7 @@ export default function PatientDetailPage({ params }: PageProps) {
                 })()}
               </div>
               <div className="px-6 py-4 border-t border-slate-100 flex-shrink-0">
-                {patientLabSelectedIds.length > 0 && (() => {
+                {canSeePrices && patientLabSelectedIds.length > 0 && (() => {
                   const groups: Record<string, { name: string; total: number }> = {};
                   for (const id of patientLabSelectedIds) {
                     const tt = patientLabAllTypes.find(x => x.id === id);

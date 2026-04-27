@@ -1,21 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getServerSession } from 'next-auth';
-import { authOptions } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
-import { Role } from '@prisma/client';
-
-const VIEW_ROLES: Role[] = [Role.ADMIN, Role.HEAD_DOCTOR, Role.DOCTOR, Role.HEAD_NURSE];
-const CREATE_ROLES: Role[] = [Role.ADMIN, Role.HEAD_DOCTOR, Role.DOCTOR];
+import { requireAnyAction, requireSession } from '@/lib/api-auth';
 
 export async function GET(req: NextRequest) {
   try {
-    const session = await getServerSession(authOptions);
-    if (!session) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
-    if (!VIEW_ROLES.includes(session.user.role as Role)) {
-      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
-    }
+    const auth = await requireSession();
+    if (!auth.ok) return auth.response;
 
     const { searchParams } = new URL(req.url);
     const patientId = searchParams.get('patientId') || undefined;
@@ -54,13 +44,8 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   try {
-    const session = await getServerSession(authOptions);
-    if (!session) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
-    if (!CREATE_ROLES.includes(session.user.role as Role)) {
-      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
-    }
+    const auth = await requireAnyAction('/patients:create_note', '/medical-records:create');
+    if (!auth.ok) return auth.response;
 
     const body = await req.json();
     const { patientId, doctorId, diagnosis, treatment, notes } = body;

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import { requireRole, requireSession } from '@/lib/api-auth';
+import { requireAction, requireSession } from '@/lib/api-auth';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const db = prisma as any;
@@ -29,7 +29,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
 }
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const auth = await requireRole(['ADMIN', 'RECEPTIONIST', 'HEAD_DOCTOR', 'HEAD_NURSE']);
+  const auth = await requireAction('/patients:manage_services');
   if (!auth.ok) return auth.response;
   const { session } = auth;
 
@@ -276,7 +276,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 }
 
 export async function DELETE(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const auth = await requireRole(['ADMIN', 'RECEPTIONIST', 'HEAD_DOCTOR']);
+  const auth = await requireAction('/patients:manage_services');
   if (!auth.ok) return auth.response;
 
   const { id: patientId } = await params;

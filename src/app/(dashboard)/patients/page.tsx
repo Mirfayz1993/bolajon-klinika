@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { useSession } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
 import { useLanguage } from '@/hooks/useLanguage';
+import { usePermissions } from '@/hooks/usePermissions';
 import {
   Search,
   Plus,
@@ -109,7 +110,10 @@ export default function PatientsPage() {
   const [qrDataUrl, setQrDataUrl] = useState<string | null>(null);
   const [qrLoading, setQrLoading] = useState(false);
 
-  const isAdmin = session?.user?.role === 'ADMIN';
+  const { can } = usePermissions();
+  const canSeePrices = can('/patients:see_prices');
+  // session — boshqa joyda kerak bo'lishi mumkin (audit, user.id va h.k.)
+  void session;
 
   const fetchPatients = useCallback(async () => {
     setLoading(true);
@@ -288,13 +292,15 @@ export default function PatientsPage() {
       {/* Header */}
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-2xl font-bold text-slate-800">{t.patients.title}</h1>
-        <button
-          onClick={() => { setShowModal(true); setForm(emptyForm); setFormError(null); }}
-          className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg transition-colors text-sm font-medium"
-        >
-          <Plus className="w-4 h-4" />
-          {t.patients.addPatient}
-        </button>
+        {can('/patients:create') && (
+          <button
+            onClick={() => { setShowModal(true); setForm(emptyForm); setFormError(null); }}
+            className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg transition-colors text-sm font-medium"
+          >
+            <Plus className="w-4 h-4" />
+            {t.patients.addPatient}
+          </button>
+        )}
       </div>
 
       {/* Search */}
@@ -329,20 +335,20 @@ export default function PatientsPage() {
                 <th className="text-left px-4 py-3 font-semibold text-slate-600">{t.patients.jshshir}</th>
                 <th className="text-left px-4 py-3 font-semibold text-slate-600">{t.patients.age}</th>
                 <th className="text-left px-4 py-3 font-semibold text-slate-600">{t.patients.birthDate}</th>
-                <th className="text-left px-4 py-3 font-semibold text-slate-600">Qarz</th>
+                {canSeePrices && <th className="text-left px-4 py-3 font-semibold text-slate-600">Qarz</th>}
                 <th className="text-right px-4 py-3 font-semibold text-slate-600">{t.common.actions}</th>
               </tr>
             </thead>
             <tbody>
               {loading ? (
                 <tr>
-                  <td colSpan={8} className="text-center py-12">
+                  <td colSpan={canSeePrices ? 8 : 7} className="text-center py-12">
                     <Loader2 className="w-6 h-6 animate-spin mx-auto text-blue-500" />
                   </td>
                 </tr>
               ) : patients.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="text-center py-12 text-slate-400">
+                  <td colSpan={canSeePrices ? 8 : 7} className="text-center py-12 text-slate-400">
                     {t.patients.notFound}
                   </td>
                 </tr>
@@ -369,15 +375,17 @@ export default function PatientsPage() {
                     <td className="px-4 py-3 text-slate-600">
                       {new Date(patient.birthDate).getFullYear()}
                     </td>
-                    <td className="px-4 py-3">
-                      {patient.pendingDebt && patient.pendingDebt > 0 ? (
-                        <span className="inline-block px-2 py-0.5 rounded-full text-xs font-semibold bg-red-100 text-red-700">
-                          {patient.pendingDebt.toLocaleString()} so&apos;m
-                        </span>
-                      ) : (
-                        <span className="text-slate-300 text-xs">—</span>
-                      )}
-                    </td>
+                    {canSeePrices && (
+                      <td className="px-4 py-3">
+                        {patient.pendingDebt && patient.pendingDebt > 0 ? (
+                          <span className="inline-block px-2 py-0.5 rounded-full text-xs font-semibold bg-red-100 text-red-700">
+                            {patient.pendingDebt.toLocaleString()} so&apos;m
+                          </span>
+                        ) : (
+                          <span className="text-slate-300 text-xs">—</span>
+                        )}
+                      </td>
+                    )}
                     <td className="px-4 py-3">
                       <div
                         className="flex items-center justify-end gap-1"
@@ -397,7 +405,7 @@ export default function PatientsPage() {
                         >
                           <Eye className="w-4 h-4" />
                         </button>
-                        {isAdmin && (
+                        {can('/patients:delete') && (
                           <button
                             onClick={(e) => handleDelete(patient.id, e)}
                             className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-md transition-colors"
