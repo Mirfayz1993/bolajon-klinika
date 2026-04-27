@@ -64,7 +64,7 @@ export async function GET(req: NextRequest) {
             select: {
               id: true, name: true, price: true, normalRange: true, normalMin: true, normalMax: true, unit: true, category: true,
               parentId: true,
-              children: { select: { id: true, name: true, normalRange: true, normalMin: true, normalMax: true, unit: true, price: true }, orderBy: { name: 'asc' } },
+              children: { select: { id: true, name: true, normalRange: true, normalMin: true, normalMax: true, unit: true, price: true }, orderBy: { createdAt: 'asc' } },
             },
           },
           labTech: {

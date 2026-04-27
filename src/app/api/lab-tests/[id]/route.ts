@@ -37,7 +37,7 @@ export async function GET(
             normalMin: true,
             normalMax: true,
             parentId: true,
-            children: { select: { id: true, name: true, normalRange: true, normalMin: true, normalMax: true, unit: true, price: true }, orderBy: { name: 'asc' } },
+            children: { select: { id: true, name: true, normalRange: true, normalMin: true, normalMax: true, unit: true, price: true }, orderBy: { createdAt: 'asc' } },
           },
         },
         labTech: {
@@ -149,7 +149,7 @@ export async function PUT(
           testType: {
             select: {
               id: true, name: true, price: true, normalRange: true, normalMin: true, normalMax: true, unit: true,
-              children: { select: { id: true, name: true, normalRange: true, normalMin: true, normalMax: true, unit: true, price: true }, orderBy: { name: 'asc' } },
+              children: { select: { id: true, name: true, normalRange: true, normalMin: true, normalMax: true, unit: true, price: true }, orderBy: { createdAt: 'asc' } },
             },
           },
           labTech: { select: { id: true, name: true } },

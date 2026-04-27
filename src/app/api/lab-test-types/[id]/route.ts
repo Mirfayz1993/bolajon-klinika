@@ -30,7 +30,7 @@ export async function GET(
         createdAt: true,
         children: {
           select: { id: true, name: true, normalRange: true, normalMin: true, normalMax: true, unit: true, price: true },
-          orderBy: { name: 'asc' },
+          orderBy: { createdAt: 'asc' },
         },
       },
     });
