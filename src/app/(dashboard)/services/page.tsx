@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { useSession } from 'next-auth/react';
+import { usePermissions } from '@/hooks/usePermissions';
 import {
   Tag,
   Plus,
@@ -136,8 +136,7 @@ function ConfirmModal({
 // --- Main ---------------------------------------------------------------------
 
 export default function ServicesPage() {
-  const { data: session } = useSession();
-  const isAdmin = session?.user?.role === 'ADMIN';
+  const { isAdmin } = usePermissions();
 
   const [tab, setTab] = useState<'calculator' | 'manage'>('calculator');
 

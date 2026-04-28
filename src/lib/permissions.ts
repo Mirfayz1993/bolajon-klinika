@@ -49,13 +49,3 @@ export async function canRoleAccess(role: string, page: string): Promise<boolean
 export function invalidatePermissionsCache(): void {
   cache = null;
 }
-
-// --- Statik yordamchi funksiyalar (mavjud kod bilan backward compatibility) --
-
-export function isAdmin(role: Role): boolean {
-  return role === 'ADMIN';
-}
-
-export function canViewPatients(role: Role): boolean {
-  return ['ADMIN', 'HEAD_DOCTOR', 'DOCTOR', 'RECEPTIONIST', 'HEAD_NURSE', 'NURSE'].includes(role);
-}
