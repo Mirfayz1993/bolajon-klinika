@@ -1,15 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getServerSession } from 'next-auth';
-import { authOptions } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 import { Prisma } from '@prisma/client';
+import { requireAction, requireSession } from '@/lib/api-auth';
 
 export async function GET(
   _req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const session = await getServerSession(authOptions);
-  if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  const auth = await requireSession();
+  if (!auth.ok) return auth.response;
 
   try {
     const { id } = await params;
@@ -61,15 +60,9 @@ export async function PUT(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const session = await getServerSession(authOptions);
-  if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-
-  const allowedRoles = ['ADMIN', 'HEAD_LAB_TECH', 'LAB_TECH'];
-  if (!allowedRoles.includes(session.user.role)) {
-    return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
-  }
-
-  const isHeadLabTech = session.user.role === 'HEAD_LAB_TECH' || session.user.role === 'ADMIN';
+  const auth = await requireAction('/lab:result');
+  if (!auth.ok) return auth.response;
+  const { session } = auth;
 
   try {
     const { id } = await params;
@@ -88,9 +81,10 @@ export async function PUT(
       return NextResponse.json({ error: 'Tahlil topilmadi' }, { status: 404 });
     }
 
-    // Only HEAD_LAB_TECH/ADMIN can edit already COMPLETED tests
+    // Business rule: COMPLETED testni faqat HEAD_LAB_TECH/ADMIN qayta tahrir qila oladi
+    const isHeadLabTech = session.user.role === 'HEAD_LAB_TECH' || session.user.role === 'ADMIN';
     if (existing.status === 'COMPLETED' && !isHeadLabTech) {
-      return NextResponse.json({ error: 'Faqat Bosh laborant natijani o\'zgartira oladi' }, { status: 403 });
+      return NextResponse.json({ error: "Faqat Bosh laborant natijani o'zgartira oladi" }, { status: 403 });
     }
 
     const body = await req.json() as {

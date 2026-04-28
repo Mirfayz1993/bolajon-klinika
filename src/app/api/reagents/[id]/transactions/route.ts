@@ -1,14 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getServerSession } from 'next-auth';
-import { authOptions } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
+import { requireAction, requireSession } from '@/lib/api-auth';
 
 type Ctx = { params: Promise<{ id: string }> };
 
 // GET — reaktor tranzaksiyalari
 export async function GET(_req: NextRequest, { params }: Ctx) {
-  const session = await getServerSession(authOptions);
-  if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  const auth = await requireSession();
+  if (!auth.ok) return auth.response;
+
   const { id } = await params;
   const txs = await prisma.reagentTransaction.findMany({
     where: { reagentId: id },
@@ -20,9 +20,10 @@ export async function GET(_req: NextRequest, { params }: Ctx) {
 
 // POST — kirim qo'shish
 export async function POST(req: NextRequest, { params }: Ctx) {
-  const session = await getServerSession(authOptions);
-  if (!session || session.user.role !== 'ADMIN')
-    return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+  const auth = await requireAction('/lab:edit_test');
+  if (!auth.ok) return auth.response;
+  const { session } = auth;
+
   const { id } = await params;
   const body = await req.json();
   const qty = Number(body.quantity ?? 0);

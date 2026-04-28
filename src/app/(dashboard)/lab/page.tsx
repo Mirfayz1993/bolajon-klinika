@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback, Fragment } from "react";
 import { useSession } from "next-auth/react";
 import { useRouter } from "next/navigation";
 import { useLanguage } from "@/hooks/useLanguage";
+import { usePermissions } from "@/hooks/usePermissions";
 import {
   Plus,
   Loader2,
@@ -92,11 +93,13 @@ export default function LabPage() {
   const { data: session } = useSession();
   const router = useRouter();
 
-  const role = session?.user?.role as string | undefined;
-  const canManageResults = role === "ADMIN" || role === "HEAD_LAB_TECH" || role === "LAB_TECH";
-  const canOrderTest = role === "ADMIN" || role === "HEAD_DOCTOR" || role === "DOCTOR" || role === "RECEPTIONIST";
-  const canManageTypes = role === "ADMIN" || role === "HEAD_LAB_TECH";
-  const isHeadLabTech = role === "ADMIN" || role === "HEAD_LAB_TECH";
+  const { can, isAdmin } = usePermissions();
+  void session; void isAdmin; // session/isAdmin kelajakda foydali bo'lishi mumkin
+  // DB-driven permissions (Sprint 4) — o'zgaruvchi nomlari saqlanadi, definition o'zgardi
+  const canManageResults = can('/lab:result'); // [ADMIN, HEAD_LAB_TECH, LAB_TECH]
+  const canOrderTest = can('/patients:order_lab'); // [ADMIN, HEAD_DOCTOR, DOCTOR, RECEPTIONIST] — backend POST /api/lab-tests shu action'da
+  const canManageTypes = can('/lab:edit_test'); // [ADMIN, HEAD_LAB_TECH]
+  const isHeadLabTech = can('/lab:edit_test'); // [ADMIN, HEAD_LAB_TECH] — reagents management
 
   const [activeTab, setActiveTab] = useState<"tests" | "types" | "reagents">("tests");
 

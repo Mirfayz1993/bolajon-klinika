@@ -105,7 +105,7 @@ export const ACTION_ACCESS: Record<string, Role[]> = {
 
   // /reports
   '/reports:export': ['ADMIN', 'HEAD_DOCTOR'],
-  '/reports:see_financial': ['ADMIN'],
+  '/reports:see_financial': ['ADMIN', 'HEAD_DOCTOR', 'HEAD_LAB_TECH'],
 };
 
 const ALL_ROLES: Role[] = [

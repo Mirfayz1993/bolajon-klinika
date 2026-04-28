@@ -1,21 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getServerSession } from 'next-auth';
-import { authOptions } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
+import { requireAction, requireSession } from '@/lib/api-auth';
 
-export async function GET(req: NextRequest) {
+export async function GET(_req: NextRequest) {
+  const auth = await requireSession();
+  if (!auth.ok) return auth.response;
+
   try {
-    const session = await getServerSession(authOptions);
-    if (!session) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
-
-    const role = session.user?.role as string;
-    const allowed = ['ADMIN', 'HEAD_LAB_TECH', 'LAB_TECH'];
-    if (!allowed.includes(role)) {
-      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
-    }
-
     const reagents = await prisma.reagent.findMany({
       where: { isActive: true },
       orderBy: { createdAt: 'desc' },
@@ -29,17 +20,10 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
+  const auth = await requireAction('/lab:edit_test');
+  if (!auth.ok) return auth.response;
+
   try {
-    const session = await getServerSession(authOptions);
-    if (!session) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
-
-    const role = session.user?.role as string;
-    if (role !== 'ADMIN') {
-      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
-    }
-
     const body = await req.json();
     const { name, unit, quantity, minQuantity, expiryDate, pricePerUnit } = body;
 

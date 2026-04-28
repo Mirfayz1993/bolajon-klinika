@@ -1,14 +1,29 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getServerSession } from 'next-auth';
-import { authOptions } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
+import { requireAction, requireSession } from '@/lib/api-auth';
 
 type Ctx = { params: Promise<{ id: string }> };
 
+export async function GET(_req: NextRequest, { params }: Ctx) {
+  const auth = await requireSession();
+  if (!auth.ok) return auth.response;
+
+  try {
+    const { id } = await params;
+    const reagent = await prisma.reagent.findUnique({ where: { id } });
+    if (!reagent) {
+      return NextResponse.json({ error: 'Reagent topilmadi' }, { status: 404 });
+    }
+    return NextResponse.json(reagent);
+  } catch {
+    return NextResponse.json({ error: 'Server error' }, { status: 500 });
+  }
+}
+
 export async function PUT(req: NextRequest, { params }: Ctx) {
-  const session = await getServerSession(authOptions);
-  if (!session || session.user.role !== 'ADMIN')
-    return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+  const auth = await requireAction('/lab:edit_test');
+  if (!auth.ok) return auth.response;
+
   const { id } = await params;
   const body = await req.json();
   const { name, unit, quantity, minQuantity, expiryDate, pricePerUnit } = body;
@@ -31,9 +46,9 @@ export async function PUT(req: NextRequest, { params }: Ctx) {
 }
 
 export async function DELETE(_req: NextRequest, { params }: Ctx) {
-  const session = await getServerSession(authOptions);
-  if (!session || session.user.role !== 'ADMIN')
-    return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+  const auth = await requireAction('/lab:delete');
+  if (!auth.ok) return auth.response;
+
   const { id } = await params;
   try {
     await prisma.reagent.update({ where: { id }, data: { isActive: false } });
