@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getServerSession } from 'next-auth';
-import { authOptions } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
+import { requireSession } from '@/lib/api-auth';
 
 // GET /api/rooms/next-ambulatory-bed
 // Round-robin tarzda keyingi bo'sh ambulator to'shakni qaytaradi.
@@ -11,8 +10,8 @@ import { prisma } from '@/lib/prisma';
 //  3. Uning bedId'si flat ro'yxatda topilib, undan keyingi pozitsiyadan boshlab birinchi bo'sh to'shak qaytariladi (modulo)
 //  4. Hech qanday bo'sh to'shak bo'lmasa { roomId: null, bedId: null }
 export async function GET(_req: NextRequest) {
-  const session = await getServerSession(authOptions);
-  if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  const auth = await requireSession();
+  if (!auth.ok) return auth.response;
 
   try {
     // 1) Barcha ambulator xonalardagi to'shaklarni 1 ta query bilan olamiz.

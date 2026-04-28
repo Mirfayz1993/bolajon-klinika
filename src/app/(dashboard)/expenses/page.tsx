@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { useSession } from 'next-auth/react';
+import { usePermissions } from '@/hooks/usePermissions';
 import { Plus, X, Save, Receipt, Building2 } from 'lucide-react';
 
 interface Room { id: string; roomNumber: string; floor: number; }
@@ -38,8 +38,8 @@ function fmtMoney(n: number) {
 }
 
 export default function ExpensesPage() {
-  const { data: session } = useSession();
-  const isAdmin = session?.user?.role === 'ADMIN';
+  const { can } = usePermissions();
+  const canCreateExpense = can('/expenses:create');
 
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [total, setTotal] = useState(0);
@@ -123,7 +123,7 @@ export default function ExpensesPage() {
             <p className="text-sm text-slate-500">Klinika xarajatlarini boshqarish</p>
           </div>
         </div>
-        {isAdmin && (
+        {canCreateExpense && (
           <button
             onClick={() => setShowModal(true)}
             className="flex items-center gap-2 px-4 py-2.5 bg-blue-600 text-white text-sm font-semibold rounded-xl hover:bg-blue-700 transition-colors"

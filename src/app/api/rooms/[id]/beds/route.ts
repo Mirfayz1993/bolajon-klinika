@@ -1,8 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getServerSession } from 'next-auth';
-import { authOptions } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 import { BedStatus, Prisma } from '@prisma/client';
+import { requireAction, requireSession } from '@/lib/api-auth';
 
 // GET /api/rooms/[roomId]/beds?status=AVAILABLE
 // Xonadagi to'shaklarni qaytaradi, ixtiyoriy status filtri bilan
@@ -10,8 +9,9 @@ export async function GET(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const session = await getServerSession(authOptions);
-  if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  const auth = await requireSession();
+  if (!auth.ok) return auth.response;
+  const { session } = auth;
 
   const { id: roomId } = await params;
   const { searchParams } = new URL(req.url);
@@ -60,9 +60,8 @@ export async function POST(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const session = await getServerSession(authOptions);
-  if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  if (session.user.role !== 'ADMIN') return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+  const auth = await requireAction('/rooms:edit');
+  if (!auth.ok) return auth.response;
 
   const { id: roomId } = await params;
 
@@ -106,9 +105,8 @@ export async function DELETE(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const session = await getServerSession(authOptions);
-  if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  if (session.user.role !== 'ADMIN') return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+  const auth = await requireAction('/rooms:edit');
+  if (!auth.ok) return auth.response;
 
   const { id: roomId } = await params;
   const { searchParams } = new URL(req.url);

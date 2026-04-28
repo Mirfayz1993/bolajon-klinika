@@ -1103,40 +1103,95 @@ export default function AdmissionsPage() {
                 </div>
               )}
 
-              {!dischargeResult && (
-                <form onSubmit={handleDischarge} className="flex flex-col gap-4">
-                  <div className="flex flex-col gap-1">
-                    <label className="text-sm font-medium text-slate-700">
-                      {t.admissions.dischargeNotes}
-                    </label>
-                    <textarea
-                      value={dischargeNotes}
-                      onChange={(e) => setDischargeNotes(e.target.value)}
-                      rows={3}
-                      className="border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none"
-                    />
-                  </div>
+              {!dischargeResult && (() => {
+                const preview = computeAutoPreview(dischargeAdmission);
+                const totalHours = Math.floor(preview.hours);
+                return (
+                  <form onSubmit={handleDischarge} className="flex flex-col gap-4">
+                    {/* Auto preview */}
+                    <div className="bg-blue-50 border border-blue-200 rounded-lg px-4 py-3 text-sm text-blue-900 space-y-1">
+                      <div className="flex items-center justify-between">
+                        <span className="text-blue-700">{t.admissions.stayDuration}:</span>
+                        <span className="font-semibold">
+                          {totalHours} {t.common.hours}
+                        </span>
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <span className="text-blue-700">{t.admissions.autoAmount}:</span>
+                        <span className="font-semibold">
+                          {preview.amount > 0
+                            ? `${preview.days} ${t.common.days} = ${formatCurrency(preview.amount, t.common.sum)}`
+                            : `0 ${t.common.days} (${t.common.free})`}
+                        </span>
+                      </div>
+                    </div>
 
-                  <div className="flex items-center justify-end gap-3">
-                    <button
-                      type="button"
-                      onClick={() => setDischargeAdmission(null)}
-                      className="px-4 py-2 text-sm font-medium text-slate-600 hover:text-slate-800 hover:bg-slate-100 rounded-lg transition-colors"
-                    >
-                      {t.common.cancel}
-                    </button>
-                    <button
-                      type="submit"
-                      disabled={dischargeSaving}
-                      className="flex items-center gap-2 px-4 py-2 bg-orange-500 hover:bg-orange-600 disabled:opacity-60 disabled:cursor-not-allowed text-white text-sm font-medium rounded-lg transition-colors"
-                    >
-                      {dischargeSaving && <Loader2 className="w-4 h-4 animate-spin" />}
-                      <LogOut className="w-4 h-4" />
-                      {t.admissions.discharge}
-                    </button>
-                  </div>
-                </form>
-              )}
+                    {/* Manual amount toggle */}
+                    <div className="border border-slate-200 rounded-lg px-4 py-3">
+                      <label className="flex items-center gap-2 cursor-pointer select-none">
+                        <input
+                          type="checkbox"
+                          checked={manualAmountEnabled}
+                          onChange={(e) => setManualAmountEnabled(e.target.checked)}
+                          className="w-4 h-4 rounded border-slate-300 text-amber-600 focus:ring-amber-500"
+                        />
+                        <span className="text-sm font-medium text-slate-700">
+                          {t.admissions.manualAmountToggle}
+                        </span>
+                      </label>
+                      {manualAmountEnabled && (
+                        <div className="mt-3 flex flex-col gap-1">
+                          <label className="text-xs font-medium text-slate-600">
+                            {t.admissions.manualAmountLabel}
+                          </label>
+                          <div className="flex items-center gap-2">
+                            <input
+                              type="number"
+                              min={0}
+                              value={manualAmount}
+                              onChange={(e) => setManualAmount(e.target.value)}
+                              placeholder="0"
+                              className="flex-1 border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-transparent"
+                            />
+                            <span className="text-sm text-slate-500">{t.common.sum}</span>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="flex flex-col gap-1">
+                      <label className="text-sm font-medium text-slate-700">
+                        {t.admissions.dischargeNotes}
+                      </label>
+                      <textarea
+                        value={dischargeNotes}
+                        onChange={(e) => setDischargeNotes(e.target.value)}
+                        rows={3}
+                        className="border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none"
+                      />
+                    </div>
+
+                    <div className="flex items-center justify-end gap-3">
+                      <button
+                        type="button"
+                        onClick={() => setDischargeAdmission(null)}
+                        className="px-4 py-2 text-sm font-medium text-slate-600 hover:text-slate-800 hover:bg-slate-100 rounded-lg transition-colors"
+                      >
+                        {t.common.cancel}
+                      </button>
+                      <button
+                        type="submit"
+                        disabled={dischargeSaving}
+                        className="flex items-center gap-2 px-4 py-2 bg-orange-500 hover:bg-orange-600 disabled:opacity-60 disabled:cursor-not-allowed text-white text-sm font-medium rounded-lg transition-colors"
+                      >
+                        {dischargeSaving && <Loader2 className="w-4 h-4 animate-spin" />}
+                        <LogOut className="w-4 h-4" />
+                        {t.admissions.discharge}
+                      </button>
+                    </div>
+                  </form>
+                );
+              })()}
 
               {dischargeResult && (
                 <div className="flex justify-end">

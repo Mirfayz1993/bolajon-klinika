@@ -1,12 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getServerSession } from 'next-auth';
-import { authOptions } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
+import { requireAction } from '@/lib/api-auth';
+import { writeAuditLog } from '@/lib/audit';
 
 export async function GET(req: NextRequest) {
-  const session = await getServerSession(authOptions);
-  if (!session || session.user.role !== 'ADMIN')
-    return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+  const auth = await requireAction('/expenses:create');
+  if (!auth.ok) return auth.response;
 
   const { searchParams } = new URL(req.url);
   const roomId = searchParams.get('roomId');
@@ -35,9 +34,9 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
-  const session = await getServerSession(authOptions);
-  if (!session || session.user.role !== 'ADMIN')
-    return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+  const auth = await requireAction('/expenses:create');
+  if (!auth.ok) return auth.response;
+  const { session } = auth;
 
   const body = await req.json();
   const { category, amount, description, roomId, date } = body;
@@ -55,6 +54,19 @@ export async function POST(req: NextRequest) {
       createdById: session.user.id,
     },
     include: { room: { select: { roomNumber: true, floor: true } } },
+  });
+
+  await writeAuditLog({
+    userId: session.user.id,
+    action: 'CREATE',
+    module: 'expenses',
+    details: {
+      scope: 'general',
+      expenseId: expense.id,
+      category: expense.category,
+      amount: Number(expense.amount),
+      roomId: expense.roomId,
+    },
   });
 
   return NextResponse.json(expense, { status: 201 });

@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useSession } from 'next-auth/react';
 import { useLanguage } from '@/hooks/useLanguage';
+import { usePermissions } from '@/hooks/usePermissions';
 import { useRouter } from 'next/navigation';
 import {
   Plus,
@@ -131,8 +132,12 @@ function BedCard({
 export default function RoomsPage() {
   const { t } = useLanguage();
   const { data: session } = useSession();
+  const { can } = usePermissions();
   const router = useRouter();
   const isAdmin = session?.user?.role === 'ADMIN';
+  const canCreateRoom = can('/rooms:create');
+  const canEditRoom = can('/rooms:edit');
+  const canDeleteRoom = can('/rooms:delete');
 
   const [rooms, setRooms] = useState<Room[]>([]);
   const [loading, setLoading] = useState(false);
@@ -333,7 +338,7 @@ export default function RoomsPage() {
               </button>
             </div>
           )}
-          {isAdmin && viewMode === 'active' && (
+          {canCreateRoom && viewMode === 'active' && (
             <button
               onClick={openAddRoomModal}
               className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg transition-colors text-sm font-medium"
@@ -494,8 +499,8 @@ export default function RoomsPage() {
                   </div>
                 )}
 
-                {/* Actions — admin only */}
-                {isAdmin && viewMode === 'deleted' && (
+                {/* Actions — permission gated */}
+                {viewMode === 'deleted' && (canEditRoom || canCreateRoom) && (
                   <div className="flex items-center gap-2 mt-auto pt-3 border-t border-slate-100 flex-wrap">
                     <button
                       onClick={() => router.push(`/rooms/${room.id}`)}
@@ -504,16 +509,18 @@ export default function RoomsPage() {
                       <Info className="w-3.5 h-3.5" />
                       {t.rooms.details}
                     </button>
-                    <button
-                      onClick={(e) => handleRestoreRoom(room.id, e)}
-                      className="flex items-center gap-1.5 text-xs font-medium text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50 px-3 py-1.5 rounded-lg transition-colors ml-auto"
-                    >
-                      <RotateCcw className="w-3.5 h-3.5" />
-                      {t.rooms.restore}
-                    </button>
+                    {canEditRoom && (
+                      <button
+                        onClick={(e) => handleRestoreRoom(room.id, e)}
+                        className="flex items-center gap-1.5 text-xs font-medium text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50 px-3 py-1.5 rounded-lg transition-colors ml-auto"
+                      >
+                        <RotateCcw className="w-3.5 h-3.5" />
+                        {t.rooms.restore}
+                      </button>
+                    )}
                   </div>
                 )}
-                {isAdmin && viewMode === 'active' && (
+                {viewMode === 'active' && (canEditRoom || canDeleteRoom) && (
                   <div className="flex items-center gap-2 mt-auto pt-3 border-t border-slate-100 flex-wrap">
                     <button
                       onClick={() => router.push(`/rooms/${room.id}`)}
@@ -522,41 +529,45 @@ export default function RoomsPage() {
                       <Info className="w-3.5 h-3.5" />
                       {t.rooms.details}
                     </button>
-                    <button
-                      onClick={(e) => openEditRoomModal(room, e)}
-                      className="flex items-center gap-1.5 text-xs font-medium text-slate-600 hover:text-slate-800 hover:bg-slate-100 px-3 py-1.5 rounded-lg transition-colors"
-                    >
-                      <Pencil className="w-3.5 h-3.5" />
-                      {t.common.edit}
-                    </button>
+                    {canEditRoom && (
+                      <button
+                        onClick={(e) => openEditRoomModal(room, e)}
+                        className="flex items-center gap-1.5 text-xs font-medium text-slate-600 hover:text-slate-800 hover:bg-slate-100 px-3 py-1.5 rounded-lg transition-colors"
+                      >
+                        <Pencil className="w-3.5 h-3.5" />
+                        {t.common.edit}
+                      </button>
+                    )}
                     {/* Krovat qo'shish */}
-                    <button
-                      onClick={async (e) => {
-                        e.stopPropagation();
-                        const nextNum = String(room.beds.length + 1);
-                        try {
-                          const res = await fetch(`/api/rooms/${room.id}/beds`, {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ bedNumber: nextNum }),
-                          });
-                          if (!res.ok) {
-                            const data = await res.json().catch(() => ({})) as { error?: string };
-                            alert(data.error ?? t.common.error);
-                            return;
+                    {canEditRoom && (
+                      <button
+                        onClick={async (e) => {
+                          e.stopPropagation();
+                          const nextNum = String(room.beds.length + 1);
+                          try {
+                            const res = await fetch(`/api/rooms/${room.id}/beds`, {
+                              method: 'POST',
+                              headers: { 'Content-Type': 'application/json' },
+                              body: JSON.stringify({ bedNumber: nextNum }),
+                            });
+                            if (!res.ok) {
+                              const data = await res.json().catch(() => ({})) as { error?: string };
+                              alert(data.error ?? t.common.error);
+                              return;
+                            }
+                            fetchRooms();
+                          } catch (err) {
+                            alert(err instanceof Error ? err.message : t.common.error);
                           }
-                          fetchRooms();
-                        } catch (err) {
-                          alert(err instanceof Error ? err.message : t.common.error);
-                        }
-                      }}
-                      className="flex items-center gap-1 text-xs font-medium text-green-600 hover:text-green-700 hover:bg-green-50 px-2 py-1.5 rounded-lg transition-colors"
-                      title={t.rooms.addBed}
-                    >
-                      <Plus className="w-3.5 h-3.5" /> {t.rooms.addBedShort}
-                    </button>
+                        }}
+                        className="flex items-center gap-1 text-xs font-medium text-green-600 hover:text-green-700 hover:bg-green-50 px-2 py-1.5 rounded-lg transition-colors"
+                        title={t.rooms.addBed}
+                      >
+                        <Plus className="w-3.5 h-3.5" /> {t.rooms.addBedShort}
+                      </button>
+                    )}
                     {/* Oxirgi bo'sh krovatni o'chirish */}
-                    {room.beds.some(b => b.status === 'AVAILABLE' && b.admissions.length === 0) && (
+                    {canEditRoom && room.beds.some(b => b.status === 'AVAILABLE' && b.admissions.length === 0) && (
                       <button
                         onClick={async (e) => {
                           e.stopPropagation();
@@ -579,13 +590,15 @@ export default function RoomsPage() {
                         <Trash2 className="w-3.5 h-3.5" /> {t.rooms.addBedShort}
                       </button>
                     )}
-                    <button
-                      onClick={(e) => handleDeleteRoom(room.id, e)}
-                      className="flex items-center gap-1.5 text-xs font-medium text-red-500 hover:text-red-700 hover:bg-red-50 px-3 py-1.5 rounded-lg transition-colors ml-auto"
-                    >
-                      <Trash2 className="w-3.5 h-3.5" />
-                      {t.common.delete}
-                    </button>
+                    {canDeleteRoom && (
+                      <button
+                        onClick={(e) => handleDeleteRoom(room.id, e)}
+                        className="flex items-center gap-1.5 text-xs font-medium text-red-500 hover:text-red-700 hover:bg-red-50 px-3 py-1.5 rounded-lg transition-colors ml-auto"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                        {t.common.delete}
+                      </button>
+                    )}
                   </div>
                 )}
               </div>

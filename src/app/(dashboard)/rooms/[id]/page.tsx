@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useSession } from 'next-auth/react';
 import { useLanguage } from '@/hooks/useLanguage';
+import { usePermissions } from '@/hooks/usePermissions';
 import { useRouter, useParams } from 'next/navigation';
 import {
   ArrowLeft, Package,
@@ -93,10 +94,14 @@ function formatSum(amount: number) {
 export default function RoomDetailPage() {
   const { t } = useLanguage();
   const { data: session } = useSession();
+  const { can } = usePermissions();
   const router = useRouter();
   const params = useParams();
   const roomId = params.id as string;
   const isAdmin = session?.user?.role === 'ADMIN';
+  const canManageInventory = can('/rooms:manage_inventory');
+  const canAssignResponsible = can('/rooms:assign_responsible');
+  const canEditRoom = can('/rooms:edit');
 
   const [tab, setTab] = useState<'inventory' | 'beds' | 'settings'>('inventory');
 
@@ -494,7 +499,7 @@ export default function RoomDetailPage() {
           <section className="bg-white rounded-xl shadow-sm border border-slate-100">
             <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between">
               <h2 className="font-semibold text-slate-800">{t.rooms.inventory}</h2>
-              {isAdmin && (
+              {canManageInventory && (
                 <div className="flex items-center gap-2">
                   {activeItems.length > 0 && !showAddInventory && (
                     <button
@@ -525,7 +530,7 @@ export default function RoomDetailPage() {
             </div>
 
             {/* Add form */}
-            {isAdmin && showAddInventory && (
+            {canManageInventory && showAddInventory && (
               <form onSubmit={handleAddInventory} className="px-6 py-5 bg-blue-50/30 border-b border-slate-100">
                 {invError && (
                   <div className="flex items-center gap-2 text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2 mb-4 text-sm">
@@ -695,7 +700,7 @@ export default function RoomDetailPage() {
         <section className="bg-white rounded-xl shadow-sm border border-slate-100">
           <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between flex-wrap gap-3">
             <h2 className="font-semibold text-slate-800">{t.rooms.bedsList}</h2>
-            {isAdmin && (
+            {canEditRoom && (
               <div className="flex items-center gap-2">
                 <button
                   onClick={() => setShowDeletedBeds((v) => !v)}
@@ -709,7 +714,7 @@ export default function RoomDetailPage() {
           </div>
 
           {/* Add bed form (only for active rooms) */}
-          {isAdmin && !room.deletedAt && (
+          {canEditRoom && !room.deletedAt && (
             <form onSubmit={handleAddBed} className="px-6 py-4 bg-blue-50/30 border-b border-slate-100 flex items-center gap-3 flex-wrap">
               <label className="text-sm font-medium text-slate-700">{t.rooms.bedNumber}</label>
               <input
@@ -788,7 +793,7 @@ export default function RoomDetailPage() {
                         </p>
                       )}
                     </div>
-                    {isAdmin && (
+                    {canEditRoom && (
                       <div className="flex items-center gap-2">
                         {isDeleted ? (
                           <button
@@ -845,7 +850,7 @@ export default function RoomDetailPage() {
                     </p>
                   </div>
                 </div>
-                {isAdmin && (
+                {canAssignResponsible && (
                   <button
                     onClick={() => setShowAssignForm(!showAssignForm)}
                     className="flex items-center gap-1.5 text-sm text-blue-600 hover:text-blue-700 font-medium"
@@ -861,7 +866,7 @@ export default function RoomDetailPage() {
                   <User className="w-6 h-6 text-slate-400" />
                 </div>
                 <p className="text-sm text-slate-400 mb-4">{t.rooms.noResponsible}</p>
-                {isAdmin && !showAssignForm && (
+                {canAssignResponsible && !showAssignForm && (
                   <button
                     onClick={() => setShowAssignForm(true)}
                     className="flex items-center gap-1.5 text-sm bg-blue-600 text-white hover:bg-blue-700 px-4 py-2 rounded-lg font-medium mx-auto"
@@ -874,7 +879,7 @@ export default function RoomDetailPage() {
             )}
 
             {/* Assign form */}
-            {isAdmin && showAssignForm && (
+            {canAssignResponsible && showAssignForm && (
               <form onSubmit={handleAssignResponsible} className="mt-4 bg-slate-50 border border-slate-200 rounded-xl p-4">
                 {respError && (
                   <div className="flex items-center gap-2 text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2 mb-3 text-sm">

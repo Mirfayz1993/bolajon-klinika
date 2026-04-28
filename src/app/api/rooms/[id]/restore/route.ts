@@ -1,20 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getServerSession } from 'next-auth';
-import { authOptions } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
+import { requireAction } from '@/lib/api-auth';
 
 // POST /api/rooms/[id]/restore
-// Soft-deleted xonani tiklash. Faqat ADMIN ruxsati bor.
+// Soft-deleted xonani tiklash. /rooms:edit action ruxsati bilan ochiladi.
 // Bedlar avtomatik tiklanmaydi — ular alohida endpoint orqali tiklanadi.
 export async function POST(
   _req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const session = await getServerSession(authOptions);
-  if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  if (session.user.role !== 'ADMIN') {
-    return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
-  }
+  const auth = await requireAction('/rooms:edit');
+  if (!auth.ok) return auth.response;
 
   try {
     const { id } = await params;
