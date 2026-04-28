@@ -125,7 +125,7 @@ export async function POST(req: NextRequest) {
 
     // Validate room if provided
     if (roomId) {
-      const room = await prisma.room.findUnique({ where: { id: roomId } });
+      const room = await prisma.room.findFirst({ where: { id: roomId, deletedAt: null } });
       if (!room) {
         return NextResponse.json({ error: 'Xona topilmadi' }, { status: 404 });
       }

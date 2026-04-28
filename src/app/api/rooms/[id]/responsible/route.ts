@@ -11,6 +11,9 @@ export async function GET(_req: NextRequest, { params }: Ctx) {
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
   try {
+    const room = await prisma.room.findFirst({ where: { id, deletedAt: null } });
+    if (!room) return NextResponse.json({ error: 'Xona topilmadi' }, { status: 404 });
+
     const responsible = await prisma.roomResponsible.findUnique({
       where: { roomId: id },
       include: {
@@ -35,7 +38,7 @@ export async function PUT(req: NextRequest, { params }: Ctx) {
     const body = await req.json() as { userId?: string };
     if (!body.userId) return NextResponse.json({ error: 'userId majburiy' }, { status: 400 });
 
-    const room = await prisma.room.findUnique({ where: { id } });
+    const room = await prisma.room.findFirst({ where: { id, deletedAt: null } });
     if (!room) return NextResponse.json({ error: 'Xona topilmadi' }, { status: 404 });
 
     const user = await prisma.user.findUnique({ where: { id: body.userId } });

@@ -24,7 +24,7 @@ export async function POST(
 
   try {
     // Xonani tekshirish
-    const room = await prisma.room.findUnique({ where: { id: roomId } });
+    const room = await prisma.room.findFirst({ where: { id: roomId, deletedAt: null } });
     if (!room) return NextResponse.json({ error: 'Xona topilmadi' }, { status: 404 });
 
     // Bugun shu bemor uchun CALLED holатidagi queue topamiz

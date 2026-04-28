@@ -44,8 +44,8 @@ export async function DELETE(
     const existing = await prisma.roomType.findUnique({ where: { id } });
     if (!existing) return NextResponse.json({ error: 'Topilmadi' }, { status: 404 });
 
-    // Check if any room uses this type
-    const roomCount = await prisma.room.count({ where: { type: existing.name } });
+    // Check if any active (non-deleted) room uses this type
+    const roomCount = await prisma.room.count({ where: { type: existing.name, deletedAt: null } });
     if (roomCount > 0) {
       return NextResponse.json(
         { error: `Bu turda ${roomCount} ta xona mavjud, o'chirib bo'lmaydi` },

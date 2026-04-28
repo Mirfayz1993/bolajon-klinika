@@ -19,7 +19,8 @@ export async function GET(_req: NextRequest) {
     //    Aktiv admission borligini bilish uchun dischargeDate = null bo'lganlarni include qilamiz.
     const ambulatoryBeds = await prisma.bed.findMany({
       where: {
-        room: { isAmbulatory: true },
+        deletedAt: null,
+        room: { isAmbulatory: true, deletedAt: null },
       },
       select: {
         id: true,

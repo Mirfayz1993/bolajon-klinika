@@ -14,14 +14,14 @@ export async function GET(
   try {
     const { id } = await params;
 
-    const bed = await prisma.bed.findUnique({
-      where: { id },
+    const bed = await prisma.bed.findFirst({
+      where: { id, deletedAt: null },
       include: {
         room: true,
       },
     });
 
-    if (!bed) {
+    if (!bed || bed.room.deletedAt) {
       return NextResponse.json({ error: 'To\'shak topilmadi' }, { status: 404 });
     }
 
@@ -59,7 +59,7 @@ export async function PUT(
       );
     }
 
-    const existing = await prisma.bed.findUnique({ where: { id } });
+    const existing = await prisma.bed.findFirst({ where: { id, deletedAt: null } });
     if (!existing) {
       return NextResponse.json({ error: 'Kravat topilmadi' }, { status: 404 });
     }
@@ -90,7 +90,7 @@ export async function DELETE(
   try {
     const { id } = await params;
 
-    const bed = await prisma.bed.findUnique({ where: { id } });
+    const bed = await prisma.bed.findFirst({ where: { id, deletedAt: null } });
     if (!bed) {
       return NextResponse.json({ error: 'Kravat topilmadi' }, { status: 404 });
     }
@@ -102,7 +102,19 @@ export async function DELETE(
       );
     }
 
-    await prisma.bed.delete({ where: { id } });
+    // Aktiv admission tekshirish — qo'shimcha sanitar tekshiruv
+    const activeAdmissionsCount = await prisma.admission.count({
+      where: { bedId: id, dischargeDate: null },
+    });
+    if (activeAdmissionsCount > 0) {
+      return NextResponse.json(
+        { error: "Kravatda aktiv bemor mavjud. Avval uni chiqaring." },
+        { status: 400 }
+      );
+    }
+
+    // Soft delete — tarixiy admission/payment yozuvlari saqlanadi
+    await prisma.bed.update({ where: { id }, data: { deletedAt: new Date() } });
 
     return NextResponse.json({ success: true });
   } catch (error) {

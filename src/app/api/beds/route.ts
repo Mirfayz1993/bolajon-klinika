@@ -17,11 +17,23 @@ export async function GET(req: NextRequest) {
 
     const floorParam = searchParams.get('floor');
 
+    const isAdmin = session.user.role === 'ADMIN';
+    const includeDeleted = isAdmin && searchParams.get('includeDeleted') === 'true';
+    const onlyDeleted = isAdmin && searchParams.get('onlyDeleted') === 'true';
+
     const where: {
       roomId?: string;
       status?: BedStatus;
-      room?: { isAmbulatory?: boolean; floor?: number };
+      deletedAt?: Date | null | { not: null };
+      room?: { isAmbulatory?: boolean; floor?: number; deletedAt?: Date | null };
     } = {};
+
+    if (onlyDeleted) {
+      where.deletedAt = { not: null };
+    } else if (!includeDeleted) {
+      where.deletedAt = null;
+      where.room = { deletedAt: null };
+    }
 
     if (roomId) where.roomId = roomId;
 
@@ -102,7 +114,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const room = await prisma.room.findUnique({ where: { id: roomId } });
+    const room = await prisma.room.findFirst({ where: { id: roomId, deletedAt: null } });
     if (!room) {
       return NextResponse.json({ error: 'Xona topilmadi' }, { status: 404 });
     }
@@ -111,6 +123,12 @@ export async function POST(req: NextRequest) {
       where: { roomId_bedNumber: { roomId, bedNumber: number } },
     });
     if (existing) {
+      if (existing.deletedAt) {
+        return NextResponse.json(
+          { error: "Bu raqamli to'shak avval o'chirilgan. Iltimos, to'shakni tiklang yoki boshqa raqam tanlang." },
+          { status: 400 }
+        );
+      }
       return NextResponse.json(
         { error: 'Bu xonada bunday raqamli to\'shak allaqachon mavjud' },
         { status: 400 }

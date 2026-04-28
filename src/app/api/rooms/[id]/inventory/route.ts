@@ -11,6 +11,10 @@ export async function GET(_req: NextRequest, { params }: Ctx) {
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
   try {
+    // Faqat aktiv (o'chirilmagan) xona uchun inventarni qaytaramiz
+    const room = await prisma.room.findFirst({ where: { id, deletedAt: null } });
+    if (!room) return NextResponse.json({ error: 'Xona topilmadi' }, { status: 404 });
+
     const items = await prisma.roomInventoryItem.findMany({
       where: { roomId: id },
       include: { addedBy: { select: { name: true } } },
@@ -44,7 +48,7 @@ export async function POST(req: NextRequest, { params }: Ctx) {
     const quantity = body.quantity ? Number(body.quantity) : 1;
     if (quantity < 1) return NextResponse.json({ error: 'Miqdor 1 dan kam bo\'lmasin' }, { status: 400 });
 
-    const room = await prisma.room.findUnique({ where: { id } });
+    const room = await prisma.room.findFirst({ where: { id, deletedAt: null } });
     if (!room) return NextResponse.json({ error: 'Xona topilmadi' }, { status: 404 });
 
     const totalAmount = body.unitPrice ? body.unitPrice * quantity : null;

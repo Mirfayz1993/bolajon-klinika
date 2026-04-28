@@ -13,18 +13,22 @@ export async function GET(
 
   try {
     const { id } = await params;
+    const { searchParams } = new URL(req.url);
+    const includeDeleted = session.user.role === 'ADMIN' && searchParams.get('includeDeleted') === 'true';
 
     const room = await prisma.room.findUnique({
       where: { id },
       include: {
-        beds: true,
+        beds: {
+          where: includeDeleted ? undefined : { deletedAt: null },
+        },
         _count: {
           select: { appointments: true },
         },
       },
     });
 
-    if (!room) {
+    if (!room || (!includeDeleted && room.deletedAt)) {
       return NextResponse.json({ error: 'Xona topilmadi' }, { status: 404 });
     }
 
@@ -60,7 +64,7 @@ export async function PUT(
 
     const { floor, roomNumber, type, capacity, isActive, isAmbulatory } = body;
 
-    const existing = await prisma.room.findUnique({ where: { id } });
+    const existing = await prisma.room.findFirst({ where: { id, deletedAt: null } });
     if (!existing) {
       return NextResponse.json({ error: 'Xona topilmadi' }, { status: 404 });
     }
@@ -76,10 +80,15 @@ export async function PUT(
     const newRoomNumber = roomNumber ?? existing.roomNumber;
 
     if (floor !== undefined || roomNumber !== undefined) {
-      const duplicate = await prisma.room.findUnique({
-        where: { floor_roomNumber: { floor: newFloor, roomNumber: newRoomNumber } },
+      const duplicate = await prisma.room.findFirst({
+        where: {
+          floor: newFloor,
+          roomNumber: newRoomNumber,
+          deletedAt: null,
+          id: { not: id },
+        },
       });
-      if (duplicate && duplicate.id !== id) {
+      if (duplicate) {
         return NextResponse.json(
           { error: 'Bu qavat va xona raqami allaqachon mavjud' },
           { status: 400 }
@@ -128,72 +137,38 @@ export async function DELETE(
   try {
     const { id } = await params;
 
-    const room = await prisma.room.findUnique({
-      where: { id },
-      include: { beds: true },
+    const room = await prisma.room.findFirst({
+      where: { id, deletedAt: null },
     });
 
     if (!room) {
       return NextResponse.json({ error: 'Xona topilmadi' }, { status: 404 });
     }
 
-    const hasOccupied = room.beds.some((bed) => bed.status !== 'AVAILABLE');
-    if (hasOccupied) {
+    // Soft delete — faqat aktiv (chiqarilmagan) admission borligini tekshirish.
+    // Tarixiy admissions, payments, expenses saqlanadi (audit uchun) — soft delete
+    // ularga ta'sir qilmaydi.
+    const activeAdmissionsCount = await prisma.admission.count({
+      where: { bed: { roomId: id }, dischargeDate: null },
+    });
+
+    if (activeAdmissionsCount > 0) {
       return NextResponse.json(
-        { error: 'Xonada band yoki ta\'mirdagi kravatlar mavjud. Avval ularni bo\'shating.' },
+        { error: 'Xonada hozir bemor yotibdi. Avval bemorni chiqarib oling.' },
         { status: 400 }
       );
     }
 
-    const bedIds = room.beds.map((b) => b.id);
-
-    // Barcha bog'liq yozuvlar sonini parallel hisoblash
-    const [
-      appointmentsCount,
-      inventoryCount,
-      expensesCount,
-      attendancesCount,
-      generalExpensesCount,
-      responsibleCount,
-      historicalAdmissionsCount,
-    ] = await Promise.all([
-      prisma.appointment.count({ where: { roomId: id } }),
-      prisma.roomInventoryItem.count({ where: { roomId: id } }),
-      prisma.roomExpense.count({ where: { roomId: id } }),
-      prisma.attendance.count({ where: { roomId: id } }),
-      prisma.generalExpense.count({ where: { roomId: id } }),
-      prisma.roomResponsible.count({ where: { roomId: id } }),
-      bedIds.length > 0
-        ? prisma.admission.count({ where: { bedId: { in: bedIds } } })
-        : Promise.resolve(0),
-    ]);
-
-    // Bloklovchi yozuvlar ro'yxatini yig'ish (responsible blok qilmaydi — transaction'da o'chiriladi)
-    const blockers: string[] = [];
-    if (appointmentsCount > 0) blockers.push(`${appointmentsCount} ta uchrashuv`);
-    if (historicalAdmissionsCount > 0) blockers.push(`${historicalAdmissionsCount} ta tarixiy bemor yozuvi`);
-    if (inventoryCount > 0) blockers.push(`${inventoryCount} ta inventar yozuv`);
-    if (expensesCount > 0) blockers.push(`${expensesCount} ta xarajat yozuvi`);
-    if (attendancesCount > 0) blockers.push(`${attendancesCount} ta davomat yozuvi`);
-    if (generalExpensesCount > 0) blockers.push(`${generalExpensesCount} ta umumiy xarajat yozuvi`);
-
-    if (blockers.length > 0) {
-      return NextResponse.json(
-        { error: `Xonani o'chirib bo'lmaydi: ${blockers.join(', ')} mavjud.` },
-        { status: 400 }
-      );
-    }
-
-    // Bog'liqliklar yo'q — transaction ichida tartib bilan o'chirish
+    const now = new Date();
     await prisma.$transaction(async (tx) => {
-      if (responsibleCount > 0) {
-        await tx.roomResponsible.deleteMany({ where: { roomId: id } });
-      }
-      // RoomInventoryLog (inventoryCount=0 bo'lsa ham log qolgan bo'lishi mumkin)
-      await tx.roomInventoryLog.deleteMany({ where: { roomId: id } });
-      // Bedlar (admissions/payments tekshirilgan, allaqachon yo'q)
-      await tx.bed.deleteMany({ where: { roomId: id } });
-      await tx.room.delete({ where: { id } });
+      await tx.bed.updateMany({
+        where: { roomId: id, deletedAt: null },
+        data: { deletedAt: now },
+      });
+      await tx.room.update({
+        where: { id },
+        data: { deletedAt: now },
+      });
     });
 
     return NextResponse.json({ success: true });

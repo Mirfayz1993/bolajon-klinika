@@ -16,12 +16,22 @@ export async function GET(
   const { id: roomId } = await params;
   const { searchParams } = new URL(req.url);
   const statusParam = searchParams.get('status');
+  const isAdmin = session.user.role === 'ADMIN';
+  const includeDeleted = isAdmin && searchParams.get('includeDeleted') === 'true';
+  const onlyDeleted = isAdmin && searchParams.get('onlyDeleted') === 'true';
 
   try {
-    const room = await prisma.room.findUnique({ where: { id: roomId } });
+    const room = await prisma.room.findFirst({
+      where: includeDeleted || onlyDeleted ? { id: roomId } : { id: roomId, deletedAt: null },
+    });
     if (!room) return NextResponse.json({ error: 'Xona topilmadi' }, { status: 404 });
 
     const where: Record<string, unknown> = { roomId };
+    if (onlyDeleted) {
+      where.deletedAt = { not: null };
+    } else if (!includeDeleted) {
+      where.deletedAt = null;
+    }
     if (statusParam) {
       where.status = statusParam;
     }
@@ -61,13 +71,21 @@ export async function POST(
     const bedNumber = body.bedNumber?.trim();
     if (!bedNumber) return NextResponse.json({ error: 'bedNumber majburiy' }, { status: 400 });
 
-    const room = await prisma.room.findUnique({ where: { id: roomId } });
+    const room = await prisma.room.findFirst({ where: { id: roomId, deletedAt: null } });
     if (!room) return NextResponse.json({ error: 'Xona topilmadi' }, { status: 404 });
 
     const existing = await prisma.bed.findUnique({
       where: { roomId_bedNumber: { roomId, bedNumber } },
     });
-    if (existing) return NextResponse.json({ error: "Bu xonada bunday raqamli to'shak allaqachon mavjud" }, { status: 400 });
+    if (existing) {
+      if (existing.deletedAt) {
+        return NextResponse.json(
+          { error: "Bu raqamli to'shak avval o'chirilgan. Iltimos, to'shakni tiklang yoki boshqa raqam tanlang." },
+          { status: 400 }
+        );
+      }
+      return NextResponse.json({ error: "Bu xonada bunday raqamli to'shak allaqachon mavjud" }, { status: 400 });
+    }
 
     const bed = await prisma.bed.create({
       data: { roomId, bedNumber, status: BedStatus.AVAILABLE },
@@ -98,7 +116,9 @@ export async function DELETE(
 
   try {
     const bed = await prisma.bed.findFirst({
-      where: bedId ? { id: bedId, roomId } : { roomId, status: BedStatus.AVAILABLE },
+      where: bedId
+        ? { id: bedId, roomId, deletedAt: null }
+        : { roomId, status: BedStatus.AVAILABLE, deletedAt: null },
       include: { admissions: { where: { dischargeDate: null }, take: 1 } },
       orderBy: bedId ? undefined : { bedNumber: 'desc' },
     });
@@ -108,25 +128,11 @@ export async function DELETE(
       return NextResponse.json({ error: "Band to'shakni o'chirib bo'lmaydi" }, { status: 400 });
     }
 
-    // Tarixiy admissionlarni tekshirish — FK constraint xatosini oldini olish uchun
-    const totalAdmissions = await prisma.admission.count({ where: { bedId: bed.id } });
-    if (totalAdmissions > 0) {
-      return NextResponse.json(
-        { error: "To'shakda tarixiy bemor yozuvlari bor — o'chirib bo'lmaydi. Status 'TA'MIRDA' qiling." },
-        { status: 400 }
-      );
-    }
-
-    // AssignedService.bedId soft-reference tekshiruvi (FK emas, lekin sanitar tekshirish)
-    const totalAssignedServices = await prisma.assignedService.count({ where: { bedId: bed.id } });
-    if (totalAssignedServices > 0) {
-      return NextResponse.json(
-        { error: "To'shakka bog'liq xizmat yozuvlari mavjud — o'chirib bo'lmaydi. Status 'TA'MIRDA' qiling." },
-        { status: 400 }
-      );
-    }
-
-    await prisma.bed.delete({ where: { id: bed.id } });
+    // Soft delete — tarixiy admission/assignedService yozuvlari saqlanadi (audit uchun)
+    await prisma.bed.update({
+      where: { id: bed.id },
+      data: { deletedAt: new Date() },
+    });
     return NextResponse.json({ ok: true });
   } catch (err) {
     console.error('Bed DELETE error:', err);

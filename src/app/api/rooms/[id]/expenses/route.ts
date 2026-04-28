@@ -11,6 +11,9 @@ export async function GET(req: NextRequest, { params }: Ctx) {
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
   try {
+    const room = await prisma.room.findFirst({ where: { id, deletedAt: null } });
+    if (!room) return NextResponse.json({ error: 'Xona topilmadi' }, { status: 404 });
+
     const { searchParams } = new URL(req.url);
     const typeFilter = searchParams.get('type') as 'INVENTORY' | 'MEDICINE' | 'UTILITY' | null;
 
@@ -59,7 +62,7 @@ export async function POST(req: NextRequest, { params }: Ctx) {
       return NextResponse.json({ error: 'amount musbat son bo\'lishi kerak' }, { status: 400 });
     }
 
-    const room = await prisma.room.findUnique({ where: { id } });
+    const room = await prisma.room.findFirst({ where: { id, deletedAt: null } });
     if (!room) return NextResponse.json({ error: 'Xona topilmadi' }, { status: 404 });
 
     const expense = await prisma.roomExpense.create({

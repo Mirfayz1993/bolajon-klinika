@@ -15,13 +15,27 @@ export async function GET(req: NextRequest) {
     const isActiveParam = searchParams.get('isActive');
 
     const isAmbulatoryParam = searchParams.get('isAmbulatory');
+    const includeDeletedParam = searchParams.get('includeDeleted');
+    const onlyDeletedParam = searchParams.get('onlyDeleted');
+
+    // ADMIN faqat o'chirilgan yozuvlarni ko'ra oladi
+    const isAdmin = session.user.role === 'ADMIN';
+    const includeDeleted = isAdmin && includeDeletedParam === 'true';
+    const onlyDeleted = isAdmin && onlyDeletedParam === 'true';
 
     const where: {
       floor?: number;
       type?: string;
       isActive?: boolean;
       isAmbulatory?: boolean;
+      deletedAt?: Date | null | { not: null };
     } = {};
+
+    if (onlyDeleted) {
+      where.deletedAt = { not: null };
+    } else if (!includeDeleted) {
+      where.deletedAt = null;
+    }
 
     if (floorParam) {
       const floor = parseInt(floorParam, 10);
@@ -47,10 +61,12 @@ export async function GET(req: NextRequest) {
       where,
       include: {
         beds: {
+          where: includeDeleted || onlyDeleted ? undefined : { deletedAt: null },
           select: {
             id: true,
             bedNumber: true,
             status: true,
+            deletedAt: true,
             admissions: {
               where: { dischargeDate: null },
               select: {
@@ -64,7 +80,7 @@ export async function GET(req: NextRequest) {
           },
         },
         _count: {
-          select: { beds: true },
+          select: { beds: { where: { deletedAt: null } } },
         },
       },
       orderBy: [{ floor: 'asc' }, { roomNumber: 'asc' }],
@@ -110,10 +126,20 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    // Faqat aktiv (deletedAt=null) xonalarni duplicate sifatida hisoblash —
+    // soft-deleted xona qoldirgan kombinatsiya yangi xona uchun ochiq bo'lishi kerak.
+    // Lekin DB darajasidagi @@unique([floor, roomNumber]) FK bilan to'qnash kelmaslik
+    // uchun: agar shu kombinatsiyada deleted yozuv bor bo'lsa — restore qilishni taklif et.
     const existing = await prisma.room.findUnique({
       where: { floor_roomNumber: { floor, roomNumber } },
     });
     if (existing) {
+      if (existing.deletedAt) {
+        return NextResponse.json(
+          { error: 'Bu qavat va xona raqami avval o\'chirilgan. Iltimos, xonani tiklang yoki boshqa raqam tanlang.' },
+          { status: 400 }
+        );
+      }
       return NextResponse.json(
         { error: 'Bu qavat va xona raqami allaqachon mavjud' },
         { status: 400 }
