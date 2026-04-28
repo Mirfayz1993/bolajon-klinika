@@ -1,8 +1,8 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { useSession } from "next-auth/react";
 import { useLanguage } from "@/hooks/useLanguage";
+import { usePermissions } from "@/hooks/usePermissions";
 import {
   Plus,
   Loader2,
@@ -55,12 +55,10 @@ function salaryStatusBadgeClass(status: string) {
 
 export default function SchedulePage() {
   const { t } = useLanguage();
-  const { data: session } = useSession();
+  const { can, isAdmin } = usePermissions();
 
-  const role = session?.user?.role as string | undefined;
-  const isAdmin = role === "ADMIN";
-  const canAddSchedule =
-    role === "ADMIN" || role === "HEAD_DOCTOR" || role === "HEAD_NURSE";
+  // Schedule yaratish ruxsati: [ADMIN, HEAD_DOCTOR, HEAD_NURSE]
+  const canAddSchedule = can("/schedule:create");
 
   const [activeTab, setActiveTab] = useState<"schedules" | "salaries">(
     "schedules"
@@ -468,7 +466,7 @@ export default function SchedulePage() {
                         </td>
                         <td className="px-4 py-3">
                           <div className="flex items-center justify-end gap-1">
-                            {canAddSchedule && (
+                            {can("/schedule:delete") && (
                               <button
                                 onClick={() => handleDeleteSchedule(sch.id)}
                                 className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-md transition-colors"

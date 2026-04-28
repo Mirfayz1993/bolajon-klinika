@@ -1,13 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import { requireRole, requireSession } from '@/lib/api-auth';
+import { requireSession } from '@/lib/api-auth';
 import { validateBody } from '@/lib/validate';
 import { z } from 'zod';
-
-const ATTENDANCE_ROLES = [
-  'ADMIN', 'RECEPTIONIST', 'HEAD_DOCTOR', 'HEAD_NURSE', 'DOCTOR', 'NURSE',
-  'HEAD_LAB_TECH', 'LAB_TECH', 'SPEECH_THERAPIST', 'MASSAGE_THERAPIST', 'SANITARY_WORKER',
-] as const;
 
 const checkInSchema = z.object({
   userId: z.string().min(1),
@@ -52,9 +47,9 @@ export async function GET(req: NextRequest) {
   return NextResponse.json({ records, staff });
 }
 
-// POST /api/attendance  { userId, roomId? }  → check-in
+// POST /api/attendance  { userId, roomId? }  → check-in (page-level — har xodim attendance ko'rsatadi)
 export async function POST(req: NextRequest) {
-  const auth = await requireRole(ATTENDANCE_ROLES);
+  const auth = await requireSession();
   if (!auth.ok) return auth.response;
 
   const parsed = await validateBody(req, checkInSchema);

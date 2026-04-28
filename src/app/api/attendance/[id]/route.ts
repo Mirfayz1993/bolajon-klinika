@@ -1,18 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import { requireRole, ROLE_GROUPS } from '@/lib/api-auth';
+import { requireRole, requireSession, ROLE_GROUPS } from '@/lib/api-auth';
 
-const ATTENDANCE_ROLES = [
-  'ADMIN', 'RECEPTIONIST', 'HEAD_DOCTOR', 'HEAD_NURSE', 'DOCTOR', 'NURSE',
-  'HEAD_LAB_TECH', 'LAB_TECH', 'SPEECH_THERAPIST', 'MASSAGE_THERAPIST', 'SANITARY_WORKER',
-] as const;
-
-// PATCH /api/attendance/[id]  → check-out
+// PATCH /api/attendance/[id]  → check-out (page-level — har xodim o'zining attendance check-out qilishi mumkin)
 export async function PATCH(
   _req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const auth = await requireRole(ATTENDANCE_ROLES);
+  const auth = await requireSession();
   if (!auth.ok) return auth.response;
 
   const { id } = await params;
@@ -32,7 +27,7 @@ export async function PATCH(
   return NextResponse.json(updated);
 }
 
-// DELETE /api/attendance/[id]  → yozuvni o'chirish (faqat ADMIN)
+// DELETE /api/attendance/[id]  → yozuvni o'chirish (faqat ADMIN — attendance action yo'q, eski xulq saqlangan)
 export async function DELETE(
   _req: NextRequest,
   { params }: { params: Promise<{ id: string }> }

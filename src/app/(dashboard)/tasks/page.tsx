@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useSession } from 'next-auth/react';
 import { useLanguage } from '@/hooks/useLanguage';
+import { usePermissions } from '@/hooks/usePermissions';
 import {
   CheckSquare,
   Clock,
@@ -146,6 +147,7 @@ function MyTaskCard({
   markCompleting: string | null;
 }) {
   const overdue = isOverdue(task.deadline) && task.status !== 'COMPLETED';
+  // canAct: o'z vazifasi yoki boshqalarning vazifasini yopish ruxsati bor
   const canAct = task.assigneeId === userId || isAdmin;
 
   return (
@@ -420,7 +422,7 @@ function NewTaskModal({
 export default function TasksPage() {
   const { data: session } = useSession();
   const { t } = useLanguage();
-  const isAdmin = session?.user?.role === 'ADMIN';
+  const { can, isAdmin } = usePermissions();
   const userId = session?.user?.id ?? '';
 
   const [tasks, setTasks] = useState<Task[]>([]);
@@ -647,7 +649,7 @@ export default function TasksPage() {
     }
   }
 
-  const canCreateTask = isAdmin || allowedTargets.length > 0;
+  const canCreateTask = can('/tasks:create') && (isAdmin || allowedTargets.length > 0);
 
   if (loading) {
     return (

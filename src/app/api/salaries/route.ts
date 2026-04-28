@@ -1,8 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getServerSession } from 'next-auth';
-import { authOptions } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
-import { Role } from '@prisma/client';
+import { requireRole, requireSession, ROLE_GROUPS } from '@/lib/api-auth';
 
 /**
  * month parametrini YYYY-MM formatda parse qilib { month, year } qaytaradi.
@@ -18,8 +16,8 @@ function parseYearMonth(yyyyMM: string): { month: number; year: number } | null 
 }
 
 export async function GET(req: NextRequest) {
-  const session = await getServerSession(authOptions);
-  if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  const auth = await requireSession();
+  if (!auth.ok) return auth.response;
 
   try {
     const { searchParams } = new URL(req.url);
@@ -76,11 +74,9 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
-  const session = await getServerSession(authOptions);
-  if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  if (session.user.role !== Role.ADMIN) {
-    return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
-  }
+  // Salaries uchun yangi action yo'q — ADMIN-only saqlangan
+  const auth = await requireRole(ROLE_GROUPS.ADMIN_ONLY);
+  if (!auth.ok) return auth.response;
 
   try {
     const body = await req.json() as {

@@ -1,14 +1,39 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getServerSession } from 'next-auth';
-import { authOptions } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
+import { requireAnyAction, requireSession } from '@/lib/api-auth';
+
+export async function GET(
+  _req: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  const auth = await requireSession();
+  if (!auth.ok) return auth.response;
+
+  try {
+    const { id } = await params;
+    const task = await prisma.task.findUnique({
+      where: { id },
+      include: {
+        assigner: { select: { id: true, name: true, role: true } },
+        assignee: { select: { id: true, name: true, role: true } },
+      },
+    });
+    if (!task) return NextResponse.json({ error: 'Topilmadi' }, { status: 404 });
+    return NextResponse.json(task);
+  } catch (error) {
+    console.error(error);
+    return NextResponse.json({ error: 'Server error' }, { status: 500 });
+  }
+}
 
 export async function PUT(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const session = await getServerSession(authOptions);
-  if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  // Action-level: assignee'ning o'zi yoki manager (assign/complete_others) o'zgartira oladi.
+  const auth = await requireAnyAction('/tasks:assign', '/tasks:complete_others');
+  if (!auth.ok) return auth.response;
+  const { session } = auth;
 
   try {
     const { id } = await params;

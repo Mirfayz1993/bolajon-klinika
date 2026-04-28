@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useCallback } from 'react';
 import { Clock, LogIn, LogOut, Users, Building2, Loader2, Trash2, ChevronLeft, ChevronRight } from 'lucide-react';
+import { usePermissions } from '@/hooks/usePermissions';
 
 interface Room { id: string; floor: number; roomNumber: string; type: string; }
 interface StaffUser { id: string; name: string; role: string; }
@@ -36,6 +37,11 @@ function duration(checkIn: string, checkOut: string | null) {
 }
 
 export default function AttendancePage() {
+  // /attendance uchun action mapping yo'q — page-level access kifoya.
+  // can() kerak bo'lsa kelajakda action qo'shilganda foydalaniladi.
+  const { can } = usePermissions();
+  void can;
+
   const [date, setDate] = useState(new Date());
   const [records, setRecords] = useState<AttendanceRecord[]>([]);
   const [staff, setStaff] = useState<StaffUser[]>([]);

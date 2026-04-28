@@ -1,11 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getServerSession } from 'next-auth';
-import { authOptions } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
+import { requireAction, requireSession } from '@/lib/api-auth';
 
 export async function GET(req: NextRequest) {
-  const session = await getServerSession(authOptions);
-  if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  const auth = await requireSession();
+  if (!auth.ok) return auth.response;
+  const { session } = auth;
 
   const { searchParams } = new URL(req.url);
   const unread = searchParams.get('unread') === 'true';
@@ -44,8 +44,9 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
-  const session = await getServerSession(authOptions);
-  if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  const auth = await requireAction('/tasks:create');
+  if (!auth.ok) return auth.response;
+  const { session } = auth;
 
   const isAdmin = session.user.role === 'ADMIN';
 
@@ -62,7 +63,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'title, deadline, assigneeId majburiy' }, { status: 400 });
     }
 
-    // Check permission
+    // Check task assign permission (kim kimga task bera oladi)
     if (!isAdmin) {
       const perm = await prisma.taskAssignPermission.findFirst({
         where: { assignerId: session.user.id, targetUserId: assigneeId },
