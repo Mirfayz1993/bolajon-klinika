@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { requireAnyAction, requireSession } from '@/lib/api-auth';
+import { notifyTaskCompleted } from '@/lib/telegram/notify';
 
 export async function GET(
   _req: NextRequest,
@@ -91,6 +92,12 @@ export async function PUT(
           assignee: { select: { id: true, name: true, role: true } },
         },
       });
+
+      // Fire-and-forget: assigner Telegram'ga ulangan bo'lsa xabar boradi
+      notifyTaskCompleted(id).catch((err) =>
+        console.error('[telegram] notify complete failed:', err),
+      );
+
       return NextResponse.json(updated);
     }
 

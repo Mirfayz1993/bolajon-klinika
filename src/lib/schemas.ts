@@ -83,6 +83,20 @@ export const taskCreateSchema = z.object({
   deadline: z.string().datetime().optional(),
 });
 
+// --- Bot (Telegram callback) -------------------------------------------------
+
+/** Bot callback'lardan keladigan chatId raqam yoki string bo'lishi mumkin */
+const chatIdSchema = z.union([z.string().min(1), z.number().int()]);
+
+export const botTaskStartSchema = z.object({
+  chatId: chatIdSchema,
+});
+
+export const botTaskCompleteSchema = z.object({
+  chatId: chatIdSchema,
+  progressNote: z.string().trim().max(2000).optional(),
+});
+
 // --- Prescription ------------------------------------------------------------
 
 export const prescriptionCreateSchema = z.object({

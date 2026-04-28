@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
+import { useSession } from 'next-auth/react';
 import { useLanguage } from '@/hooks/useLanguage';
 import { usePermissions } from '@/hooks/usePermissions';
 import {
@@ -13,6 +14,9 @@ import {
   SlidersHorizontal,
   Building2,
   DoorOpen,
+  Send,
+  AlertCircle,
+  RefreshCw,
 } from 'lucide-react';
 
 // --- Types --------------------------------------------------------------------
@@ -35,8 +39,60 @@ interface RoomType {
 export default function SettingsPage() {
   const { t } = useLanguage();
   const { can } = usePermissions();
+  const { data: session } = useSession();
+  const userId = session?.user?.id;
   const canManageSpecs = can('/settings:manage_specs');
   const canManageRoomTypes = can('/settings:manage_room_types');
+
+  // -- Telegram bog'lanish state ---------------------------------------------
+  const [telegramLinked, setTelegramLinked] = useState<boolean | null>(null);
+  const [telegramLoading, setTelegramLoading] = useState(false);
+  const [telegramError, setTelegramError] = useState('');
+  const [disconnecting, setDisconnecting] = useState(false);
+
+  const botUsername = process.env.NEXT_PUBLIC_TELEGRAM_BOT_USERNAME ?? 'bolajon_klinika_bot';
+  const botUrl = `https://t.me/${botUsername}?start=link`;
+
+  const fetchTelegramStatus = useCallback(async () => {
+    if (!userId) return;
+    setTelegramLoading(true);
+    setTelegramError('');
+    try {
+      const res = await fetch(`/api/staff/${userId}`);
+      if (!res.ok) throw new Error(t.common.error);
+      const data = await res.json() as { hasTelegram?: boolean };
+      setTelegramLinked(!!data.hasTelegram);
+    } catch {
+      setTelegramError(t.common.error);
+    } finally {
+      setTelegramLoading(false);
+    }
+  }, [userId, t.common.error]);
+
+  useEffect(() => {
+    fetchTelegramStatus();
+  }, [fetchTelegramStatus]);
+
+  async function handleDisconnectTelegram() {
+    if (!userId) return;
+    if (!confirm(t.telegram.disconnectConfirm)) return;
+    setDisconnecting(true);
+    setTelegramError('');
+    try {
+      const res = await fetch(`/api/staff/${userId}/telegram/disconnect`, {
+        method: 'POST',
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({})) as { error?: string };
+        throw new Error(err.error ?? t.common.error);
+      }
+      setTelegramLinked(false);
+    } catch (err) {
+      setTelegramError(err instanceof Error ? err.message : t.common.error);
+    } finally {
+      setDisconnecting(false);
+    }
+  }
 
   // -- Specializations state --------------------------------------------------
   const [specializations, setSpecializations] = useState<Specialization[]>([]);
@@ -254,6 +310,121 @@ export default function SettingsPage() {
       </div>
 
       <div className="space-y-6">
+
+        {/* -- Telegram bog'lanish ------------------------------------------- */}
+        <section className="bg-white rounded-xl shadow-sm border border-slate-100">
+          <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Send size={18} className="text-sky-600" />
+              <h2 className="text-base font-semibold text-slate-800">
+                {t.telegram.title}
+              </h2>
+            </div>
+            <button
+              onClick={fetchTelegramStatus}
+              disabled={telegramLoading || !userId}
+              className="flex items-center gap-1.5 text-sm text-slate-500 hover:text-slate-700 font-medium transition-colors disabled:opacity-60"
+              title={t.telegram.refresh}
+            >
+              <RefreshCw size={14} className={telegramLoading ? 'animate-spin' : ''} />
+              {t.telegram.refresh}
+            </button>
+          </div>
+
+          <div className="px-6 py-5">
+            <p className="text-sm text-slate-600 mb-4">
+              {t.telegram.description}
+            </p>
+
+            {telegramError && (
+              <div className="mb-4 flex items-start gap-2 text-red-600 bg-red-50 border border-red-200 p-3 rounded-lg text-sm">
+                <AlertCircle size={16} className="mt-0.5 flex-shrink-0" />
+                <span>{telegramError}</span>
+              </div>
+            )}
+
+            {/* Status + Action */}
+            <div className="flex items-center justify-between flex-wrap gap-3 mb-5">
+              <div className="flex items-center gap-2">
+                {telegramLoading && telegramLinked === null ? (
+                  <div className="w-5 h-5 border-2 border-slate-200 border-t-slate-500 rounded-full animate-spin" />
+                ) : telegramLinked ? (
+                  <>
+                    <span className="inline-flex items-center justify-center w-6 h-6 rounded-full bg-green-100 text-green-700">
+                      <Check size={14} />
+                    </span>
+                    <span className="text-sm font-medium text-green-700">
+                      {t.telegram.linked}
+                    </span>
+                  </>
+                ) : (
+                  <>
+                    <span className="inline-flex items-center justify-center w-6 h-6 rounded-full bg-red-100 text-red-700">
+                      <X size={14} />
+                    </span>
+                    <span className="text-sm font-medium text-red-700">
+                      {t.telegram.notLinked}
+                    </span>
+                  </>
+                )}
+              </div>
+
+              {telegramLinked === false && (
+                <a
+                  href={botUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center gap-1.5 bg-sky-600 hover:bg-sky-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors"
+                >
+                  <Send size={14} />
+                  {t.telegram.openBot}
+                </a>
+              )}
+
+              {telegramLinked === true && (
+                <button
+                  onClick={handleDisconnectTelegram}
+                  disabled={disconnecting}
+                  className="flex items-center gap-1.5 bg-red-600 hover:bg-red-700 disabled:opacity-60 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors"
+                >
+                  <X size={14} />
+                  {t.telegram.disconnect}
+                </button>
+              )}
+            </div>
+
+            {/* Yo'riqnoma — faqat ulanmagan holatda */}
+            {telegramLinked === false && (
+              <div className="border-t border-slate-100 pt-4">
+                <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-3">
+                  {t.telegram.instructions}
+                </p>
+                <ol className="space-y-2 text-sm text-slate-600">
+                  <li className="flex gap-2">
+                    <span className="flex-shrink-0 w-5 h-5 rounded-full bg-slate-100 text-slate-600 text-xs font-medium flex items-center justify-center">1</span>
+                    <span>{t.telegram.step1}</span>
+                  </li>
+                  <li className="flex gap-2">
+                    <span className="flex-shrink-0 w-5 h-5 rounded-full bg-slate-100 text-slate-600 text-xs font-medium flex items-center justify-center">2</span>
+                    <span>{t.telegram.step2}</span>
+                  </li>
+                  <li className="flex gap-2">
+                    <span className="flex-shrink-0 w-5 h-5 rounded-full bg-slate-100 text-slate-600 text-xs font-medium flex items-center justify-center">3</span>
+                    <span>{t.telegram.step3}</span>
+                  </li>
+                  <li className="flex gap-2">
+                    <span className="flex-shrink-0 w-5 h-5 rounded-full bg-slate-100 text-slate-600 text-xs font-medium flex items-center justify-center">4</span>
+                    <span>{t.telegram.step4}</span>
+                  </li>
+                  <li className="flex gap-2">
+                    <span className="flex-shrink-0 w-5 h-5 rounded-full bg-slate-100 text-slate-600 text-xs font-medium flex items-center justify-center">5</span>
+                    <span>{t.telegram.step5}</span>
+                  </li>
+                </ol>
+              </div>
+            )}
+          </div>
+        </section>
 
         {/* -- Mutaxassisliklar ---------------------------------------------- */}
         <section className="bg-white rounded-xl shadow-sm border border-slate-100">

@@ -5,7 +5,7 @@ export async function handleResults(bot: TelegramBot, msg: TelegramBot.Message, 
   try {
     // Avval bemorni telefon raqam bo'yicha topish
     const patientRes = await fetch(`${process.env.CMS_API_URL}/api/patients?phone=${encodeURIComponent(phone)}`);
-    const patientData = await patientRes.json();
+    const patientData = (await patientRes.json()) as { data?: Array<{ id: string }> };
 
     if (!patientData.data || patientData.data.length === 0) {
       return bot.sendMessage(chatId, 'Bemor topilmadi.');
@@ -15,14 +15,14 @@ export async function handleResults(bot: TelegramBot, msg: TelegramBot.Message, 
 
     // Bemorning lab testlarini olish
     const res = await fetch(`${process.env.CMS_API_URL}/api/lab-tests?patientId=${patientId}&status=COMPLETED&limit=5`);
-    const data = await res.json();
+    const data = (await res.json()) as { data?: Array<{ testType: { name: string }; createdAt: string }> };
 
     if (!data.data || data.data.length === 0) {
       return bot.sendMessage(chatId, 'Tayyor tahlil natijangiz topilmadi.');
     }
 
     const text = data.data
-      .map((t: { testType: { name: string }; createdAt: string }) =>
+      .map((t) =>
         `• ${t.testType.name} — ${new Date(t.createdAt).toLocaleDateString('uz-UZ')}`)
       .join('\n');
 

@@ -4,14 +4,14 @@ export async function handleDoctors(bot: TelegramBot, msg: TelegramBot.Message) 
   const chatId = msg.chat.id;
   try {
     const res = await fetch(`${process.env.CMS_API_URL}/api/staff?role=DOCTOR`);
-    const data = await res.json();
+    const data = (await res.json()) as { data?: Array<{ name: string; specializations?: { name: string }[] }> };
 
     if (!data.data || data.data.length === 0) {
       return bot.sendMessage(chatId, 'Shifokorlar ro\'yxati topilmadi.');
     }
 
     const text = data.data
-      .map((d: { name: string; specializations?: { name: string }[] }) =>
+      .map((d) =>
         `👨‍⚕️ ${d.name}${d.specializations?.[0] ? ` — ${d.specializations[0].name}` : ''}`)
       .join('\n');
 

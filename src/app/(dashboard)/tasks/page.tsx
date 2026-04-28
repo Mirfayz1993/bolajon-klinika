@@ -19,6 +19,7 @@ import {
   ClipboardList,
   Settings,
   Trash2,
+  Send,
 } from 'lucide-react';
 
 // --- Types -------------------------------------------------------------------
@@ -27,6 +28,10 @@ interface TaskUser {
   id: string;
   name: string;
   role: string;
+}
+
+interface TaskAssignee extends TaskUser {
+  hasTelegram: boolean;
 }
 
 interface Task {
@@ -40,11 +45,13 @@ interface Task {
   completedAt?: string | null;
   seenByAssignee: boolean;
   seenByAssigner: boolean;
+  notifiedAt?: string | null;
+  telegramMessageId?: number | null;
   createdAt: string;
   assignerId: string;
   assigneeId: string;
   assigner: TaskUser;
-  assignee: TaskUser;
+  assignee: TaskAssignee;
 }
 
 interface TaskPermission {
@@ -134,6 +141,8 @@ function MyTaskCard({
   completeNote,
   onNoteChange,
   markCompleting,
+  canStart,
+  canComplete,
 }: {
   task: Task;
   userId: string;
@@ -145,9 +154,11 @@ function MyTaskCard({
   completeNote: string;
   onNoteChange: (v: string) => void;
   markCompleting: string | null;
+  canStart: boolean;
+  canComplete: boolean;
 }) {
   const overdue = isOverdue(task.deadline) && task.status !== 'COMPLETED';
-  // canAct: o'z vazifasi yoki boshqalarning vazifasini yopish ruxsati bor
+  // canAct: o'z vazifasi yoki admin — bu task egaligi tekshiruvi
   const canAct = task.assigneeId === userId || isAdmin;
 
   return (
@@ -201,7 +212,7 @@ function MyTaskCard({
             </div>
           )}
 
-          {task.status === 'PENDING' && canAct && (
+          {task.status === 'PENDING' && canAct && canStart && (
             <button
               onClick={() => onStart(task.id)}
               className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors"
@@ -211,7 +222,7 @@ function MyTaskCard({
             </button>
           )}
 
-          {task.status === 'IN_PROGRESS' && canAct && (
+          {task.status === 'IN_PROGRESS' && canAct && canComplete && (
             <div className="space-y-2">
               <textarea
                 className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-green-300"
@@ -249,6 +260,7 @@ function AssignedTaskCard({
   expanded,
   onToggle,
   onMarkSeenAssigner,
+  canNotify,
 }: {
   task: Task;
   userId: string;
@@ -256,7 +268,9 @@ function AssignedTaskCard({
   expanded: boolean;
   onToggle: () => void;
   onMarkSeenAssigner: (id: string) => void;
+  canNotify: boolean;
 }) {
+  const { t } = useLanguage();
   const overdue = isOverdue(task.deadline) && task.status !== 'COMPLETED';
   const showCompletedAlert = task.status === 'COMPLETED' && !task.seenByAssigner && (task.assignerId === userId || isAdmin);
 
@@ -281,6 +295,21 @@ function AssignedTaskCard({
               <span className="text-xs bg-orange-500 text-white px-1.5 py-0.5 rounded-full">Bajarildi!</span>
             )}
             <StatusBadge status={task.status} />
+            {canNotify && (task.assignee.hasTelegram ? (
+              task.notifiedAt ? (
+                <span title={t.tasks.deliveredViaTelegram} className="inline-flex items-center text-blue-500">
+                  <Send className="w-3.5 h-3.5" />
+                </span>
+              ) : (
+                <span title={t.tasks.notDelivered} className="inline-flex items-center text-slate-400">
+                  <Send className="w-3.5 h-3.5 opacity-50" />
+                </span>
+              )
+            ) : (
+              <span title={t.tasks.assigneeNotLinked} className="inline-flex items-center text-orange-500">
+                <AlertCircle className="w-3.5 h-3.5" />
+              </span>
+            ))}
           </div>
           <div className="flex items-center gap-3 mt-1 text-xs text-gray-500 flex-wrap">
             <span className="flex items-center gap-1">
@@ -338,9 +367,41 @@ function NewTaskModal({
   onSave: () => void;
   saving: boolean;
 }) {
+  const { t } = useLanguage();
   const targets = allowedTargets.length > 0
     ? staff.filter((s) => allowedTargets.includes(s.id))
     : staff;
+
+  // Tanlangan xodim Telegram'ga ulanganligini aniqlash
+  // Staff ro'yxati hasTelegram qaytarmaydi, shuning uchun /api/staff/[id] orqali olamiz.
+  const [assigneeHasTelegram, setAssigneeHasTelegram] = useState<boolean | null>(null);
+  const [checkingTelegram, setCheckingTelegram] = useState(false);
+
+  useEffect(() => {
+    if (!form.assigneeId) {
+      setAssigneeHasTelegram(null);
+      return;
+    }
+    let cancelled = false;
+    setCheckingTelegram(true);
+    fetch(`/api/staff/${form.assigneeId}`)
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data: { hasTelegram?: boolean } | null) => {
+        if (cancelled) return;
+        setAssigneeHasTelegram(data?.hasTelegram ?? false);
+      })
+      .catch(() => {
+        if (!cancelled) setAssigneeHasTelegram(null);
+      })
+      .finally(() => {
+        if (!cancelled) setCheckingTelegram(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [form.assigneeId]);
+
+  const showWarning = !!form.assigneeId && !checkingTelegram && assigneeHasTelegram === false;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
@@ -394,6 +455,12 @@ function NewTaskModal({
                 </option>
               ))}
             </select>
+            {showWarning && (
+              <div className="flex items-center gap-2 mt-2 p-2 rounded-md bg-orange-50 text-orange-700 text-sm">
+                <AlertCircle className="w-4 h-4 flex-shrink-0" />
+                <span>{t.tasks.assigneeNotLinkedWarning}</span>
+              </div>
+            )}
           </div>
         </div>
         <div className="flex items-center gap-2 px-5 pb-5">
@@ -424,6 +491,9 @@ export default function TasksPage() {
   const { t } = useLanguage();
   const { can, isAdmin } = usePermissions();
   const userId = session?.user?.id ?? '';
+  const canStartTask = can('/tasks:start');
+  const canCompleteTask = can('/tasks:complete');
+  const canNotifyTask = can('/tasks:notify');
 
   const [tasks, setTasks] = useState<Task[]>([]);
   const [permissions, setPermissions] = useState<TaskPermission[]>([]);
@@ -762,6 +832,8 @@ export default function TasksPage() {
                         completeNote={completeNote}
                         onNoteChange={setCompleteNote}
                         markCompleting={markCompleting}
+                        canStart={canStartTask}
+                        canComplete={canCompleteTask}
                       />
                     ))}
                   </div>
@@ -790,6 +862,7 @@ export default function TasksPage() {
                 expanded={expandedTaskId === task.id}
                 onToggle={() => toggleTask(task.id)}
                 onMarkSeenAssigner={handleMarkSeenAssigner}
+                canNotify={canNotifyTask}
               />
             ))
           )}

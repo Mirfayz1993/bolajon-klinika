@@ -574,6 +574,22 @@
     "deleteRoomTypeConfirm": "Ушбу хона турини ўчиришни тасдиқлайсизми?",
     "roomsCount": "Хоналар сони"
   },
+  "telegram": {
+    "title": "Telegram боғланиш",
+    "description": "Telegram bot орқали янги вазифалар ҳақида дарҳол хабар олишингиз мумкин.",
+    "linked": "Уланган",
+    "notLinked": "Уланмаган",
+    "openBot": "Ботга ўтиш",
+    "disconnect": "Узиш",
+    "disconnectConfirm": "Telegram боғланишини узмоқчимисиз?",
+    "refresh": "Янгилаш",
+    "instructions": "Йўриқнома",
+    "step1": "\"Ботга ўтиш\" тугмасини босинг",
+    "step2": "Telegram'да бот очилади",
+    "step3": "/start тугмасини босинг",
+    "step4": "Телефон рақамингизни юбориш тугмасини босинг",
+    "step5": "Бу саҳифага қайтиб \"Янгилаш\" босинг"
+  },
   "permissions": {
     "title": "Рухсатлар бошқаруви",
     "saved": "Сақланди",
@@ -598,5 +614,11 @@
     "connecting": "Уланмоқда...",
     "noCalled": "Ҳозирда ҳеч ким чақирилмаган",
     "noQueue": "Бугун навбат йўқ"
+  },
+  "tasks": {
+    "deliveredViaTelegram": "Telegram орқали юборилди",
+    "notDelivered": "Telegram'га юборилмаган",
+    "assigneeNotLinked": "Ходим Telegram'га уланмаган",
+    "assigneeNotLinkedWarning": "⚠ Бу ходим Telegram bot'га уланмаган. Вазифа яратилади, лекин автоматик хабар юборилмайди."
   }
 }

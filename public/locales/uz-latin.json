@@ -574,6 +574,22 @@
     "comingSoon": "Tez orada...",
     "clinicInfo": "Klinika sozlamalari va ma'lumotnomalari"
   },
+  "telegram": {
+    "title": "Telegram bog'lanish",
+    "description": "Telegram bot orqali yangi vazifalar haqida darhol xabar olishingiz mumkin.",
+    "linked": "Ulangan",
+    "notLinked": "Ulanmagan",
+    "openBot": "Botga o'tish",
+    "disconnect": "Uzish",
+    "disconnectConfirm": "Telegram bog'lanishini uzmoqchimisiz?",
+    "refresh": "Yangilash",
+    "instructions": "Yo'riqnoma",
+    "step1": "\"Botga o'tish\" tugmasini bosing",
+    "step2": "Telegram'da bot ochiladi",
+    "step3": "/start tugmasini bosing",
+    "step4": "Telefon raqamingizni yuborish tugmasini bosing",
+    "step5": "Bu sahifaga qaytib \"Yangilash\" bosing"
+  },
   "permissions": {
     "title": "Ruxsatlar boshqaruvi",
     "saved": "Saqlandi",
@@ -598,5 +614,11 @@
     "connecting": "Ulanmoqda...",
     "noCalled": "Hozirda hech kim chaqirilmagan",
     "noQueue": "Bugun navbat yo'q"
+  },
+  "tasks": {
+    "deliveredViaTelegram": "Telegram orqali yuborildi",
+    "notDelivered": "Telegram'ga yuborilmagan",
+    "assigneeNotLinked": "Xodim Telegram'ga ulanmagan",
+    "assigneeNotLinkedWarning": "⚠ Bu xodim Telegram bot'ga ulanmagan. Vazifa yaratiladi, lekin avtomatik xabar yuborilmaydi."
   }
 }

@@ -3,6 +3,7 @@ import { prisma } from '@/lib/prisma';
 import { requireAction, requireSession } from '@/lib/api-auth';
 import { validateBody } from '@/lib/validate';
 import { taskCreateSchema } from '@/lib/schemas';
+import { notifyTaskCreated } from '@/lib/telegram/notify';
 
 export async function GET(
   req: NextRequest,
@@ -73,6 +74,11 @@ export async function POST(
         assignee: { select: { id: true, name: true, role: true } },
       },
     });
+
+    // Fire-and-forget: Telegram bildirishnomasini kutmaymiz
+    notifyTaskCreated(task.id).catch((err) =>
+      console.error('[telegram] notify create failed:', err),
+    );
 
     return NextResponse.json(task, { status: 201 });
   } catch (error) {

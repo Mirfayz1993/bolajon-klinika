@@ -124,18 +124,21 @@ enum NotificationStatus {
 }
 
 model User {
-  id                String    @id @default(cuid())
-  name              String
-  phone             String    @unique
-  email             String?   @unique
-  password          String
-  encryptedPassword String?
-  role              Role
-  isActive          Boolean   @default(true)
-  specializationId  String?
-  createdAt         DateTime  @default(now())
-  updatedAt         DateTime  @updatedAt
-  deletedAt         DateTime? // Soft delete: null = faol, qiymat = o'chirilgan
+  id                             String    @id @default(cuid())
+  name                           String
+  phone                          String    @unique
+  email                          String?   @unique
+  password                       String
+  encryptedPassword              String?
+  role                           Role
+  isActive                       Boolean   @default(true)
+  specializationId               String?
+  telegramChatId                 String?   @unique
+  telegramVerificationCode       String?
+  telegramVerificationExpiresAt  DateTime?
+  createdAt                      DateTime  @default(now())
+  updatedAt                      DateTime  @updatedAt
+  deletedAt                      DateTime? // Soft delete: null = faol, qiymat = o'chirilgan
 
   specialization        Specialization?        @relation(fields: [specializationId], references: [id])
   appointments          Appointment[]          @relation("DoctorAppointments")
@@ -759,22 +762,24 @@ model GeneralExpense {
 }
 
 model Task {
-  id             String     @id @default(cuid())
-  title          String
-  description    String?
-  deadline       DateTime
-  status         TaskStatus @default(PENDING)
-  assignerId     String
-  assigneeId     String
-  admissionId    String?
-  patientId      String?
-  progressNote   String?
-  startedAt      DateTime?
-  completedAt    DateTime?
-  seenByAssignee Boolean    @default(false)
-  seenByAssigner Boolean    @default(true)
-  createdAt      DateTime   @default(now())
-  updatedAt      DateTime   @updatedAt
+  id                String     @id @default(cuid())
+  title             String
+  description       String?
+  deadline          DateTime
+  status            TaskStatus @default(PENDING)
+  assignerId        String
+  assigneeId        String
+  admissionId       String?
+  patientId          String?
+  progressNote      String?
+  startedAt         DateTime?
+  completedAt       DateTime?
+  seenByAssignee    Boolean    @default(false)
+  seenByAssigner    Boolean    @default(true)
+  telegramMessageId Int?
+  notifiedAt        DateTime?
+  createdAt         DateTime   @default(now())
+  updatedAt         DateTime   @updatedAt
 
   assigner  User       @relation("TasksAssigned", fields: [assignerId], references: [id])
   assignee  User       @relation("TasksReceived", fields: [assigneeId], references: [id])

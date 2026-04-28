@@ -27,6 +27,7 @@ export async function GET(
         isActive: true,
         specializationId: true,
         encryptedPassword: true,
+        telegramChatId: true,
         specialization: { select: { id: true, name: true } },
         createdAt: true,
         updatedAt: true,
@@ -38,9 +39,11 @@ export async function GET(
     }
 
     const isAdmin = session.user.role === 'ADMIN';
-    const { encryptedPassword, ...rest } = user;
+    // Privacy: telegramChatId frontend'ga jo'natilmaydi, faqat boolean.
+    const { encryptedPassword, telegramChatId, ...rest } = user;
     return NextResponse.json({
       ...rest,
+      hasTelegram: telegramChatId !== null,
       plainPassword: isAdmin && encryptedPassword ? decryptPassword(encryptedPassword) : null,
     });
   } catch (error) {
