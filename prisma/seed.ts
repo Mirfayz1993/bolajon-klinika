@@ -1,50 +1,21 @@
-import { PrismaClient, Role } from '@prisma/client';
+import { PrismaClient } from '@prisma/client';
 import bcrypt from 'bcryptjs';
-import { seedActionPermissions } from './seed-permissions';
 
-// prisma generate ishlagandan keyin bu cast kerak bo'lmaydi
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-const prisma = new PrismaClient() as any;
+/**
+ * Sprint 13: RolePermission default seed olib tashlandi.
+ *
+ * Yangi tizim:
+ * - ADMIN bypass: kod tomonida (`api-auth.ts` da `requireAction` ichida)
+ * - Boshqa rollar: `UserPermission` orqali shaxsiy sozlanadi
+ * - Yangi hodim qo'shilganda admin `/settings/permissions` sahifasida qo'lda
+ *   sozlaydi yoki "Shablon olish" tugmasi orqali boshqa hodimdan ko'chiradi
+ *
+ * Bu fayl faqat ADMIN user yaratadi (loyihaning birinchi seed'i uchun).
+ */
 
-const ALL_ROLES: Role[] = [
-  'ADMIN',
-  'HEAD_DOCTOR',
-  'DOCTOR',
-  'HEAD_NURSE',
-  'NURSE',
-  'HEAD_LAB_TECH',
-  'LAB_TECH',
-  'RECEPTIONIST',
-  'SPEECH_THERAPIST',
-  'MASSAGE_THERAPIST',
-  'SANITARY_WORKER',
-];
-
-// Har bir sahifa uchun canAccess: true bo'lgan rollar
-const PAGE_ACCESS: Record<string, Role[]> = {
-  '/dashboard':           ALL_ROLES,
-  '/patients':            ['ADMIN', 'HEAD_DOCTOR', 'DOCTOR', 'HEAD_NURSE', 'NURSE', 'RECEPTIONIST', 'SPEECH_THERAPIST', 'MASSAGE_THERAPIST'],
-  '/appointments':        ['ADMIN', 'HEAD_DOCTOR', 'DOCTOR', 'HEAD_NURSE', 'NURSE', 'RECEPTIONIST', 'SPEECH_THERAPIST', 'MASSAGE_THERAPIST'],
-  '/payments':            ['ADMIN', 'HEAD_DOCTOR', 'RECEPTIONIST'],
-  '/lab':                 ['ADMIN', 'HEAD_DOCTOR', 'HEAD_LAB_TECH', 'LAB_TECH', 'DOCTOR'],
-  '/staff':               ['ADMIN', 'HEAD_DOCTOR'],
-  '/queue':               ALL_ROLES,
-  '/rooms':               ['ADMIN', 'HEAD_DOCTOR', 'HEAD_NURSE'],
-  '/admissions':          ['ADMIN', 'HEAD_DOCTOR', 'DOCTOR', 'HEAD_NURSE', 'NURSE'],
-  '/ambulatory':          ['ADMIN', 'HEAD_DOCTOR', 'DOCTOR', 'HEAD_NURSE', 'NURSE', 'SPEECH_THERAPIST', 'MASSAGE_THERAPIST'],
-  '/schedule':            ['ADMIN', 'HEAD_DOCTOR', 'DOCTOR', 'HEAD_NURSE', 'NURSE', 'SPEECH_THERAPIST', 'MASSAGE_THERAPIST'],
-  '/reports':             ['ADMIN', 'HEAD_DOCTOR'],
-  '/settings':            ['ADMIN'],
-  '/settings/permissions':['ADMIN'],
-  '/audit-logs':          ['ADMIN'],
-  '/medical-records':     ['ADMIN', 'HEAD_DOCTOR', 'DOCTOR'],
-  '/services':            ALL_ROLES,
-};
-
-const ALL_PAGES = Object.keys(PAGE_ACCESS);
+const prisma = new PrismaClient();
 
 async function main() {
-  // Admin user
   const hashedPassword = await bcrypt.hash('Admin123', 10);
 
   await prisma.user.upsert({
@@ -63,30 +34,6 @@ async function main() {
   console.log('Seed completed: Admin user created');
   console.log('Phone: +998901234567');
   console.log('Password: Admin123');
-
-  // RolePermission seed — barcha rol + sahifa kombinatsiyalari
-  let upsertCount = 0;
-
-  for (const page of ALL_PAGES) {
-    const allowedRoles = PAGE_ACCESS[page];
-
-    for (const role of ALL_ROLES) {
-      const canAccess = allowedRoles.includes(role);
-
-      await prisma.rolePermission.upsert({
-        where: { role_page: { role, page } },
-        update: { canAccess },
-        create: { role, page, canAccess },
-      });
-
-      upsertCount++;
-    }
-  }
-
-  console.log(`RolePermission seed completed: ${upsertCount} yozuv upsert qilindi`);
-
-  // Action-level RolePermission seed (page-level seedga qo'shimcha)
-  await seedActionPermissions(prisma);
 }
 
 main()
