@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import { requireRole, requireSession, ROLE_GROUPS } from '@/lib/api-auth';
+import { requireAction, requireSession } from '@/lib/api-auth';
 import { validateBody } from '@/lib/validate';
 import { vitalCreateSchema } from '@/lib/schemas';
 
@@ -32,7 +32,7 @@ export async function POST(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const auth = await requireRole(ROLE_GROUPS.ALL_MEDICAL);
+  const auth = await requireAction('/patients:add_vital');
   if (!auth.ok) return auth.response;
   const { session } = auth;
 

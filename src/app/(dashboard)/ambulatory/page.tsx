@@ -1,9 +1,9 @@
 'use client';
 
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { useSession } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
 import { useLanguage } from '@/hooks/useLanguage';
+import { usePermissions } from '@/hooks/usePermissions';
 import { floorLabel } from '@/lib/utils';
 import {
   Plus,
@@ -137,17 +137,14 @@ function formatDateShort(iso: string): string {
   });
 }
 
-// --- Roles --------------------------------------------------------------------
-
-const CAN_MANAGE = ['ADMIN', 'HEAD_DOCTOR', 'HEAD_NURSE', 'NURSE', 'RECEPTIONIST'];
-
 // --- Main Component -----------------------------------------------------------
 
 export default function AmbulatoryPage() {
   const { t } = useLanguage();
-  const { data: session } = useSession();
+  const { can } = usePermissions();
   const router = useRouter();
-  const canManage = CAN_MANAGE.includes(session?.user?.role ?? '');
+  const canManage = can('/ambulatory:create');
+  const canDischarge = can('/ambulatory:discharge');
 
   // All admissions (active + discharged)
   const [allAdmissions, setAllAdmissions] = useState<AmbulatoryAdmission[]>([]);
@@ -706,7 +703,7 @@ export default function AmbulatoryPage() {
                             <Pill className="w-3.5 h-3.5" />
                             Dori
                           </button>
-                          {canManage && (
+                          {canDischarge && (
                             <button
                               onClick={(e) => openDischarge(adm, e)}
                               className="flex items-center gap-1.5 text-xs font-medium text-orange-600 hover:text-orange-700 hover:bg-orange-50 px-3 py-1.5 rounded-lg transition-colors"

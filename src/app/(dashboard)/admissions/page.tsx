@@ -1,8 +1,8 @@
 'use client';
 
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { useSession } from 'next-auth/react';
 import { useLanguage } from '@/hooks/useLanguage';
+import { usePermissions } from '@/hooks/usePermissions';
 import { useRouter } from 'next/navigation';
 import {
   Plus,
@@ -169,15 +169,14 @@ function formatCurrency(amount: number, sum: string): string {
 
 // --- Main Component -----------------------------------------------------------
 
-const CAN_MANAGE_ROLES = ['ADMIN', 'HEAD_DOCTOR', 'HEAD_NURSE'];
-
 export default function AdmissionsPage() {
   const { t } = useLanguage();
-  const { data: session } = useSession();
+  const { can } = usePermissions();
   const router = useRouter();
 
-  const canManage = CAN_MANAGE_ROLES.includes(session?.user?.role ?? '');
-  const canDispense = ['ADMIN', 'HEAD_DOCTOR', 'HEAD_NURSE', 'NURSE'].includes(session?.user?.role ?? '');
+  const canManage = can('/admissions:create');
+  const canDischarge = can('/admissions:discharge');
+  const canDispense = can('/pharmacy:dispense');
 
   // -- List state --
   const [admissions, setAdmissions] = useState<Admission[]>([]);
@@ -698,7 +697,7 @@ export default function AdmissionsPage() {
                               Dori
                             </button>
                           )}
-                          {canManage && (
+                          {canDischarge && (
                             <button
                               onClick={() => openDischarge(adm)}
                               className="flex items-center gap-1.5 text-xs font-medium text-orange-600 hover:text-orange-700 hover:bg-orange-50 px-3 py-1.5 rounded-lg transition-colors"

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import { requireRole, requireSession } from '@/lib/api-auth';
+import { requireAction, requireSession } from '@/lib/api-auth';
 import { validateBody } from '@/lib/validate';
 import { taskCreateSchema } from '@/lib/schemas';
 
@@ -33,7 +33,7 @@ export async function POST(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const auth = await requireRole(['ADMIN', 'HEAD_DOCTOR', 'DOCTOR', 'HEAD_NURSE']);
+  const auth = await requireAction('/tasks:create');
   if (!auth.ok) return auth.response;
   const { session } = auth;
 

@@ -4,7 +4,7 @@ import { BedStatus } from '@prisma/client';
 import type { Admission } from '@prisma/client';
 import { calculateInpatientDays } from '@/lib/business-logic';
 import { writeAuditLog } from '@/lib/audit';
-import { requireRole } from '@/lib/api-auth';
+import { requireAction } from '@/lib/api-auth';
 import { validateBody } from '@/lib/validate';
 import { z } from 'zod';
 
@@ -16,7 +16,7 @@ export async function POST(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const auth = await requireRole(['ADMIN', 'HEAD_DOCTOR', 'HEAD_NURSE']);
+  const auth = await requireAction('/admissions:discharge');
   if (!auth.ok) return auth.response;
   const { session } = auth;
 

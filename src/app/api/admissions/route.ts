@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { BedStatus, Prisma } from '@prisma/client';
-import { requireRole, requireSession } from '@/lib/api-auth';
+import { requireAction, requireSession } from '@/lib/api-auth';
 import { validateBody } from '@/lib/validate';
 import { admissionCreateSchema } from '@/lib/schemas';
 
@@ -68,7 +68,7 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
-  const auth = await requireRole(['ADMIN', 'HEAD_DOCTOR', 'HEAD_NURSE']);
+  const auth = await requireAction('/admissions:create');
   if (!auth.ok) return auth.response;
 
   try {
@@ -81,8 +81,8 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Bemor topilmadi' }, { status: 404 });
     }
 
-    const bed = await prisma.bed.findUnique({
-      where: { id: bedId },
+    const bed = await prisma.bed.findFirst({
+      where: { id: bedId, deletedAt: null, room: { deletedAt: null } },
       include: { room: { select: { floor: true, isAmbulatory: true } } },
     });
     if (!bed) {

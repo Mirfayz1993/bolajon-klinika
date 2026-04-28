@@ -53,18 +53,18 @@ export const ACTION_ACCESS: Record<string, Role[]> = {
   '/queue:set_urgent': ['ADMIN', 'RECEPTIONIST', 'HEAD_DOCTOR'],
 
   // /admissions
-  '/admissions:create': ['ADMIN', 'RECEPTIONIST', 'HEAD_DOCTOR'],
-  '/admissions:discharge': ['ADMIN', 'HEAD_DOCTOR', 'DOCTOR'],
+  '/admissions:create': ['ADMIN', 'RECEPTIONIST', 'HEAD_DOCTOR', 'HEAD_NURSE'],
+  '/admissions:discharge': ['ADMIN', 'HEAD_DOCTOR', 'DOCTOR', 'HEAD_NURSE'],
   '/admissions:edit_rate': ['ADMIN'],
   '/admissions:delete': ['ADMIN'],
 
   // /ambulatory
-  '/ambulatory:create': ['ADMIN', 'RECEPTIONIST', 'HEAD_DOCTOR'],
-  '/ambulatory:discharge': ['ADMIN', 'HEAD_DOCTOR', 'DOCTOR', 'HEAD_NURSE'],
+  '/ambulatory:create': ['ADMIN', 'RECEPTIONIST', 'HEAD_DOCTOR', 'HEAD_NURSE', 'NURSE'],
+  '/ambulatory:discharge': ['ADMIN', 'HEAD_DOCTOR', 'DOCTOR', 'HEAD_NURSE', 'NURSE', 'RECEPTIONIST'],
 
   // /pharmacy
   '/pharmacy:create': ['ADMIN', 'HEAD_NURSE'],
-  '/pharmacy:dispense': ['ADMIN', 'HEAD_NURSE', 'NURSE'],
+  '/pharmacy:dispense': ['ADMIN', 'HEAD_DOCTOR', 'HEAD_NURSE', 'NURSE'],
   '/pharmacy:writeoff': ['ADMIN', 'HEAD_NURSE'],
   '/pharmacy:edit': ['ADMIN', 'HEAD_NURSE'],
   '/pharmacy:manage_suppliers': ['ADMIN', 'HEAD_NURSE'],
@@ -77,7 +77,7 @@ export const ACTION_ACCESS: Record<string, Role[]> = {
   '/rooms:assign_responsible': ['ADMIN'],
 
   // /tasks
-  '/tasks:create': ['ADMIN', 'HEAD_DOCTOR', 'HEAD_NURSE', 'HEAD_LAB_TECH'],
+  '/tasks:create': ['ADMIN', 'HEAD_DOCTOR', 'DOCTOR', 'HEAD_NURSE', 'HEAD_LAB_TECH'],
   '/tasks:assign': ['ADMIN', 'HEAD_DOCTOR', 'HEAD_NURSE', 'HEAD_LAB_TECH'],
   '/tasks:complete_others': ['ADMIN'],
   '/tasks:delete': ['ADMIN'],

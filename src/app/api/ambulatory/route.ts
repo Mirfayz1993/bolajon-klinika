@@ -1,14 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getServerSession } from 'next-auth';
-import { authOptions } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 import { BedStatus, AdmissionType } from '@prisma/client';
-
-const WRITE_ROLES = ['ADMIN', 'HEAD_DOCTOR', 'HEAD_NURSE', 'RECEPTIONIST', 'NURSE'];
+import { requireAction, requireSession } from '@/lib/api-auth';
 
 export async function GET(req: NextRequest) {
-  const session = await getServerSession(authOptions);
-  if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  const auth = await requireSession();
+  if (!auth.ok) return auth.response;
 
   try {
     const { searchParams } = new URL(req.url);
@@ -57,11 +54,8 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
-  const session = await getServerSession(authOptions);
-  if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  if (!WRITE_ROLES.includes(session.user.role)) {
-    return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
-  }
+  const auth = await requireAction('/ambulatory:create');
+  if (!auth.ok) return auth.response;
 
   try {
     const body = await req.json() as {
@@ -79,8 +73,8 @@ export async function POST(req: NextRequest) {
 
     const [patient, bed] = await Promise.all([
       prisma.patient.findFirst({ where: { id: patientId, deletedAt: null } }),
-      prisma.bed.findUnique({
-        where: { id: bedId },
+      prisma.bed.findFirst({
+        where: { id: bedId, deletedAt: null, room: { deletedAt: null } },
         include: { room: { select: { isAmbulatory: true, floor: true } } },
       }),
     ]);

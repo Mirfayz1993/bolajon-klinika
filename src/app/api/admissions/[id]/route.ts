@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { calculateInpatientDays } from '@/lib/business-logic';
-import { requireRole, requireSession } from '@/lib/api-auth';
+import { requireAnyAction, requireSession } from '@/lib/api-auth';
 import { validateBody } from '@/lib/validate';
 import { admissionUpdateSchema } from '@/lib/schemas';
 
@@ -57,7 +57,7 @@ export async function PUT(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const auth = await requireRole(['ADMIN', 'HEAD_DOCTOR', 'HEAD_NURSE']);
+  const auth = await requireAnyAction('/admissions:edit_rate', '/admissions:create');
   if (!auth.ok) return auth.response;
 
   try {
