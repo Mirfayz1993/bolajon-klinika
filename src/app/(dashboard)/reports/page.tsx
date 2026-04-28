@@ -1,8 +1,8 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { useSession } from "next-auth/react";
 import { useLanguage } from "@/hooks/useLanguage";
+import { usePermissions } from "@/hooks/usePermissions";
 import {
   DollarSign,
   Clock,
@@ -732,17 +732,24 @@ type TabKey = "financial" | "patients" | "lab" | "staff";
 
 export default function ReportsPage() {
   const { t } = useLanguage();
-  const { data: session } = useSession();
-  const isAdmin = session?.user?.role === "ADMIN";
+  const { can, isAdmin } = usePermissions();
 
-  const [activeTab, setActiveTab] = useState<TabKey>("financial");
+  const canSeeFinancial = can("/reports:see_financial");
+
+  const [activeTab, setActiveTab] = useState<TabKey>(
+    canSeeFinancial ? "financial" : "patients",
+  );
 
   const tabs: { key: TabKey; label: string; icon: React.ReactNode }[] = [
-    {
-      key: "financial",
-      label: t.reports.financial,
-      icon: <DollarSign size={16} />,
-    },
+    ...(canSeeFinancial
+      ? [
+          {
+            key: "financial" as TabKey,
+            label: t.reports.financial,
+            icon: <DollarSign size={16} />,
+          },
+        ]
+      : []),
     {
       key: "patients",
       label: t.reports.patients,
@@ -791,7 +798,7 @@ export default function ReportsPage() {
 
       {/* Tab content */}
       <div>
-        {activeTab === "financial" && <FinancialTab />}
+        {activeTab === "financial" && canSeeFinancial && <FinancialTab />}
         {activeTab === "patients" && <PatientsTab />}
         {activeTab === "lab" && <LabTab />}
         {activeTab === "staff" && isAdmin && <StaffTab />}

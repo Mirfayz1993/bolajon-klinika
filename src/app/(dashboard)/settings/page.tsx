@@ -1,8 +1,8 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { useSession } from 'next-auth/react';
 import { useLanguage } from '@/hooks/useLanguage';
+import { usePermissions } from '@/hooks/usePermissions';
 import {
   Plus,
   Pencil,
@@ -33,9 +33,10 @@ interface RoomType {
 // --- Component ----------------------------------------------------------------
 
 export default function SettingsPage() {
-  const { data: session } = useSession();
   const { t } = useLanguage();
-  const isAdmin = session?.user?.role === 'ADMIN';
+  const { can } = usePermissions();
+  const canManageSpecs = can('/settings:manage_specs');
+  const canManageRoomTypes = can('/settings:manage_room_types');
 
   // -- Specializations state --------------------------------------------------
   const [specializations, setSpecializations] = useState<Specialization[]>([]);
@@ -263,7 +264,7 @@ export default function SettingsPage() {
                 {t.settings.specializations}
               </h2>
             </div>
-            {isAdmin && !addingSpec && (
+            {canManageSpecs && !addingSpec && (
               <button
                 onClick={() => setAddingSpec(true)}
                 className="flex items-center gap-1.5 text-sm text-blue-600 hover:text-blue-700 font-medium transition-colors"
@@ -287,7 +288,7 @@ export default function SettingsPage() {
           )}
 
           {/* Add form */}
-          {isAdmin && addingSpec && (
+          {canManageSpecs && addingSpec && (
             <form
               onSubmit={handleAddSpec}
               className="px-6 py-4 border-b border-slate-100 bg-blue-50/40"
@@ -339,7 +340,7 @@ export default function SettingsPage() {
                     <th className="px-6 py-3 font-medium">#</th>
                     <th className="px-6 py-3 font-medium">{t.settings.specializationName}</th>
                     <th className="px-6 py-3 font-medium">{t.staff.employeeCount}</th>
-                    {isAdmin && (
+                    {canManageSpecs && (
                       <th className="px-6 py-3 font-medium text-right">{t.common.actions}</th>
                     )}
                   </tr>
@@ -367,7 +368,7 @@ export default function SettingsPage() {
                       <td className="px-6 py-3.5 text-slate-600">
                         {spec._count?.users ?? 0}
                       </td>
-                      {isAdmin && (
+                      {canManageSpecs && (
                         <td className="px-6 py-3.5">
                           <div className="flex items-center justify-end gap-2">
                             {editingSpecId === spec.id ? (
@@ -426,7 +427,7 @@ export default function SettingsPage() {
                 {t.settings.roomTypes}
               </h2>
             </div>
-            {isAdmin && !addingRoomType && (
+            {canManageRoomTypes && !addingRoomType && (
               <button
                 onClick={() => setAddingRoomType(true)}
                 className="flex items-center gap-1.5 text-sm text-violet-600 hover:text-violet-700 font-medium transition-colors"
@@ -448,7 +449,7 @@ export default function SettingsPage() {
             </div>
           )}
 
-          {isAdmin && addingRoomType && (
+          {canManageRoomTypes && addingRoomType && (
             <form
               onSubmit={handleAddRoomType}
               className="px-6 py-4 border-b border-slate-100 bg-violet-50/40"
@@ -498,7 +499,7 @@ export default function SettingsPage() {
                   <tr className="text-left text-xs text-slate-500 uppercase tracking-wide">
                     <th className="px-6 py-3 font-medium">#</th>
                     <th className="px-6 py-3 font-medium">{t.settings.roomTypeName}</th>
-                    {isAdmin && (
+                    {canManageRoomTypes && (
                       <th className="px-6 py-3 font-medium text-right">{t.common.actions}</th>
                     )}
                   </tr>
@@ -523,7 +524,7 @@ export default function SettingsPage() {
                           rt.name
                         )}
                       </td>
-                      {isAdmin && (
+                      {canManageRoomTypes && (
                         <td className="px-6 py-3.5">
                           <div className="flex items-center justify-end gap-2">
                             {editingRoomTypeId === rt.id ? (

@@ -1,10 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { PaymentCategory, PaymentMethod } from '@prisma/client';
-import { requireRole } from '@/lib/api-auth';
+import { requireAction } from '@/lib/api-auth';
 
 export async function GET(req: NextRequest) {
-  const auth = await requireRole(['ADMIN', 'HEAD_DOCTOR']);
+  const auth = await requireAction('/reports:see_financial');
   if (!auth.ok) return auth.response;
 
   try {

@@ -1,10 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { AppointmentStatus } from '@prisma/client';
-import { requireRole } from '@/lib/api-auth';
+import { requireSession } from '@/lib/api-auth';
 
 export async function GET(req: NextRequest) {
-  const auth = await requireRole(['ADMIN', 'HEAD_DOCTOR', 'HEAD_NURSE']);
+  const auth = await requireSession();
   if (!auth.ok) return auth.response;
 
   try {

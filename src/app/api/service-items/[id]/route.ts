@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getServerSession } from 'next-auth';
-import { authOptions } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
+import { requireAction } from '@/lib/api-auth';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const db = prisma as any;
@@ -9,8 +8,8 @@ const db = prisma as any;
 type Ctx = { params: Promise<{ id: string }> };
 
 export async function PUT(req: NextRequest, { params }: Ctx) {
-  const session = await getServerSession(authOptions);
-  if (!session || session.user.role !== 'ADMIN') return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+  const auth = await requireAction('/settings:manage_service_items');
+  if (!auth.ok) return auth.response;
 
   const { id } = await params;
   const body = await req.json() as { name?: string; price?: number; duration?: number | null; isActive?: boolean };
@@ -30,8 +29,8 @@ export async function PUT(req: NextRequest, { params }: Ctx) {
 }
 
 export async function DELETE(_req: NextRequest, { params }: Ctx) {
-  const session = await getServerSession(authOptions);
-  if (!session || session.user.role !== 'ADMIN') return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+  const auth = await requireAction('/settings:manage_service_items');
+  if (!auth.ok) return auth.response;
 
   const { id } = await params;
   try {
