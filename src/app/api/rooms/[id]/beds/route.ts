@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
-import { BedStatus } from '@prisma/client';
+import { BedStatus, Prisma } from '@prisma/client';
 
 // GET /api/rooms/[roomId]/beds?status=AVAILABLE
 // Xonadagi to'shaklarni qaytaradi, ixtiyoriy status filtri bilan
@@ -108,10 +108,34 @@ export async function DELETE(
       return NextResponse.json({ error: "Band to'shakni o'chirib bo'lmaydi" }, { status: 400 });
     }
 
+    // Tarixiy admissionlarni tekshirish — FK constraint xatosini oldini olish uchun
+    const totalAdmissions = await prisma.admission.count({ where: { bedId: bed.id } });
+    if (totalAdmissions > 0) {
+      return NextResponse.json(
+        { error: "To'shakda tarixiy bemor yozuvlari bor — o'chirib bo'lmaydi. Status 'TA'MIRDA' qiling." },
+        { status: 400 }
+      );
+    }
+
+    // AssignedService.bedId soft-reference tekshiruvi (FK emas, lekin sanitar tekshirish)
+    const totalAssignedServices = await prisma.assignedService.count({ where: { bedId: bed.id } });
+    if (totalAssignedServices > 0) {
+      return NextResponse.json(
+        { error: "To'shakka bog'liq xizmat yozuvlari mavjud — o'chirib bo'lmaydi. Status 'TA'MIRDA' qiling." },
+        { status: 400 }
+      );
+    }
+
     await prisma.bed.delete({ where: { id: bed.id } });
     return NextResponse.json({ ok: true });
   } catch (err) {
-    console.error(err);
+    console.error('Bed DELETE error:', err);
+    if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2003') {
+      return NextResponse.json(
+        { error: "To'shakka bog'liq yozuvlar mavjud, o'chirib bo'lmaydi" },
+        { status: 400 }
+      );
+    }
     return NextResponse.json({ error: 'Server error' }, { status: 500 });
   }
 }

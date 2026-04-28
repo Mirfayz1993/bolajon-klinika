@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
+import { Prisma } from '@prisma/client';
 
 export async function GET(
   req: NextRequest,
@@ -144,13 +145,66 @@ export async function DELETE(
       );
     }
 
-    // Delete all beds first, then the room
-    await prisma.bed.deleteMany({ where: { roomId: id } });
-    await prisma.room.delete({ where: { id } });
+    const bedIds = room.beds.map((b) => b.id);
+
+    // Barcha bog'liq yozuvlar sonini parallel hisoblash
+    const [
+      appointmentsCount,
+      inventoryCount,
+      expensesCount,
+      attendancesCount,
+      generalExpensesCount,
+      responsibleCount,
+      historicalAdmissionsCount,
+    ] = await Promise.all([
+      prisma.appointment.count({ where: { roomId: id } }),
+      prisma.roomInventoryItem.count({ where: { roomId: id } }),
+      prisma.roomExpense.count({ where: { roomId: id } }),
+      prisma.attendance.count({ where: { roomId: id } }),
+      prisma.generalExpense.count({ where: { roomId: id } }),
+      prisma.roomResponsible.count({ where: { roomId: id } }),
+      bedIds.length > 0
+        ? prisma.admission.count({ where: { bedId: { in: bedIds } } })
+        : Promise.resolve(0),
+    ]);
+
+    // Bloklovchi yozuvlar ro'yxatini yig'ish (responsible blok qilmaydi — transaction'da o'chiriladi)
+    const blockers: string[] = [];
+    if (appointmentsCount > 0) blockers.push(`${appointmentsCount} ta uchrashuv`);
+    if (historicalAdmissionsCount > 0) blockers.push(`${historicalAdmissionsCount} ta tarixiy bemor yozuvi`);
+    if (inventoryCount > 0) blockers.push(`${inventoryCount} ta inventar yozuv`);
+    if (expensesCount > 0) blockers.push(`${expensesCount} ta xarajat yozuvi`);
+    if (attendancesCount > 0) blockers.push(`${attendancesCount} ta davomat yozuvi`);
+    if (generalExpensesCount > 0) blockers.push(`${generalExpensesCount} ta umumiy xarajat yozuvi`);
+
+    if (blockers.length > 0) {
+      return NextResponse.json(
+        { error: `Xonani o'chirib bo'lmaydi: ${blockers.join(', ')} mavjud.` },
+        { status: 400 }
+      );
+    }
+
+    // Bog'liqliklar yo'q — transaction ichida tartib bilan o'chirish
+    await prisma.$transaction(async (tx) => {
+      if (responsibleCount > 0) {
+        await tx.roomResponsible.deleteMany({ where: { roomId: id } });
+      }
+      // RoomInventoryLog (inventoryCount=0 bo'lsa ham log qolgan bo'lishi mumkin)
+      await tx.roomInventoryLog.deleteMany({ where: { roomId: id } });
+      // Bedlar (admissions/payments tekshirilgan, allaqachon yo'q)
+      await tx.bed.deleteMany({ where: { roomId: id } });
+      await tx.room.delete({ where: { id } });
+    });
 
     return NextResponse.json({ success: true });
   } catch (error) {
-    console.error(error);
+    console.error('Room DELETE error:', error);
+    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2003') {
+      return NextResponse.json(
+        { error: "Xonaga bog'liq yozuvlar mavjud, o'chirib bo'lmaydi" },
+        { status: 400 }
+      );
+    }
     return NextResponse.json({ error: 'Server error' }, { status: 500 });
   }
 }
