@@ -121,7 +121,14 @@ export const MANAGED_PAGES: NavPage[] = [
       { key: 'delete', label: "O'chirish" },
     ],
   },
-  { path: '/doctor-queue', label: 'Mutaxassis navbati' },
+  {
+    path: '/doctor-queue',
+    label: 'Mutaxassis navbati',
+    actions: [
+      { key: 'order', label: 'Buyurtma berish' },
+      { key: 'manage', label: 'Boshqaruv' },
+    ],
+  },
   {
     path: '/reports',
     label: 'Hisobotlar',

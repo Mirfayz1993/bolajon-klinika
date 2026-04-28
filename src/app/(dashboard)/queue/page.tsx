@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { useLanguage } from "@/hooks/useLanguage";
+import { usePermissions } from "@/hooks/usePermissions";
 
 interface QueueItem {
   id: string;
@@ -21,6 +22,7 @@ interface QueueItem {
 
 export default function QueuePage() {
   const { t } = useLanguage();
+  const { can } = usePermissions();
   const [queueItems, setQueueItems] = useState<QueueItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [showAll, setShowAll] = useState(false);
@@ -183,7 +185,7 @@ export default function QueuePage() {
                       {getStatusBadge(item.status)}
                     </td>
                     <td className="px-4 py-3">
-                      {item.status === "WAITING" && (
+                      {item.status === "WAITING" && can('/queue:call') && (
                         <button
                           onClick={() => handleCall(item.id)}
                           disabled={actionLoading === item.id}
@@ -194,7 +196,7 @@ export default function QueuePage() {
                             : t.queue.callNext}
                         </button>
                       )}
-                      {item.status === "CALLED" && (
+                      {item.status === "CALLED" && can('/queue:mark_done') && (
                         <button
                           onClick={() => handleDone(item.id)}
                           disabled={actionLoading === item.id}

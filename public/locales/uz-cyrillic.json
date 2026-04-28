@@ -27,7 +27,10 @@
     "all": "Барчаси",
     "createdAt": "Яратилган",
     "updatedAt": "Янгиланган",
-    "sum": "сўм"
+    "sum": "сўм",
+    "hours": "соат",
+    "days": "кун",
+    "free": "Бепул"
   },
   "auth": {
     "login": "Кириш",
@@ -361,7 +364,15 @@
     "free": "Бепул (12 соатдан кам)",
     "selectBed": "Тўшак танланг",
     "selectDoctor": "Шифокор танланг",
-    "selectPatient": "Бемор танланг"
+    "selectPatient": "Бемор танланг",
+    "editRate": "Нархни ўзгартириш",
+    "editRateTitle": "Кунлик нархни ўзгартириш",
+    "rateUpdated": "Нарх янгиланди",
+    "autoAmount": "Автоматик сумма",
+    "manualAmountToggle": "Қўлда сумма белгилаш",
+    "manualAmountLabel": "Қўлда сумма",
+    "manualOverrideBadge": "Қўлда белгиланган",
+    "stayDuration": "Ётган вақти"
   },
   "queue": {
     "title": "Навбат",

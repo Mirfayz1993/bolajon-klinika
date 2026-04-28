@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { useSession } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
+import { usePermissions } from '@/hooks/usePermissions';
 import {
   PhoneCall, CheckCircle2, AlertTriangle, Clock,
   Loader2, ChevronDown, UserCheck, Star, SkipForward,
@@ -43,6 +44,7 @@ function age(birthDate: string) {
 export default function DoctorQueuePage() {
   const { data: session } = useSession();
   const router = useRouter();
+  const { can } = usePermissions();
   const [queues, setQueues] = useState<QueueItem[]>([]);
   const [done, setDone] = useState<DoneItem[]>([]);
   const [doctors, setDoctors] = useState<Doctor[]>([]);
@@ -61,8 +63,8 @@ export default function DoctorQueuePage() {
   const [qrResult, setQrResult] = useState<{ success: boolean; message: string } | null>(null);
   const qrInputRef = useRef<HTMLInputElement>(null);
 
-  const isDoctor = ['DOCTOR', 'HEAD_DOCTOR', 'SPEECH_THERAPIST', 'MASSAGE_THERAPIST'].includes(session?.user?.role ?? '');
-  const canManage = ['ADMIN', 'RECEPTIONIST', 'HEAD_DOCTOR', 'HEAD_NURSE'].includes(session?.user?.role ?? '');
+  const isDoctor = can('/doctor-queue:order');
+  const canManage = can('/doctor-queue:manage');
 
   const doctorId = isDoctor ? session?.user?.id : selDoctor;
 

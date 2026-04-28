@@ -4,6 +4,7 @@ import { calculateInpatientDays } from '@/lib/business-logic';
 import { requireAnyAction, requireSession } from '@/lib/api-auth';
 import { validateBody } from '@/lib/validate';
 import { admissionUpdateSchema } from '@/lib/schemas';
+import { writeAuditLog } from '@/lib/audit';
 
 export async function GET(
   req: NextRequest,
@@ -59,6 +60,7 @@ export async function PUT(
 ) {
   const auth = await requireAnyAction('/admissions:edit_rate', '/admissions:create');
   if (!auth.ok) return auth.response;
+  const { session } = auth;
 
   try {
     const { id } = await params;
@@ -77,13 +79,19 @@ export async function PUT(
 
     const parsed = await validateBody(req, admissionUpdateSchema);
     if (!parsed.ok) return parsed.response;
-    const { diagnosis, notes } = parsed.data;
+    const { diagnosis, notes, dailyRate } = parsed.data;
 
-    const updateData: { notes?: string } = {};
+    const updateData: { notes?: string; dailyRate?: number } = {};
 
     // diagnosis and notes both map to the notes field in schema
     if (diagnosis !== undefined) updateData.notes = diagnosis;
     else if (notes !== undefined) updateData.notes = notes;
+
+    const oldRate = Number(existing.dailyRate);
+    const rateChanged = dailyRate !== undefined && dailyRate !== oldRate;
+    if (dailyRate !== undefined) {
+      updateData.dailyRate = dailyRate;
+    }
 
     const admission = await prisma.admission.update({
       where: { id },
@@ -97,6 +105,35 @@ export async function PUT(
         },
       },
     });
+
+    // Audit log — rate o'zgarishi alohida yoziladi
+    if (rateChanged) {
+      await writeAuditLog({
+        userId: session.user.id,
+        action: 'UPDATE_RATE',
+        module: 'admissions',
+        details: {
+          admissionId: id,
+          patientId: existing.patientId,
+          oldRate,
+          newRate: dailyRate,
+        },
+      });
+    }
+
+    // Diagnosis/notes o'zgarishi alohida audit
+    if (updateData.notes !== undefined && updateData.notes !== existing.notes) {
+      await writeAuditLog({
+        userId: session.user.id,
+        action: 'UPDATE',
+        module: 'admissions',
+        details: {
+          admissionId: id,
+          patientId: existing.patientId,
+          field: diagnosis !== undefined ? 'diagnosis' : 'notes',
+        },
+      });
+    }
 
     return NextResponse.json(admission);
   } catch (error) {

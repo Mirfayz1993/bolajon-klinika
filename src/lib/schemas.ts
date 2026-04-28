@@ -45,11 +45,14 @@ export const admissionCreateSchema = z.object({
 export const admissionDischargeSchema = z.object({
   reason: z.string().trim().max(1000).optional(),
   notes: z.string().trim().max(2000).optional(),
+  dischargeNotes: z.string().trim().max(2000).optional(),
+  manualAmount: z.number().nonnegative().optional(),
 });
 
 export const admissionUpdateSchema = z.object({
   diagnosis: z.string().trim().max(2000).optional(),
   notes: z.string().trim().max(2000).optional(),
+  dailyRate: z.number().nonnegative().optional(),
 });
 
 // --- Doctor note -------------------------------------------------------------

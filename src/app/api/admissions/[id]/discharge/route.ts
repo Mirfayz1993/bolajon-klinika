@@ -10,6 +10,7 @@ import { z } from 'zod';
 
 const dischargeSchema = z.object({
   dischargeNotes: z.string().trim().max(2000).optional(),
+  manualAmount: z.number().nonnegative().optional(),
 });
 
 export async function POST(
@@ -48,7 +49,7 @@ export async function POST(
 
     const parsed = await validateBody(req, dischargeSchema);
     if (!parsed.ok) return parsed.response;
-    const { dischargeNotes } = parsed.data;
+    const { dischargeNotes, manualAmount } = parsed.data;
 
     const dischargeAt = new Date();
 
@@ -63,6 +64,13 @@ export async function POST(
       (dischargeAt.getTime() - admission.admissionDate.getTime()) / (1000 * 60 * 60)
     );
 
+    // Avtomatik summa (12-soat qoidasi bilan)
+    const autoAmount = days > 0 ? Number(admission.dailyRate) * days : 0;
+
+    // Final summa: agar manualAmount berilgan bo'lsa shuni ishlat (0 ham qabul qilinadi)
+    const isManualOverride = manualAmount !== undefined;
+    const finalAmount = isManualOverride ? (manualAmount as number) : autoAmount;
+
     const updatedNotes = dischargeNotes
       ? `${admission.notes ? admission.notes + '\n' : ''}Chiqish izohi: ${dischargeNotes}`
       : admission.notes ?? undefined;
@@ -70,9 +78,11 @@ export async function POST(
     let updatedAdmission: Admission;
     let serviceAmount: number | null = null;
 
-    if (days > 0) {
-      const amount = Number(admission.dailyRate) * days;
-      const description = `Statsionar: ${days} kun (${hours} soat)`;
+    if (finalAmount > 0) {
+      // Description'da yotgan vaqtni ko'rsatish (kun va soat)
+      const description = isManualOverride
+        ? `Statsionar (qo'lda belgilangan): ${days} kun ${hours % 24} soat`
+        : `Statsionar: ${days} kun (${hours} soat)`;
 
       const [discharged] = await prisma.$transaction([
         prisma.admission.update({
@@ -89,7 +99,7 @@ export async function POST(
             patientId: admission.patientId,
             categoryName: 'Statsionar',
             itemName: description,
-            price: amount,
+            price: finalAmount,
             isPaid: false,
             assignedById: session.user.id,
             admissionId: admission.id,
@@ -98,7 +108,7 @@ export async function POST(
       ]);
 
       updatedAdmission = discharged;
-      serviceAmount = amount;
+      serviceAmount = finalAmount;
     } else {
       const [discharged] = await prisma.$transaction([
         prisma.admission.update({
@@ -123,7 +133,11 @@ export async function POST(
         patientId: admission.patientId,
         patient: `${admission.patient.lastName} ${admission.patient.firstName}`,
         days,
-        amount: serviceAmount,
+        hours,
+        autoAmount,
+        finalAmount: serviceAmount,
+        isManualOverride,
+        dailyRate: Number(admission.dailyRate),
       },
     });
 
@@ -131,8 +145,10 @@ export async function POST(
       admission: updatedAdmission,
       days,
       hours,
+      autoAmount,
+      isManualOverride,
       payment: serviceAmount !== null ? { amount: serviceAmount } : null,
-      free: days === 0,
+      free: finalAmount === 0,
     });
   } catch (error) {
     console.error(error);

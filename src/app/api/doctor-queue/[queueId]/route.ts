@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getServerSession } from 'next-auth';
-import { authOptions } from '@/lib/auth';
+import { requireAction } from '@/lib/api-auth';
 import { prisma } from '@/lib/prisma';
 
 // PATCH /api/doctor-queue/[queueId]  { action: 'call' | 'done' | 'urgent' }
@@ -8,8 +7,8 @@ export async function PATCH(
   req: NextRequest,
   { params }: { params: Promise<{ queueId: string }> }
 ) {
-  const session = await getServerSession(authOptions);
-  if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  const auth = await requireAction('/doctor-queue:manage');
+  if (!auth.ok) return auth.response;
 
   const { queueId } = await params;
   const body = await req.json() as { action: 'call' | 'done' | 'urgent' | 'accept' };

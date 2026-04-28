@@ -27,7 +27,10 @@
     "all": "Barchasi",
     "createdAt": "Yaratilgan",
     "updatedAt": "Yangilangan",
-    "sum": "so'm"
+    "sum": "so'm",
+    "hours": "soat",
+    "days": "kun",
+    "free": "Bepul"
   },
   "auth": {
     "login": "Kirish",
@@ -361,7 +364,15 @@
     "free": "Bepul (12 soatdan kam)",
     "selectBed": "To'shak tanlang",
     "selectDoctor": "Shifokor tanlang",
-    "selectPatient": "Bemor tanlang"
+    "selectPatient": "Bemor tanlang",
+    "editRate": "Narxni o'zgartirish",
+    "editRateTitle": "Kunlik narxni o'zgartirish",
+    "rateUpdated": "Narx yangilandi",
+    "autoAmount": "Avtomatik summa",
+    "manualAmountToggle": "Qo'lda summa belgilash",
+    "manualAmountLabel": "Qo'lda summa",
+    "manualOverrideBadge": "Qo'lda belgilangan",
+    "stayDuration": "Yotgan vaqti"
   },
   "queue": {
     "title": "Navbat",

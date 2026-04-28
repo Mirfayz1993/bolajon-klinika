@@ -14,6 +14,8 @@ import {
   LogOut,
   Building2,
   Pill,
+  Pencil,
+  Check,
 } from 'lucide-react';
 import { floorLabel } from '@/lib/utils';
 
@@ -68,6 +70,8 @@ interface DischargeResult {
   days: number;
   payment: { amount: number } | null;
   free: boolean;
+  autoAmount?: number;
+  isManualOverride?: boolean;
 }
 
 interface MedOption {
@@ -177,6 +181,7 @@ export default function AdmissionsPage() {
   const canManage = can('/admissions:create');
   const canDischarge = can('/admissions:discharge');
   const canDispense = can('/pharmacy:dispense');
+  const canEditRate = can('/admissions:edit_rate') || can('/admissions:create');
 
   // -- List state --
   const [admissions, setAdmissions] = useState<Admission[]>([]);
@@ -229,6 +234,13 @@ export default function AdmissionsPage() {
   const [dischargeSaving, setDischargeSaving] = useState(false);
   const [dischargeError, setDischargeError] = useState<string | null>(null);
   const [dischargeResult, setDischargeResult] = useState<DischargeResult | null>(null);
+  const [manualAmountEnabled, setManualAmountEnabled] = useState(false);
+  const [manualAmount, setManualAmount] = useState('');
+
+  // -- Edit Daily Rate (inline) --
+  const [editRateId, setEditRateId] = useState<string | null>(null);
+  const [editRateValue, setEditRateValue] = useState('');
+  const [editRateSaving, setEditRateSaving] = useState(false);
 
   // -- Dori berish modal (floor=3) -------------------------------------------
   const [showMedModal, setShowMedModal] = useState(false);
@@ -443,6 +455,16 @@ export default function AdmissionsPage() {
     }
   };
 
+  // --- Auto preview calculation (12-hour rule) ------------------------------
+
+  function computeAutoPreview(adm: Admission): { hours: number; days: number; amount: number } {
+    const ms = Date.now() - new Date(adm.admissionDate).getTime();
+    const hours = Math.max(0, ms / (1000 * 60 * 60));
+    const days = hours <= 12 ? 0 : Math.ceil(hours / 24);
+    const amount = days * (adm.dailyRate || 0);
+    return { hours, days, amount };
+  }
+
   // --- Discharge ------------------------------------------------------------
 
   const openDischarge = (admission: Admission) => {
@@ -450,6 +472,9 @@ export default function AdmissionsPage() {
     setDischargeNotes('');
     setDischargeError(null);
     setDischargeResult(null);
+    setManualAmountEnabled(false);
+    const preview = computeAutoPreview(admission);
+    setManualAmount(String(preview.amount));
   };
 
   const handleDischarge = async (e: React.FormEvent) => {
@@ -458,10 +483,18 @@ export default function AdmissionsPage() {
     setDischargeSaving(true);
     setDischargeError(null);
     try {
+      const body: Record<string, string | number> = { dischargeNotes };
+      if (manualAmountEnabled) {
+        const parsed = manualAmount.trim() === '' ? 0 : Number(manualAmount);
+        if (Number.isNaN(parsed) || parsed < 0) {
+          throw new Error(t.common.error);
+        }
+        body.manualAmount = parsed;
+      }
       const res = await fetch(`/api/admissions/${dischargeAdmission.id}/discharge`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ dischargeNotes }),
+        body: JSON.stringify(body),
       });
       if (!res.ok) {
         const err = await res.json();
@@ -472,6 +505,8 @@ export default function AdmissionsPage() {
         days: json.days ?? 0,
         payment: json.payment ?? null,
         free: json.free ?? false,
+        autoAmount: typeof json.autoAmount === 'number' ? json.autoAmount : undefined,
+        isManualOverride: json.isManualOverride === true,
       });
       fetchAdmissions();
       fetchRooms();
@@ -479,6 +514,49 @@ export default function AdmissionsPage() {
       setDischargeError(err instanceof Error ? err.message : t.common.error);
     } finally {
       setDischargeSaving(false);
+    }
+  };
+
+  // --- Edit Daily Rate ------------------------------------------------------
+
+  const openEditRate = (adm: Admission) => {
+    setEditRateId(adm.id);
+    setEditRateValue(String(adm.dailyRate ?? 0));
+  };
+
+  const cancelEditRate = () => {
+    setEditRateId(null);
+    setEditRateValue('');
+  };
+
+  const saveEditRate = async (admissionId: string) => {
+    const parsed = Number(editRateValue);
+    if (Number.isNaN(parsed) || parsed < 0) {
+      alert(t.common.error);
+      return;
+    }
+    setEditRateSaving(true);
+    try {
+      const res = await fetch(`/api/admissions/${admissionId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ dailyRate: parsed }),
+      });
+      if (!res.ok) {
+        const err = await res.json();
+        alert(err.error ?? t.common.error);
+        return;
+      }
+      // Optimistic update
+      setAdmissions((prev) =>
+        prev.map((a) => (a.id === admissionId ? { ...a, dailyRate: parsed } : a))
+      );
+      setEditRateId(null);
+      setEditRateValue('');
+    } catch {
+      alert(t.common.error);
+    } finally {
+      setEditRateSaving(false);
     }
   };
 
@@ -670,7 +748,55 @@ export default function AdmissionsPage() {
                     </td>
                     {/* Daily rate */}
                     <td className="px-4 py-3 text-slate-600 whitespace-nowrap">
-                      {adm.dailyRate > 0 ? formatCurrency(adm.dailyRate, t.common.sum) : '—'}
+                      {editRateId === adm.id ? (
+                        <div className="flex items-center gap-1.5">
+                          <input
+                            type="number"
+                            min={0}
+                            value={editRateValue}
+                            onChange={(e) => setEditRateValue(e.target.value)}
+                            disabled={editRateSaving}
+                            autoFocus
+                            className="w-28 border border-slate-300 rounded-md px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => saveEditRate(adm.id)}
+                            disabled={editRateSaving}
+                            className="p-1.5 text-green-600 hover:bg-green-50 rounded-md transition-colors disabled:opacity-50"
+                            title={t.common.save}
+                          >
+                            {editRateSaving ? (
+                              <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                            ) : (
+                              <Check className="w-3.5 h-3.5" />
+                            )}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={cancelEditRate}
+                            disabled={editRateSaving}
+                            className="p-1.5 text-slate-400 hover:bg-slate-100 rounded-md transition-colors disabled:opacity-50"
+                            title={t.common.cancel}
+                          >
+                            <X className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      ) : (
+                        <div className="flex items-center gap-2">
+                          <span>{adm.dailyRate > 0 ? formatCurrency(adm.dailyRate, t.common.sum) : '—'}</span>
+                          {canEditRate && !adm.dischargeDate && (
+                            <button
+                              type="button"
+                              onClick={() => openEditRate(adm)}
+                              className="p-1 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-md transition-colors"
+                              title={t.admissions.editRate}
+                            >
+                              <Pencil className="w-3.5 h-3.5" />
+                            </button>
+                          )}
+                        </div>
+                      )}
                     </td>
                     {/* Status badge */}
                     <td className="px-4 py-3">
@@ -952,11 +1078,21 @@ export default function AdmissionsPage() {
               {/* Discharge result banner */}
               {dischargeResult && (
                 <div className="bg-green-50 border border-green-200 rounded-lg px-4 py-3 mb-4 text-sm text-green-800">
-                  {dischargeResult.free
-                    ? t.admissions.free
-                    : dischargeResult.payment
-                    ? `${dischargeResult.days} ${t.admissions.days}, ${formatCurrency(dischargeResult.payment.amount, t.common.sum)} ${t.payments.categories.INPATIENT.toLowerCase()}`
-                    : `${dischargeResult.days} ${t.admissions.days}`}
+                  <div>
+                    {dischargeResult.free
+                      ? t.admissions.free
+                      : dischargeResult.payment
+                      ? `${dischargeResult.days} ${t.admissions.days}, ${formatCurrency(dischargeResult.payment.amount, t.common.sum)} ${t.payments.categories.INPATIENT.toLowerCase()}`
+                      : `${dischargeResult.days} ${t.admissions.days}`}
+                  </div>
+                  {dischargeResult.isManualOverride && (
+                    <div className="mt-2 inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-800 border border-amber-200">
+                      {t.admissions.manualOverrideBadge}
+                      {dischargeResult.payment
+                        ? `: ${formatCurrency(dischargeResult.payment.amount, t.common.sum)}`
+                        : ''}
+                    </div>
+                  )}
                 </div>
               )}
 

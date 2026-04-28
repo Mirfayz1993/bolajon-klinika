@@ -52,6 +52,10 @@ export const ACTION_ACCESS: Record<string, Role[]> = {
   '/queue:mark_done': ['ADMIN', 'HEAD_DOCTOR', 'DOCTOR', 'HEAD_NURSE', 'NURSE'],
   '/queue:set_urgent': ['ADMIN', 'RECEPTIONIST', 'HEAD_DOCTOR'],
 
+  // /doctor-queue
+  '/doctor-queue:order': ['ADMIN', 'HEAD_DOCTOR', 'DOCTOR', 'SPEECH_THERAPIST', 'MASSAGE_THERAPIST'],
+  '/doctor-queue:manage': ['ADMIN', 'RECEPTIONIST', 'HEAD_DOCTOR', 'HEAD_NURSE'],
+
   // /admissions
   '/admissions:create': ['ADMIN', 'RECEPTIONIST', 'HEAD_DOCTOR', 'HEAD_NURSE'],
   '/admissions:discharge': ['ADMIN', 'HEAD_DOCTOR', 'DOCTOR', 'HEAD_NURSE'],
