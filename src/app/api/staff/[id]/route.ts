@@ -1,17 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getServerSession } from 'next-auth';
-import { authOptions } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 import { Role } from '@prisma/client';
 import bcrypt from 'bcryptjs';
 import { encryptPassword, decryptPassword } from '@/lib/encrypt';
+import { requireSession, requireAction } from '@/lib/api-auth';
 
 export async function GET(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const session = await getServerSession(authOptions);
-  if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  const auth = await requireSession();
+  if (!auth.ok) return auth.response;
+  const { session } = auth;
 
   try {
     const { id } = await params;
@@ -53,20 +53,8 @@ export async function PUT(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const session = await getServerSession(authOptions);
-  if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-
-  if (session.user.role !== 'ADMIN') {
-    return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
-  }
-
   try {
     const { id } = await params;
-
-    const existing = await prisma.user.findUnique({ where: { id } });
-    if (!existing) {
-      return NextResponse.json({ error: 'Xodim topilmadi' }, { status: 404 });
-    }
 
     const body = await req.json() as {
       firstName?: string;
@@ -80,6 +68,40 @@ export async function PUT(
     };
 
     const { firstName, lastName, phone, email, password, role, specializationId, isActive } = body;
+
+    // Permission tekshiruvi: parol o'zgartirish alohida ruxsat talab qiladi.
+    // - Agar body'da password (bo'sh emas) bo'lsa → /staff:change_password kerak
+    // - Agar boshqa fieldlardan biri bo'lsa → /staff:edit kerak
+    const hasPasswordChange = password !== undefined && password !== '';
+    const hasOtherFields =
+      firstName !== undefined ||
+      lastName !== undefined ||
+      phone !== undefined ||
+      email !== undefined ||
+      role !== undefined ||
+      specializationId !== undefined ||
+      isActive !== undefined;
+
+    if (hasPasswordChange) {
+      const authPwd = await requireAction('/staff:change_password');
+      if (!authPwd.ok) return authPwd.response;
+    }
+
+    if (hasOtherFields) {
+      const authEdit = await requireAction('/staff:edit');
+      if (!authEdit.ok) return authEdit.response;
+    }
+
+    if (!hasPasswordChange && !hasOtherFields) {
+      // Hech narsa o'zgartirilmaydi — kamida sessiya tekshirilsin
+      const authSess = await requireSession();
+      if (!authSess.ok) return authSess.response;
+    }
+
+    const existing = await prisma.user.findUnique({ where: { id } });
+    if (!existing) {
+      return NextResponse.json({ error: 'Xodim topilmadi' }, { status: 404 });
+    }
 
     const updateData: {
       name?: string;
@@ -126,9 +148,9 @@ export async function PUT(
       }
     }
 
-    if (password !== undefined && password !== '') {
-      updateData.password = await bcrypt.hash(password, 10);
-      updateData.encryptedPassword = encryptPassword(password);
+    if (hasPasswordChange) {
+      updateData.password = await bcrypt.hash(password!, 10);
+      updateData.encryptedPassword = encryptPassword(password!);
     }
 
     if (role !== undefined) {
@@ -179,12 +201,9 @@ export async function DELETE(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const session = await getServerSession(authOptions);
-  if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-
-  if (session.user.role !== 'ADMIN') {
-    return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
-  }
+  const auth = await requireAction('/staff:delete');
+  if (!auth.ok) return auth.response;
+  const { session } = auth;
 
   try {
     const { id } = await params;

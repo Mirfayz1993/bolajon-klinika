@@ -1,18 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getServerSession } from 'next-auth';
-import { authOptions } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
+import { requireAction } from '@/lib/api-auth';
 
 type Ctx = { params: Promise<{ id: string }> };
 
 // GET /api/staff/[id]/permissions
 export async function GET(_req: NextRequest, { params }: Ctx) {
+  const auth = await requireAction('/staff:manage_permissions');
+  if (!auth.ok) return auth.response;
+
   try {
     const { id } = await params;
-    const session = await getServerSession(authOptions);
-    if (!session || session.user.role !== 'ADMIN') {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
-    }
 
     const user = await prisma.user.findUnique({
       where: { id },
@@ -37,11 +35,10 @@ export async function GET(_req: NextRequest, { params }: Ctx) {
 
 // PUT /api/staff/[id]/permissions
 export async function PUT(req: NextRequest, { params }: Ctx) {
+  const auth = await requireAction('/staff:manage_permissions');
+  if (!auth.ok) return auth.response;
+
   const { id } = await params;
-  const session = await getServerSession(authOptions);
-  if (!session || session.user.role !== 'ADMIN') {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
-  }
 
   const body = await req.json();
   const { page, canAccess, level, clear } = body as {

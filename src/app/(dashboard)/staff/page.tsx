@@ -1,8 +1,8 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { useSession } from 'next-auth/react';
 import { useLanguage } from '@/hooks/useLanguage';
+import { usePermissions } from '@/hooks/usePermissions';
 import {
   UserPlus,
   Pencil,
@@ -311,10 +311,14 @@ function PermDrawer({
 // --- Main Component -----------------------------------------------------------
 
 export default function StaffPage() {
-  const { data: session } = useSession();
   const { t } = useLanguage();
-  const isAdmin = session?.user?.role === 'ADMIN';
+  const { can } = usePermissions();
   const ROLE_LABELS = t.roles as Record<string, string>;
+  const canCreate = can('/staff:create');
+  const canEdit = can('/staff:edit');
+  const canDelete = can('/staff:delete');
+  const canManagePerms = can('/staff:manage_permissions');
+  const showActionsCol = canEdit || canDelete || canManagePerms;
 
   const [staff, setStaff] = useState<StaffMember[]>([]);
   const [specializations, setSpecializations] = useState<Specialization[]>([]);
@@ -464,7 +468,7 @@ export default function StaffPage() {
       {/* Header */}
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-2xl font-bold text-slate-800">{t.staff.title}</h1>
-        {isAdmin && (
+        {canCreate && (
           <button
             onClick={openAddModal}
             className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors"
@@ -525,7 +529,7 @@ export default function StaffPage() {
                   <th className="px-5 py-3 font-medium">{t.staff.role}</th>
                   <th className="px-5 py-3 font-medium">{t.staff.specialization}</th>
                   <th className="px-5 py-3 font-medium">{t.common.status}</th>
-                  {isAdmin && (
+                  {showActionsCol && (
                     <th className="px-5 py-3 font-medium text-right">{t.common.actions}</th>
                   )}
                 </tr>
@@ -545,30 +549,36 @@ export default function StaffPage() {
                         <span className="bg-red-100 text-red-800 px-2 py-1 rounded-full text-xs font-medium">{t.staff.inactive}</span>
                       )}
                     </td>
-                    {isAdmin && (
+                    {showActionsCol && (
                       <td className="px-5 py-3.5">
                         <div className="flex items-center justify-end gap-2">
-                          <button
-                            onClick={() => setPermMember(member)}
-                            className="p-1.5 text-slate-500 hover:text-purple-600 hover:bg-purple-50 rounded-lg transition-colors"
-                            title="Ruxsatlarni boshqarish"
-                          >
-                            <ShieldCheck size={15} />
-                          </button>
-                          <button
-                            onClick={() => openEditModal(member)}
-                            className="p-1.5 text-slate-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
-                            title={t.common.edit}
-                          >
-                            <Pencil size={15} />
-                          </button>
-                          <button
-                            onClick={() => handleDelete(member)}
-                            className="p-1.5 text-slate-500 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-                            title={t.common.delete}
-                          >
-                            <Trash2 size={15} />
-                          </button>
+                          {canManagePerms && (
+                            <button
+                              onClick={() => setPermMember(member)}
+                              className="p-1.5 text-slate-500 hover:text-purple-600 hover:bg-purple-50 rounded-lg transition-colors"
+                              title="Ruxsatlarni boshqarish"
+                            >
+                              <ShieldCheck size={15} />
+                            </button>
+                          )}
+                          {canEdit && (
+                            <button
+                              onClick={() => openEditModal(member)}
+                              className="p-1.5 text-slate-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                              title={t.common.edit}
+                            >
+                              <Pencil size={15} />
+                            </button>
+                          )}
+                          {canDelete && (
+                            <button
+                              onClick={() => handleDelete(member)}
+                              className="p-1.5 text-slate-500 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                              title={t.common.delete}
+                            >
+                              <Trash2 size={15} />
+                            </button>
+                          )}
                         </div>
                       </td>
                     )}

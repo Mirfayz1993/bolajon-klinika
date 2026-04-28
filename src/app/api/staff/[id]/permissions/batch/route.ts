@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getServerSession } from 'next-auth';
-import { authOptions } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
+import { requireAction } from '@/lib/api-auth';
 
 type Ctx = { params: Promise<{ id: string }> };
 
@@ -9,10 +8,8 @@ type Ctx = { params: Promise<{ id: string }> };
 // Body: { permissions: { page: string; canAccess: boolean | null; level?: string }[] }
 // canAccess = null → o'chirish (role defaultga qaytish)
 export async function POST(req: NextRequest, { params }: Ctx) {
-  const session = await getServerSession(authOptions);
-  if (!session || session.user.role !== 'ADMIN') {
-    return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
-  }
+  const auth = await requireAction('/staff:manage_permissions');
+  if (!auth.ok) return auth.response;
 
   const { id } = await params;
 
