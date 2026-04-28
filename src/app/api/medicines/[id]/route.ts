@@ -1,10 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getServerSession } from 'next-auth';
-import { authOptions } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
-import { Role } from '@prisma/client';
-
-const WRITE_ROLES: Role[] = [Role.ADMIN, Role.HEAD_NURSE];
+import { requireAction, requireSession } from '@/lib/api-auth';
+import { writeAuditLog } from '@/lib/audit';
 
 // ─── GET /api/medicines/[id] ────────────────────────────────────────────────
 
@@ -12,8 +9,8 @@ export async function GET(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const session = await getServerSession(authOptions);
-  if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  const auth = await requireSession();
+  if (!auth.ok) return auth.response;
 
   try {
     const { id } = await params;
@@ -47,12 +44,9 @@ export async function PUT(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const session = await getServerSession(authOptions);
-  if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-
-  if (!WRITE_ROLES.includes(session.user.role as Role)) {
-    return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
-  }
+  const auth = await requireAction('/pharmacy:edit');
+  if (!auth.ok) return auth.response;
+  const { session } = auth;
 
   try {
     const { id } = await params;
@@ -167,6 +161,25 @@ export async function PUT(
       },
     });
 
+    await writeAuditLog({
+      userId: session.user.id,
+      action: 'UPDATE',
+      module: 'pharmacy',
+      details: {
+        medicineId: medicine.id,
+        oldName: existing.name,
+        newName: medicine.name,
+        oldPrice: Number(existing.price),
+        newPrice: Number(medicine.price),
+        oldMinStock: existing.minStock,
+        newMinStock: medicine.minStock,
+        ...(body.writtenOff === true && {
+          action: 'writeoff_via_put',
+          writtenOff: true,
+        }),
+      },
+    });
+
     return NextResponse.json(medicine);
   } catch (error) {
     console.error(error);
@@ -183,12 +196,9 @@ export async function PATCH(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const session = await getServerSession(authOptions);
-  if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-
-  if (!WRITE_ROLES.includes(session.user.role as Role)) {
-    return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
-  }
+  const auth = await requireAction('/pharmacy:writeoff');
+  if (!auth.ok) return auth.response;
+  const { session } = auth;
 
   try {
     const { id } = await params;
@@ -219,6 +229,18 @@ export async function PATCH(
       },
     });
 
+    await writeAuditLog({
+      userId: session.user.id,
+      action: 'UPDATE',
+      module: 'pharmacy',
+      details: {
+        medicineId: medicine.id,
+        name: medicine.name,
+        action: 'writeoff',
+        previousQuantity: existing.quantity,
+      },
+    });
+
     return NextResponse.json(medicine);
   } catch (error) {
     console.error(error);
@@ -232,12 +254,9 @@ export async function DELETE(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const session = await getServerSession(authOptions);
-  if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-
-  if (session.user.role !== Role.ADMIN) {
-    return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
-  }
+  const auth = await requireAction('/pharmacy:edit');
+  if (!auth.ok) return auth.response;
+  const { session } = auth;
 
   try {
     const { id } = await params;
@@ -255,6 +274,16 @@ export async function DELETE(
     }
 
     await prisma.medicine.delete({ where: { id } });
+
+    await writeAuditLog({
+      userId: session.user.id,
+      action: 'DELETE',
+      module: 'pharmacy',
+      details: {
+        medicineId: existing.id,
+        name: existing.name,
+      },
+    });
 
     return NextResponse.json({ message: 'Dori o\'chirildi' });
   } catch (error) {

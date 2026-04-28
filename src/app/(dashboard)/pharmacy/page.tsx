@@ -1,8 +1,8 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { useSession } from "next-auth/react";
 import { useLanguage } from "@/hooks/useLanguage";
+import { usePermissions } from "@/hooks/usePermissions";
 import {
   Plus,
   Loader2,
@@ -66,12 +66,13 @@ type ActiveTab = "medicines" | "receive" | "expiry" | "transactions" | "supplier
 
 export default function PharmacyPage() {
   const { t } = useLanguage();
-  const { data: session } = useSession();
+  const { can } = usePermissions();
 
-  const role = session?.user?.role as string | undefined;
-  const canManage = role === "ADMIN" || role === "HEAD_NURSE";
-  const canDispense =
-    role === "ADMIN" || role === "HEAD_NURSE" || role === "NURSE";
+  const canCreateMedicine = can('/pharmacy:create');
+  const canEditMedicine = can('/pharmacy:edit');
+  const canWriteoff = can('/pharmacy:writeoff');
+  const canManageSuppliers = can('/pharmacy:manage_suppliers');
+  const canDispense = can('/pharmacy:dispense');
 
   const [activeTab, setActiveTab] = useState<ActiveTab>("medicines");
 
@@ -502,7 +503,7 @@ export default function PharmacyPage() {
           {t.pharmacy.title}
         </h1>
         <div className="flex gap-2">
-          {activeTab === "medicines" && canManage && (
+          {activeTab === "medicines" && canCreateMedicine && (
             <button
               onClick={openAddMedicineModal}
               className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg transition-colors text-sm font-medium"
@@ -511,7 +512,7 @@ export default function PharmacyPage() {
               {t.pharmacy.addMedicine}
             </button>
           )}
-          {activeTab === "suppliers" && canManage && (
+          {activeTab === "suppliers" && canManageSuppliers && (
             <button
               onClick={openAddSupplierModal}
               className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg transition-colors text-sm font-medium"
@@ -528,10 +529,14 @@ export default function PharmacyPage() {
         {(
           [
             { key: "medicines", label: t.pharmacy.medicines },
-            { key: "receive", label: "Qabul qilish" },
-            { key: "expiry", label: "Muddati & Chiqarish" },
+            ...(canCreateMedicine
+              ? [{ key: "receive", label: "Qabul qilish" }]
+              : []),
+            ...(canWriteoff
+              ? [{ key: "expiry", label: "Muddati & Chiqarish" }]
+              : []),
             { key: "transactions", label: t.pharmacy.transactions },
-            ...(canManage
+            ...(canManageSuppliers
               ? [{ key: "suppliers", label: t.pharmacy.suppliers }]
               : []),
           ] as { key: ActiveTab; label: string }[]
@@ -721,25 +726,23 @@ export default function PharmacyPage() {
                                       {t.pharmacy.dispenseMedicine}
                                     </button>
                                   )}
-                                  {canManage && (
-                                    <>
-                                      <button
-                                        onClick={() => openEditMedicineModal(med)}
-                                        className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-md transition-colors"
-                                        title={t.common.edit}
-                                      >
-                                        <Pencil className="w-4 h-4" />
-                                      </button>
-                                      {(isExpired || med.quantity === 0) && (
-                                        <button
-                                          onClick={() => handleWriteOff(med)}
-                                          className="p-1.5 text-slate-400 hover:text-orange-600 hover:bg-orange-50 rounded-md transition-colors"
-                                          title="Hisobdan chiqarish"
-                                        >
-                                          <Trash2 className="w-4 h-4" />
-                                        </button>
-                                      )}
-                                    </>
+                                  {canEditMedicine && (
+                                    <button
+                                      onClick={() => openEditMedicineModal(med)}
+                                      className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-md transition-colors"
+                                      title={t.common.edit}
+                                    >
+                                      <Pencil className="w-4 h-4" />
+                                    </button>
+                                  )}
+                                  {canWriteoff && (isExpired || med.quantity === 0) && (
+                                    <button
+                                      onClick={() => handleWriteOff(med)}
+                                      className="p-1.5 text-slate-400 hover:text-orange-600 hover:bg-orange-50 rounded-md transition-colors"
+                                      title="Hisobdan chiqarish"
+                                    >
+                                      <Trash2 className="w-4 h-4" />
+                                    </button>
                                   )}
                                 </>
                               )}
@@ -757,7 +760,7 @@ export default function PharmacyPage() {
       )}
 
       {/* ═══ TAB: Qabul qilish (STOCK_IN) ═══ */}
-      {activeTab === "receive" && (
+      {activeTab === "receive" && canCreateMedicine && (
         <div className="max-w-lg">
           <div className="bg-white rounded-xl border border-slate-200 p-6">
             <h2 className="text-base font-semibold text-slate-800 flex items-center gap-2 mb-5">
@@ -856,7 +859,7 @@ export default function PharmacyPage() {
       )}
 
       {/* ═══ TAB: Muddati & Hisobdan chiqarish ═══ */}
-      {activeTab === "expiry" && (
+      {activeTab === "expiry" && canWriteoff && (
         <div>
           <div className="flex items-center gap-2 mb-4">
             <ShieldAlert className="w-5 h-5 text-orange-500" />
@@ -906,22 +909,24 @@ export default function PharmacyPage() {
                             </span>
                           </td>
                           <td className="px-4 py-3 text-right">
-                            <button
-                              disabled={writeOffingId === m.id}
-                              onClick={async () => {
-                                if (!confirm(`"${m.name}" ni hisobdan chiqarasizmi?`)) return;
-                                setWriteOffingId(m.id);
-                                try {
-                                  const res = await fetch(`/api/medicines/${m.id}`, { method: "PATCH" });
-                                  if (!res.ok) { const e = await res.json(); alert(e.error); return; }
-                                  fetchExpiryMeds();
-                                } finally { setWriteOffingId(null); }
-                              }}
-                              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-red-600 hover:text-red-700 hover:bg-red-50 border border-red-200 rounded-lg transition-colors ml-auto disabled:opacity-50"
-                            >
-                              {writeOffingId === m.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
-                              Hisobdan chiqarish
-                            </button>
+                            {canWriteoff && (
+                              <button
+                                disabled={writeOffingId === m.id}
+                                onClick={async () => {
+                                  if (!confirm(`"${m.name}" ni hisobdan chiqarasizmi?`)) return;
+                                  setWriteOffingId(m.id);
+                                  try {
+                                    const res = await fetch(`/api/medicines/${m.id}`, { method: "PATCH" });
+                                    if (!res.ok) { const e = await res.json(); alert(e.error); return; }
+                                    fetchExpiryMeds();
+                                  } finally { setWriteOffingId(null); }
+                                }}
+                                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-red-600 hover:text-red-700 hover:bg-red-50 border border-red-200 rounded-lg transition-colors ml-auto disabled:opacity-50"
+                              >
+                                {writeOffingId === m.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
+                                Hisobdan chiqarish
+                              </button>
+                            )}
                           </td>
                         </tr>
                       );
@@ -1030,7 +1035,7 @@ export default function PharmacyPage() {
       )}
 
       {/* ═══ TAB 3: Suppliers ═══ */}
-      {activeTab === "suppliers" && canManage && (
+      {activeTab === "suppliers" && canManageSuppliers && (
         <div>
           {suppliersError && (
             <div className="flex items-center gap-2 text-red-600 bg-red-50 border border-red-200 rounded-lg px-4 py-3 mb-4 text-sm">
@@ -1091,20 +1096,24 @@ export default function PharmacyPage() {
                         </td>
                         <td className="px-4 py-3">
                           <div className="flex items-center justify-end gap-1">
-                            <button
-                              onClick={() => openEditSupplierModal(sup)}
-                              className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-md transition-colors"
-                              title={t.common.edit}
-                            >
-                              <Pencil className="w-4 h-4" />
-                            </button>
-                            <button
-                              onClick={() => handleDeleteSupplier(sup.id)}
-                              className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-md transition-colors"
-                              title={t.common.delete}
-                            >
-                              <Trash2 className="w-4 h-4" />
-                            </button>
+                            {canManageSuppliers && (
+                              <>
+                                <button
+                                  onClick={() => openEditSupplierModal(sup)}
+                                  className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-md transition-colors"
+                                  title={t.common.edit}
+                                >
+                                  <Pencil className="w-4 h-4" />
+                                </button>
+                                <button
+                                  onClick={() => handleDeleteSupplier(sup.id)}
+                                  className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-md transition-colors"
+                                  title={t.common.delete}
+                                >
+                                  <Trash2 className="w-4 h-4" />
+                                </button>
+                              </>
+                            )}
                           </div>
                         </td>
                       </tr>

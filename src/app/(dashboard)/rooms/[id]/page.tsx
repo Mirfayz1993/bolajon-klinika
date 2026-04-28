@@ -7,7 +7,7 @@ import { useRouter, useParams } from 'next/navigation';
 import {
   ArrowLeft, Package,
   Plus, Minus, Check, X, Loader2, AlertCircle,
-  User, RefreshCw, Building2, History
+  User, RefreshCw, Building2, History, BedDouble, Trash2, RotateCcw
 } from 'lucide-react';
 import { floorLabel } from '@/lib/utils';
 
@@ -20,6 +20,15 @@ interface RoomDetail {
   type: string;
   capacity: number;
   isActive: boolean;
+  deletedAt?: string | null;
+}
+
+interface BedItem {
+  id: string;
+  roomId: string;
+  bedNumber: string;
+  status: 'AVAILABLE' | 'OCCUPIED' | 'MAINTENANCE';
+  deletedAt: string | null;
 }
 
 interface InventoryItem {
@@ -89,7 +98,7 @@ export default function RoomDetailPage() {
   const roomId = params.id as string;
   const isAdmin = session?.user?.role === 'ADMIN';
 
-  const [tab, setTab] = useState<'inventory' | 'settings'>('inventory');
+  const [tab, setTab] = useState<'inventory' | 'beds' | 'settings'>('inventory');
 
   // -- Room ------------------------------------------------------------------
   const [room, setRoom] = useState<RoomDetail | null>(null);
@@ -123,6 +132,13 @@ export default function RoomDetailPage() {
   const [respSaving, setRespSaving] = useState(false);
   const [respError, setRespError] = useState<string | null>(null);
   const [showAssignForm, setShowAssignForm] = useState(false);
+
+  // -- Beds ------------------------------------------------------------------
+  const [beds, setBeds] = useState<BedItem[]>([]);
+  const [bedsLoading, setBedsLoading] = useState(false);
+  const [showDeletedBeds, setShowDeletedBeds] = useState(false);
+  const [newBedNumber, setNewBedNumber] = useState('');
+  const [bedSaving, setBedSaving] = useState(false);
 
   // -- Global error ----------------------------------------------------------
   const [globalError, setGlobalError] = useState<string | null>(null);
@@ -204,6 +220,25 @@ export default function RoomDetailPage() {
     }
   }, []);
 
+  // -- Fetch beds ------------------------------------------------------------
+
+  const fetchBeds = useCallback(async () => {
+    setBedsLoading(true);
+    try {
+      const params = new URLSearchParams();
+      if (isAdmin && showDeletedBeds) params.set('includeDeleted', 'true');
+      const qs = params.toString() ? `?${params.toString()}` : '';
+      const res = await fetch(`/api/rooms/${roomId}/beds${qs}`);
+      if (!res.ok) throw new Error();
+      const data: BedItem[] = await res.json();
+      setBeds(data);
+    } catch {
+      // silent
+    } finally {
+      setBedsLoading(false);
+    }
+  }, [roomId, isAdmin, showDeletedBeds]);
+
   // -- Initial load ----------------------------------------------------------
 
   useEffect(() => {
@@ -211,8 +246,9 @@ export default function RoomDetailPage() {
     fetchInventory();
     fetchLogs();
     fetchResponsible();
+    fetchBeds();
     if (isAdmin) fetchStaff();
-  }, [fetchRoom, fetchInventory, fetchLogs, fetchResponsible, fetchStaff, isAdmin]);
+  }, [fetchRoom, fetchInventory, fetchLogs, fetchResponsible, fetchBeds, fetchStaff, isAdmin]);
 
   // -- Inventory handlers ----------------------------------------------------
 
@@ -305,6 +341,62 @@ export default function RoomDetailPage() {
     }
   };
 
+  // -- Bed handlers ----------------------------------------------------------
+
+  const handleAddBed = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const bedNumber = newBedNumber.trim() || String(beds.filter(b => !b.deletedAt).length + 1);
+    setBedSaving(true);
+    try {
+      const res = await fetch(`/api/rooms/${roomId}/beds`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ bedNumber }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({})) as { error?: string };
+        alert(data.error ?? t.common.error);
+        return;
+      }
+      setNewBedNumber('');
+      fetchBeds();
+    } catch (err) {
+      alert(err instanceof Error ? err.message : t.common.error);
+    } finally {
+      setBedSaving(false);
+    }
+  };
+
+  const handleDeleteBed = async (bedId: string) => {
+    if (!confirm(t.rooms.deleteBedConfirm)) return;
+    try {
+      const res = await fetch(`/api/rooms/${roomId}/beds?bedId=${bedId}`, { method: 'DELETE' });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({})) as { error?: string };
+        alert(data.error ?? t.common.error);
+        return;
+      }
+      fetchBeds();
+    } catch (err) {
+      alert(err instanceof Error ? err.message : t.common.error);
+    }
+  };
+
+  const handleRestoreBed = async (bedId: string) => {
+    if (!confirm(t.rooms.restoreBedConfirm)) return;
+    try {
+      const res = await fetch(`/api/rooms/${roomId}/beds/${bedId}/restore`, { method: 'POST' });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({})) as { error?: string };
+        alert(data.error ?? t.common.error);
+        return;
+      }
+      fetchBeds();
+    } catch (err) {
+      alert(err instanceof Error ? err.message : t.common.error);
+    }
+  };
+
   // -- Derived ---------------------------------------------------------------
 
   const activeItems = inventory.filter(i => i.status === 'ACTIVE');
@@ -333,6 +425,7 @@ export default function RoomDetailPage() {
 
   const tabs = [
     { key: 'inventory', label: t.rooms.inventory, icon: Package },
+    { key: 'beds', label: t.rooms.bedsList, icon: BedDouble },
     { key: 'settings', label: t.rooms.responsible, icon: User },
   ] as const;
 
@@ -595,6 +688,137 @@ export default function RoomDetailPage() {
             )}
           </section>
         </div>
+      )}
+
+      {/* -- TAB: To'shaklar --------------------------------------------------- */}
+      {tab === 'beds' && (
+        <section className="bg-white rounded-xl shadow-sm border border-slate-100">
+          <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between flex-wrap gap-3">
+            <h2 className="font-semibold text-slate-800">{t.rooms.bedsList}</h2>
+            {isAdmin && (
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setShowDeletedBeds((v) => !v)}
+                  className="flex items-center gap-1.5 text-sm text-slate-600 hover:text-slate-800 border border-slate-200 px-3 py-1.5 rounded-lg hover:bg-slate-50"
+                >
+                  <History className="w-4 h-4" />
+                  {showDeletedBeds ? t.rooms.hideDeletedBeds : t.rooms.showDeletedBeds}
+                </button>
+              </div>
+            )}
+          </div>
+
+          {/* Add bed form (only for active rooms) */}
+          {isAdmin && !room.deletedAt && (
+            <form onSubmit={handleAddBed} className="px-6 py-4 bg-blue-50/30 border-b border-slate-100 flex items-center gap-3 flex-wrap">
+              <label className="text-sm font-medium text-slate-700">{t.rooms.bedNumber}</label>
+              <input
+                type="text"
+                value={newBedNumber}
+                onChange={(e) => setNewBedNumber(e.target.value)}
+                placeholder="1"
+                className="border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300 bg-white w-32"
+              />
+              <button
+                type="submit"
+                disabled={bedSaving}
+                className="flex items-center gap-1.5 bg-blue-600 hover:bg-blue-700 disabled:opacity-60 text-white px-4 py-2 rounded-lg text-sm font-medium"
+              >
+                {bedSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}
+                {t.rooms.addBed}
+              </button>
+            </form>
+          )}
+
+          {bedsLoading ? (
+            <div className="flex justify-center py-10"><Loader2 className="w-6 h-6 animate-spin text-blue-500" /></div>
+          ) : beds.length === 0 ? (
+            <div className="py-12 text-center text-slate-400 text-sm">
+              {showDeletedBeds ? t.rooms.noDeletedBeds : t.rooms.beds + ': 0'}
+            </div>
+          ) : (
+            <div className="divide-y divide-slate-50">
+              {beds.map((bed) => {
+                const isDeleted = !!bed.deletedAt;
+                return (
+                  <div
+                    key={bed.id}
+                    className={`px-6 py-3 flex items-center gap-3 ${isDeleted ? 'bg-slate-50/50' : ''}`}
+                  >
+                    <div className={`w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0 ${
+                      isDeleted
+                        ? 'bg-slate-100 text-slate-400'
+                        : bed.status === 'OCCUPIED'
+                          ? 'bg-red-50 text-red-600'
+                          : bed.status === 'MAINTENANCE'
+                            ? 'bg-yellow-50 text-yellow-600'
+                            : 'bg-green-50 text-green-600'
+                    }`}>
+                      <BedDouble className="w-4 h-4" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="font-medium text-slate-800">
+                          {t.rooms.bedNumber} {bed.bedNumber}
+                        </span>
+                        {!isDeleted && (
+                          <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${
+                            bed.status === 'OCCUPIED'
+                              ? 'bg-red-100 text-red-800'
+                              : bed.status === 'MAINTENANCE'
+                                ? 'bg-yellow-100 text-yellow-800'
+                                : 'bg-green-100 text-green-800'
+                          }`}>
+                            {bed.status === 'OCCUPIED'
+                              ? t.rooms.occupied
+                              : bed.status === 'MAINTENANCE'
+                                ? t.rooms.maintenance
+                                : t.rooms.available}
+                          </span>
+                        )}
+                        {isDeleted && (
+                          <span className="text-xs font-medium bg-red-100 text-red-700 px-2 py-0.5 rounded-full">
+                            {t.rooms.deletedLabel}
+                          </span>
+                        )}
+                      </div>
+                      {isDeleted && bed.deletedAt && (
+                        <p className="text-xs text-slate-400 mt-0.5">
+                          {t.rooms.deletedAt}: {formatDateTime(bed.deletedAt)}
+                        </p>
+                      )}
+                    </div>
+                    {isAdmin && (
+                      <div className="flex items-center gap-2">
+                        {isDeleted ? (
+                          <button
+                            onClick={() => handleRestoreBed(bed.id)}
+                            disabled={!!room.deletedAt}
+                            title={room.deletedAt ? t.rooms.restoreRoomConfirm : t.rooms.restore}
+                            className="flex items-center gap-1.5 text-xs font-medium text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50 disabled:opacity-50 disabled:cursor-not-allowed px-3 py-1.5 rounded-lg transition-colors"
+                          >
+                            <RotateCcw className="w-3.5 h-3.5" />
+                            {t.rooms.restore}
+                          </button>
+                        ) : (
+                          bed.status === 'AVAILABLE' && (
+                            <button
+                              onClick={() => handleDeleteBed(bed.id)}
+                              className="flex items-center gap-1.5 text-xs font-medium text-red-500 hover:text-red-700 hover:bg-red-50 px-3 py-1.5 rounded-lg transition-colors"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                              {t.common.delete}
+                            </button>
+                          )
+                        )}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </section>
       )}
 
       {/* -- TAB: Javobgar ----------------------------------------------------- */}

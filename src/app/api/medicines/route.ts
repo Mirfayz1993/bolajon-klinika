@@ -1,14 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getServerSession } from 'next-auth';
-import { authOptions } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
-import { Role } from '@prisma/client';
-
-const WRITE_ROLES: Role[] = [Role.ADMIN, Role.HEAD_NURSE];
+import { requireAction, requireSession } from '@/lib/api-auth';
+import { writeAuditLog } from '@/lib/audit';
 
 export async function GET(req: NextRequest) {
-  const session = await getServerSession(authOptions);
-  if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  const auth = await requireSession();
+  if (!auth.ok) return auth.response;
 
   try {
     const { searchParams } = new URL(req.url);
@@ -92,12 +89,9 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
-  const session = await getServerSession(authOptions);
-  if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-
-  if (!WRITE_ROLES.includes(session.user.role as Role)) {
-    return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
-  }
+  const auth = await requireAction('/pharmacy:create');
+  if (!auth.ok) return auth.response;
+  const { session } = auth;
 
   try {
     const body = await req.json() as {
@@ -173,6 +167,19 @@ export async function POST(req: NextRequest) {
       include: {
         supplier: { select: { id: true, name: true } },
         writtenOffBy: { select: { id: true, name: true } },
+      },
+    });
+
+    await writeAuditLog({
+      userId: session.user.id,
+      action: 'CREATE',
+      module: 'pharmacy',
+      details: {
+        medicineId: medicine.id,
+        name: medicine.name,
+        type: medicine.type,
+        price: Number(medicine.price),
+        minStock: medicine.minStock,
       },
     });
 

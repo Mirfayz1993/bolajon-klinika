@@ -14,6 +14,7 @@ import {
   Pencil,
   Trash2,
   Info,
+  RotateCcw,
 } from 'lucide-react';
 import { floorLabel } from '@/lib/utils';
 
@@ -47,6 +48,7 @@ interface Room {
   isActive: boolean;
   isAmbulatory: boolean;
   beds: Bed[];
+  deletedAt?: string | null;
   _count?: { beds: number };
 }
 
@@ -151,6 +153,7 @@ export default function RoomsPage() {
 
   const [floorFilter, setFloorFilter] = useState<number | null>(null);
   const [typeFilter, setTypeFilter] = useState<string | null>(null);
+  const [viewMode, setViewMode] = useState<'active' | 'deleted'>('active');
 
   // Add / Edit modal
   const [showRoomModal, setShowRoomModal] = useState(false);
@@ -168,6 +171,7 @@ export default function RoomsPage() {
       const params = new URLSearchParams({ include: 'beds' });
       if (floorFilter !== null) params.set('floor', String(floorFilter));
       if (typeFilter !== null) params.set('type', typeFilter);
+      if (isAdmin && viewMode === 'deleted') params.set('onlyDeleted', 'true');
       const res = await fetch(`/api/rooms?${params.toString()}`);
       if (!res.ok) throw new Error(t.common.error);
       const json = await res.json();
@@ -177,7 +181,7 @@ export default function RoomsPage() {
     } finally {
       setLoading(false);
     }
-  }, [floorFilter, typeFilter, t.common.error]);
+  }, [floorFilter, typeFilter, viewMode, isAdmin, t.common.error]);
 
   useEffect(() => {
     fetchRooms();
@@ -258,12 +262,29 @@ export default function RoomsPage() {
     try {
       const res = await fetch(`/api/rooms/${id}`, { method: 'DELETE' });
       if (!res.ok) {
-        const err = await res.json() as { error?: string };
-        throw new Error(err.error ?? t.common.error);
+        const data = await res.json().catch(() => ({})) as { error?: string };
+        alert(data.error ?? t.common.error);
+        return;
       }
       fetchRooms();
     } catch (err) {
-      setError(err instanceof Error ? err.message : t.common.error);
+      alert(err instanceof Error ? err.message : t.common.error);
+    }
+  };
+
+  const handleRestoreRoom = async (id: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!confirm(t.rooms.restoreRoomConfirm)) return;
+    try {
+      const res = await fetch(`/api/rooms/${id}/restore`, { method: 'POST' });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({})) as { error?: string };
+        alert(data.error ?? t.common.error);
+        return;
+      }
+      fetchRooms();
+    } catch (err) {
+      alert(err instanceof Error ? err.message : t.common.error);
     }
   };
 
@@ -287,15 +308,41 @@ export default function RoomsPage() {
       {/* Header */}
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-2xl font-bold text-slate-800">{t.rooms.title}</h1>
-        {isAdmin && (
-          <button
-            onClick={openAddRoomModal}
-            className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg transition-colors text-sm font-medium"
-          >
-            <Plus className="w-4 h-4" />
-            {t.rooms.addRoom}
-          </button>
-        )}
+        <div className="flex items-center gap-2">
+          {isAdmin && (
+            <div className="flex items-center bg-slate-100 rounded-lg p-1">
+              <button
+                onClick={() => setViewMode('active')}
+                className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${
+                  viewMode === 'active'
+                    ? 'bg-white text-slate-800 shadow-sm'
+                    : 'text-slate-500 hover:text-slate-700'
+                }`}
+              >
+                {t.rooms.activeRooms}
+              </button>
+              <button
+                onClick={() => setViewMode('deleted')}
+                className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${
+                  viewMode === 'deleted'
+                    ? 'bg-white text-slate-800 shadow-sm'
+                    : 'text-slate-500 hover:text-slate-700'
+                }`}
+              >
+                {t.rooms.deletedRooms}
+              </button>
+            </div>
+          )}
+          {isAdmin && viewMode === 'active' && (
+            <button
+              onClick={openAddRoomModal}
+              className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg transition-colors text-sm font-medium"
+            >
+              <Plus className="w-4 h-4" />
+              {t.rooms.addRoom}
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Filters */}
@@ -363,7 +410,7 @@ export default function RoomsPage() {
       ) : rooms.length === 0 ? (
         <div className="text-center py-20 text-slate-400">
           <Building2 className="w-12 h-12 mx-auto mb-3 opacity-30" />
-          <p>{t.rooms.noRooms}</p>
+          <p>{viewMode === 'deleted' ? t.rooms.noDeletedRooms : t.rooms.noRooms}</p>
         </div>
       ) : (
         /* Grid — 3 ustun */
@@ -401,6 +448,11 @@ export default function RoomsPage() {
                     {!room.isActive && (
                       <span className="text-xs bg-slate-100 text-slate-500 px-2 py-0.5 rounded-full">
                         {t.staff.inactive}
+                      </span>
+                    )}
+                    {room.deletedAt && (
+                      <span className="text-xs bg-red-100 text-red-700 px-2 py-0.5 rounded-full">
+                        {t.rooms.deletedLabel}
                       </span>
                     )}
                   </div>
@@ -443,7 +495,25 @@ export default function RoomsPage() {
                 )}
 
                 {/* Actions — admin only */}
-                {isAdmin && (
+                {isAdmin && viewMode === 'deleted' && (
+                  <div className="flex items-center gap-2 mt-auto pt-3 border-t border-slate-100 flex-wrap">
+                    <button
+                      onClick={() => router.push(`/rooms/${room.id}`)}
+                      className="flex items-center gap-1.5 text-xs font-medium text-blue-600 hover:text-blue-700 hover:bg-blue-50 px-3 py-1.5 rounded-lg transition-colors"
+                    >
+                      <Info className="w-3.5 h-3.5" />
+                      {t.rooms.details}
+                    </button>
+                    <button
+                      onClick={(e) => handleRestoreRoom(room.id, e)}
+                      className="flex items-center gap-1.5 text-xs font-medium text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50 px-3 py-1.5 rounded-lg transition-colors ml-auto"
+                    >
+                      <RotateCcw className="w-3.5 h-3.5" />
+                      {t.rooms.restore}
+                    </button>
+                  </div>
+                )}
+                {isAdmin && viewMode === 'active' && (
                   <div className="flex items-center gap-2 mt-auto pt-3 border-t border-slate-100 flex-wrap">
                     <button
                       onClick={() => router.push(`/rooms/${room.id}`)}
@@ -464,33 +534,49 @@ export default function RoomsPage() {
                       onClick={async (e) => {
                         e.stopPropagation();
                         const nextNum = String(room.beds.length + 1);
-                        const res = await fetch(`/api/rooms/${room.id}/beds`, {
-                          method: 'POST',
-                          headers: { 'Content-Type': 'application/json' },
-                          body: JSON.stringify({ bedNumber: nextNum }),
-                        });
-                        if (res.ok) fetchRooms();
-                        else { const d = await res.json(); alert(d.error ?? 'Xatolik'); }
+                        try {
+                          const res = await fetch(`/api/rooms/${room.id}/beds`, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ bedNumber: nextNum }),
+                          });
+                          if (!res.ok) {
+                            const data = await res.json().catch(() => ({})) as { error?: string };
+                            alert(data.error ?? t.common.error);
+                            return;
+                          }
+                          fetchRooms();
+                        } catch (err) {
+                          alert(err instanceof Error ? err.message : t.common.error);
+                        }
                       }}
                       className="flex items-center gap-1 text-xs font-medium text-green-600 hover:text-green-700 hover:bg-green-50 px-2 py-1.5 rounded-lg transition-colors"
-                      title="Krovat qo'shish"
+                      title={t.rooms.addBed}
                     >
-                      <Plus className="w-3.5 h-3.5" /> Krovat
+                      <Plus className="w-3.5 h-3.5" /> {t.rooms.addBedShort}
                     </button>
                     {/* Oxirgi bo'sh krovatni o'chirish */}
                     {room.beds.some(b => b.status === 'AVAILABLE' && b.admissions.length === 0) && (
                       <button
                         onClick={async (e) => {
                           e.stopPropagation();
-                          if (!confirm("Oxirgi bo'sh krovatni o'chirasizmi?")) return;
-                          const res = await fetch(`/api/rooms/${room.id}/beds`, { method: 'DELETE' });
-                          if (res.ok) fetchRooms();
-                          else { const d = await res.json(); alert(d.error ?? 'Xatolik'); }
+                          if (!confirm(t.rooms.deleteLastEmptyBedConfirm)) return;
+                          try {
+                            const res = await fetch(`/api/rooms/${room.id}/beds`, { method: 'DELETE' });
+                            if (!res.ok) {
+                              const data = await res.json().catch(() => ({})) as { error?: string };
+                              alert(data.error ?? t.common.error);
+                              return;
+                            }
+                            fetchRooms();
+                          } catch (err) {
+                            alert(err instanceof Error ? err.message : t.common.error);
+                          }
                         }}
                         className="flex items-center gap-1 text-xs font-medium text-orange-500 hover:text-orange-700 hover:bg-orange-50 px-2 py-1.5 rounded-lg transition-colors"
-                        title="Bo'sh krovatni o'chirish"
+                        title={t.rooms.deleteEmptyBed}
                       >
-                        <Trash2 className="w-3.5 h-3.5" /> Krovat
+                        <Trash2 className="w-3.5 h-3.5" /> {t.rooms.addBedShort}
                       </button>
                     )}
                     <button

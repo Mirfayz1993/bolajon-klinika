@@ -1,14 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getServerSession } from 'next-auth';
-import { authOptions } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
-import { Role, MedicineTransactionType } from '@prisma/client';
-
-const WRITE_ROLES: Role[] = [Role.ADMIN, Role.HEAD_NURSE, Role.NURSE];
+import { MedicineTransactionType } from '@prisma/client';
+import { requireAction, requireSession } from '@/lib/api-auth';
+import { writeAuditLog } from '@/lib/audit';
 
 export async function GET(req: NextRequest) {
-  const session = await getServerSession(authOptions);
-  if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  const auth = await requireSession();
+  if (!auth.ok) return auth.response;
 
   try {
     const { searchParams } = new URL(req.url);
@@ -58,38 +56,46 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
-  const session = await getServerSession(authOptions);
-  if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-
-  if (!WRITE_ROLES.includes(session.user.role as Role)) {
-    return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+  // Body birinchi bo'lib o'qiladi — chunki ruxsat tekshiruvi `type` ga bog'liq
+  // (STOCK_IN va STOCK_OUT uchun har xil action key kerak).
+  let body: {
+    medicineId?: string;
+    type?: string; // 'IN' | 'OUT'
+    quantity?: number;
+    patientId?: string;
+    notes?: string;
+    supplierId?: string;
+    expiryDate?: string;
+    floor?: number | null;
+  };
+  try {
+    body = await req.json();
+  } catch {
+    return NextResponse.json({ error: 'JSON noto\'g\'ri formatda' }, { status: 400 });
   }
 
+  const { medicineId, type, quantity, patientId, notes, supplierId, expiryDate, floor } = body;
+
+  if (!medicineId || !type || quantity === undefined) {
+    return NextResponse.json(
+      { error: 'medicineId, type, quantity majburiy' },
+      { status: 400 }
+    );
+  }
+
+  if (type !== 'IN' && type !== 'OUT') {
+    return NextResponse.json({ error: 'type faqat IN yoki OUT bo\'lishi mumkin' }, { status: 400 });
+  }
+
+  // Dinamik action tekshiruvi:
+  //   STOCK_IN  → /pharmacy:create
+  //   STOCK_OUT → /pharmacy:dispense
+  const actionKey = type === 'IN' ? '/pharmacy:create' : '/pharmacy:dispense';
+  const auth = await requireAction(actionKey);
+  if (!auth.ok) return auth.response;
+  const { session } = auth;
+
   try {
-    const body = await req.json() as {
-      medicineId?: string;
-      type?: string; // 'IN' | 'OUT'
-      quantity?: number;
-      patientId?: string;
-      notes?: string;
-      supplierId?: string;
-      expiryDate?: string;
-      floor?: number | null;
-    };
-
-    const { medicineId, type, quantity, patientId, notes, supplierId, expiryDate, floor } = body;
-
-    if (!medicineId || !type || quantity === undefined) {
-      return NextResponse.json(
-        { error: 'medicineId, type, quantity majburiy' },
-        { status: 400 }
-      );
-    }
-
-    if (type !== 'IN' && type !== 'OUT') {
-      return NextResponse.json({ error: 'type faqat IN yoki OUT bo\'lishi mumkin' }, { status: 400 });
-    }
-
     if (type === 'OUT' && !patientId) {
       return NextResponse.json({ error: 'STOCK_OUT uchun patientId majburiy' }, { status: 400 });
     }
@@ -122,9 +128,18 @@ export async function POST(req: NextRequest) {
     if (type === 'OUT') {
       // Atomik 3 ta amal: MedicineTransaction + Medicine.quantity kamaytirish + Payment
       const result = await prisma.$transaction(async (tx) => {
-        // Race condition oldini olish: quantity ni tx ichida qayta tekshirish
-        const currentMedicine = await tx.medicine.findUnique({ where: { id: medicineId } });
-        if (!currentMedicine || currentMedicine.quantity < quantity) {
+        // Race-safe atomic conditional decrement:
+        // PostgreSQL row-level lock ta'minlaydi — `WHERE quantity >= ${quantity}`
+        // sharti bilan UPDATE bitta atomik amal. Agar 0 row affected — stock yetarli emas.
+        const affectedRows = await tx.$executeRaw`
+          UPDATE medicines
+          SET quantity = quantity - ${quantity}
+          WHERE id = ${medicineId} AND quantity >= ${quantity}
+        `;
+
+        if (affectedRows === 0) {
+          // Yetarli zaxira yo'q — currentQuantity'ni xabar uchun olamiz
+          const currentMedicine = await tx.medicine.findUnique({ where: { id: medicineId } });
           throw new Error(`INSUFFICIENT_STOCK:${currentMedicine?.quantity ?? 0}`);
         }
 
@@ -143,13 +158,7 @@ export async function POST(req: NextRequest) {
           },
         });
 
-        // 2. Medicine.quantity kamaytirish
-        await tx.medicine.update({
-          where: { id: medicineId },
-          data: { quantity: { decrement: quantity } },
-        });
-
-        // 3. AssignedService yaratish — bemor profilining Xizmatlar tabida ko'rinadi
+        // 2. AssignedService yaratish — bemor profilining Xizmatlar tabida ko'rinadi
         const assignedService = await tx.assignedService.create({
           data: {
             patientId: patientId!,
@@ -162,6 +171,22 @@ export async function POST(req: NextRequest) {
         });
 
         return { transaction, assignedService };
+      });
+
+      await writeAuditLog({
+        userId: session.user.id,
+        action: 'CREATE',
+        module: 'pharmacy',
+        details: {
+          transactionId: result.transaction.id,
+          type: 'STOCK_OUT',
+          medicineId,
+          medicineName: medicine.name,
+          quantity,
+          patientId: patientId ?? null,
+          assignedServiceId: result.assignedService.id,
+          price: Number(medicine.price) * quantity,
+        },
       });
 
       return NextResponse.json(result, { status: 201 });
@@ -204,6 +229,22 @@ export async function POST(req: NextRequest) {
         });
 
         return { transaction };
+      });
+
+      await writeAuditLog({
+        userId: session.user.id,
+        action: 'CREATE',
+        module: 'pharmacy',
+        details: {
+          transactionId: result.transaction.id,
+          type: 'STOCK_IN',
+          medicineId,
+          medicineName: medicine.name,
+          quantity,
+          supplierId: supplierId ?? null,
+          expiryDate: expiryDate ?? null,
+          floor: floor ?? null,
+        },
       });
 
       return NextResponse.json(result, { status: 201 });
