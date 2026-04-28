@@ -1,8 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getServerSession } from 'next-auth';
-import { authOptions } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 import { AdmissionType } from '@prisma/client';
+import { requireSession } from '@/lib/api-auth';
 
 // POST /api/ambulatory/qr-scan
 // Body: { patientId: string }
@@ -10,8 +9,8 @@ import { AdmissionType } from '@prisma/client';
 //   PENDING admission → ACTIVE + bed.OCCUPIED
 //   ACTIVE admission  → DISCHARGED + bed.AVAILABLE
 export async function POST(req: NextRequest) {
-  const session = await getServerSession(authOptions);
-  if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  const auth = await requireSession();
+  if (!auth.ok) return auth.response;
 
   const body = await req.json() as { patientId?: string };
   if (!body.patientId?.trim()) {

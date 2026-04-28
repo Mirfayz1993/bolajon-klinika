@@ -73,6 +73,15 @@ export const MANAGED_PAGES: NavPage[] = [
     ],
   },
   {
+    path: '/appointments',
+    label: 'Uchrashuvlar',
+    actions: [
+      { key: 'create', label: "Uchrashuv qo'shish" },
+      { key: 'edit', label: 'Tahrirlash' },
+      { key: 'delete', label: "O'chirish" },
+    ],
+  },
+  {
     path: '/rooms',
     label: 'Xonalar',
     actions: [

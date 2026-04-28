@@ -1,8 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getServerSession } from 'next-auth';
-import { authOptions } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 import { AppointmentStatus, QueueStatus } from '@prisma/client';
+import { requireAction } from '@/lib/api-auth';
 
 // Map appointment status → queue status
 function resolveQueueStatus(appointmentStatus: AppointmentStatus): QueueStatus {
@@ -24,8 +23,8 @@ export async function PATCH(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const session = await getServerSession(authOptions);
-  if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  const auth = await requireAction('/appointments:edit');
+  if (!auth.ok) return auth.response;
 
   try {
     const { id } = await params;

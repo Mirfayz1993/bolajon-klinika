@@ -66,6 +66,11 @@ export const ACTION_ACCESS: Record<string, Role[]> = {
   '/ambulatory:create': ['ADMIN', 'RECEPTIONIST', 'HEAD_DOCTOR', 'HEAD_NURSE', 'NURSE'],
   '/ambulatory:discharge': ['ADMIN', 'HEAD_DOCTOR', 'DOCTOR', 'HEAD_NURSE', 'NURSE', 'RECEPTIONIST'],
 
+  // /appointments
+  '/appointments:create': ['ADMIN', 'HEAD_DOCTOR', 'DOCTOR', 'RECEPTIONIST'],
+  '/appointments:edit': ['ADMIN', 'HEAD_DOCTOR', 'DOCTOR', 'RECEPTIONIST'],
+  '/appointments:delete': ['ADMIN'],
+
   // /pharmacy
   '/pharmacy:create': ['ADMIN', 'HEAD_NURSE', 'NURSE'],
   '/pharmacy:dispense': ['ADMIN', 'HEAD_DOCTOR', 'HEAD_NURSE', 'NURSE'],
