@@ -622,13 +622,15 @@ export default function PaymentsPage() {
                     </td>
                     <td className="px-4 py-3">
                       <div className="flex items-center justify-end gap-1">
-                        <button
-                          onClick={() => router.push(`/payments/print?id=${payment.id}`)}
-                          className="p-1.5 text-slate-400 hover:text-green-600 hover:bg-green-50 rounded-md transition-colors"
-                          title="Chek chop etish"
-                        >
-                          <Printer className="w-4 h-4" />
-                        </button>
+                        {can('/payments:print') && (
+                          <button
+                            onClick={() => router.push(`/payments/print?id=${payment.id}`)}
+                            className="p-1.5 text-slate-400 hover:text-green-600 hover:bg-green-50 rounded-md transition-colors"
+                            title="Chek chop etish"
+                          >
+                            <Printer className="w-4 h-4" />
+                          </button>
+                        )}
                         {can('/payments:edit') && (
                           <button
                             onClick={() => openEditModal(payment)}

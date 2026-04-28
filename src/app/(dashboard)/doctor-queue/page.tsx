@@ -65,6 +65,8 @@ export default function DoctorQueuePage() {
 
   const isDoctor = can('/doctor-queue:order');
   const canManage = can('/doctor-queue:manage');
+  const canScanQr = can('/doctor-queue:scan_qr');
+  const canSetPriority = can('/doctor-queue:set_priority');
 
   const doctorId = isDoctor ? session?.user?.id : selDoctor;
 
@@ -255,43 +257,45 @@ export default function DoctorQueuePage() {
               </div>
 
               {/* QR Skaner */}
-              <div className="bg-white rounded-xl border border-slate-200 p-4">
-                <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2 flex items-center gap-1.5">
-                  <ScanLine className="w-3.5 h-3.5" /> QR Skaner
-                </p>
-                <p className="text-xs text-slate-400 mb-3">
-                  Bemorning QR kodini skanerlang yoki ID kiriting
-                </p>
-                <div className="flex gap-2">
-                  <input
-                    ref={qrInputRef}
-                    type="text"
-                    value={qrInput}
-                    onChange={e => setQrInput(e.target.value)}
-                    onKeyDown={handleQrKeyDown}
-                    placeholder="Bemorning QR kodini skanerlang..."
-                    disabled={qrBusy || !roomId}
-                    className="flex-1 border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50 disabled:bg-slate-50"
-                  />
-                  <button
-                    onClick={() => handleQrScan(qrInput)}
-                    disabled={qrBusy || !qrInput.trim() || !roomId}
-                    className="px-3 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 disabled:opacity-50 transition-colors"
-                  >
-                    {qrBusy ? <Loader2 className="w-4 h-4 animate-spin" /> : <ScanLine className="w-4 h-4" />}
-                  </button>
-                </div>
-                {!roomId && (
-                  <p className="text-xs text-amber-600 mt-2">Xona biriktirilmagan — admin xona tayinlashi kerak</p>
-                )}
-                {qrResult && (
-                  <div className={`mt-2 px-3 py-2 rounded-lg text-xs font-medium ${
-                    qrResult.success ? 'bg-green-50 text-green-700 border border-green-200' : 'bg-red-50 text-red-700 border border-red-200'
-                  }`}>
-                    {qrResult.message}
+              {canScanQr && (
+                <div className="bg-white rounded-xl border border-slate-200 p-4">
+                  <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2 flex items-center gap-1.5">
+                    <ScanLine className="w-3.5 h-3.5" /> QR Skaner
+                  </p>
+                  <p className="text-xs text-slate-400 mb-3">
+                    Bemorning QR kodini skanerlang yoki ID kiriting
+                  </p>
+                  <div className="flex gap-2">
+                    <input
+                      ref={qrInputRef}
+                      type="text"
+                      value={qrInput}
+                      onChange={e => setQrInput(e.target.value)}
+                      onKeyDown={handleQrKeyDown}
+                      placeholder="Bemorning QR kodini skanerlang..."
+                      disabled={qrBusy || !roomId}
+                      className="flex-1 border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50 disabled:bg-slate-50"
+                    />
+                    <button
+                      onClick={() => handleQrScan(qrInput)}
+                      disabled={qrBusy || !qrInput.trim() || !roomId}
+                      className="px-3 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 disabled:opacity-50 transition-colors"
+                    >
+                      {qrBusy ? <Loader2 className="w-4 h-4 animate-spin" /> : <ScanLine className="w-4 h-4" />}
+                    </button>
                   </div>
-                )}
-              </div>
+                  {!roomId && (
+                    <p className="text-xs text-amber-600 mt-2">Xona biriktirilmagan — admin xona tayinlashi kerak</p>
+                  )}
+                  {qrResult && (
+                    <div className={`mt-2 px-3 py-2 rounded-lg text-xs font-medium ${
+                      qrResult.success ? 'bg-green-50 text-green-700 border border-green-200' : 'bg-red-50 text-red-700 border border-red-200'
+                    }`}>
+                      {qrResult.message}
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           )}
 
@@ -403,7 +407,7 @@ export default function DoctorQueuePage() {
                     {/* Amallar */}
                     <div className="flex items-center gap-2 flex-shrink-0 ml-3">
                       {/* Shoshilinch toggle (admin/receptionist) */}
-                      {canManage && (
+                      {canManage && canSetPriority && (
                         <button
                           onClick={() => action(q.id, 'urgent')}
                           disabled={busy === q.id + 'urgent'}
@@ -415,7 +419,7 @@ export default function DoctorQueuePage() {
                       )}
 
                       {/* Navbatsiz chaqirish */}
-                      {idx > 0 && (isDoctor || canManage) && (
+                      {idx > 0 && (isDoctor || canManage) && canSetPriority && (
                         <button
                           onClick={() => action(q.id, 'call')}
                           disabled={!!busy}

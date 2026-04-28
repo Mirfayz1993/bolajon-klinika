@@ -242,6 +242,7 @@ export default function PatientDetailPage({ params }: PageProps) {
   const isNurse = can('/patients:tab:hamshira');
   const isDoctor = can('/patients:tab:tashxislar');
   const canOrderLabTest = can('/patients:order_lab');
+  const canPrintQr = can('/patients:print_qr');
 
   // Assigned services
   const [assignedServices, setAssignedServices] = useState<AssignedService[]>([]);
@@ -2610,10 +2611,12 @@ export default function PatientDetailPage({ params }: PageProps) {
               {patient.lastName} {patient.firstName}<br />
               <span className="text-slate-400 text-xs">{patient.phone}</span>
             </p>
-            <button onClick={printQr} disabled={!qrDataUrl}
-              className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg text-sm disabled:opacity-50">
-              <Printer className="w-4 h-4" /> Chop etish
-            </button>
+            {canPrintQr && (
+              <button onClick={printQr} disabled={!qrDataUrl}
+                className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg text-sm disabled:opacity-50">
+                <Printer className="w-4 h-4" /> Chop etish
+              </button>
+            )}
           </div>
         </Modal>
       )}

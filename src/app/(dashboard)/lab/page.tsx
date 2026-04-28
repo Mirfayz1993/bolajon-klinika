@@ -100,6 +100,7 @@ export default function LabPage() {
   const canOrderTest = can('/patients:order_lab'); // [ADMIN, HEAD_DOCTOR, DOCTOR, RECEPTIONIST] — backend POST /api/lab-tests shu action'da
   const canManageTypes = can('/lab:edit_test'); // [ADMIN, HEAD_LAB_TECH]
   const isHeadLabTech = can('/lab:edit_test'); // [ADMIN, HEAD_LAB_TECH] — reagents management
+  const canPrint = can('/lab:print');
 
   const [activeTab, setActiveTab] = useState<"tests" | "types" | "reagents">("tests");
 
@@ -654,7 +655,7 @@ export default function LabPage() {
           )}
 
           {/* Multi-select print bar */}
-          {selectedPrintIds.length > 0 && (
+          {canPrint && selectedPrintIds.length > 0 && (
             <div className="flex items-center gap-3 mb-3 bg-blue-50 border border-blue-200 rounded-lg px-4 py-2.5">
               <span className="text-sm text-blue-700 font-medium">{selectedPrintIds.length} ta tanlandi</span>
               <button
@@ -810,7 +811,7 @@ export default function LabPage() {
                                 O&apos;zgartirish
                               </button>
                             )}
-                            {test.status === "COMPLETED" && (
+                            {test.status === "COMPLETED" && canPrint && (
                               test.payment && test.payment.status !== "PAID" ? (
                                 <span className="flex items-center gap-1 px-2 py-1 text-xs bg-red-50 text-red-600 rounded-md font-medium">
                                   <Printer className="w-3 h-3" />

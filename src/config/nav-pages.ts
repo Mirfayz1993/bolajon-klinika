@@ -28,6 +28,8 @@ export const MANAGED_PAGES: NavPage[] = [
       { key: 'order_lab', label: 'Lab buyurtma berish' },
       { key: 'add_vital', label: "Vital qo'shish" },
       { key: 'create_note', label: "Eslatma qo'shish" },
+      { key: 'see_qr', label: "QR kodni ko'rish" },
+      { key: 'print_qr', label: 'QR chop etish' },
     ],
   },
   {
@@ -39,6 +41,7 @@ export const MANAGED_PAGES: NavPage[] = [
       { key: 'refund', label: "Qaytarish" },
       { key: 'delete', label: "O'chirish" },
       { key: 'see_all', label: "Hammaning to'lovlarini ko'rish" },
+      { key: 'print', label: 'Chek chop etish' },
     ],
   },
   {
@@ -49,6 +52,8 @@ export const MANAGED_PAGES: NavPage[] = [
       { key: 'result', label: 'Natija kiritish' },
       { key: 'edit_test', label: 'Test tahrirlash' },
       { key: 'delete', label: "O'chirish" },
+      { key: 'print', label: 'Natija chop etish' },
+      { key: 'view_results', label: "Natijalarni ko'rish" },
     ],
   },
   {
@@ -90,6 +95,8 @@ export const MANAGED_PAGES: NavPage[] = [
       { key: 'delete', label: "O'chirish" },
       { key: 'manage_inventory', label: 'Inventar boshqarish' },
       { key: 'assign_responsible', label: "Mas'ul tayinlash" },
+      { key: 'view_details', label: 'Xona tafsilotlari' },
+      { key: 'restore_bed', label: "To'shakni tiklash" },
     ],
   },
   {
@@ -100,6 +107,7 @@ export const MANAGED_PAGES: NavPage[] = [
       { key: 'discharge', label: 'Chiqarish' },
       { key: 'edit_rate', label: "Narx o'zgartirish" },
       { key: 'delete', label: "O'chirish" },
+      { key: 'dispense_medicine', label: 'Dori berish (statsionar)' },
     ],
   },
   {
@@ -108,6 +116,7 @@ export const MANAGED_PAGES: NavPage[] = [
     actions: [
       { key: 'create', label: "Joylashtirish" },
       { key: 'discharge', label: 'Chiqarish' },
+      { key: 'dispense_medicine', label: 'Dori berish (ambulator)' },
     ],
   },
   {
@@ -128,6 +137,9 @@ export const MANAGED_PAGES: NavPage[] = [
       { key: 'assign', label: 'Tayinlash' },
       { key: 'complete_others', label: "Boshqalarning vazifasini yopish" },
       { key: 'delete', label: "O'chirish" },
+      { key: 'notify', label: 'Telegram bildirishnoma' },
+      { key: 'start', label: 'Boshlash' },
+      { key: 'complete', label: 'Yopish' },
     ],
   },
   {
@@ -136,6 +148,8 @@ export const MANAGED_PAGES: NavPage[] = [
     actions: [
       { key: 'order', label: 'Buyurtma berish' },
       { key: 'manage', label: 'Boshqaruv' },
+      { key: 'scan_qr', label: 'QR skanerlash' },
+      { key: 'set_priority', label: 'Prioritet belgilash' },
     ],
   },
   {
@@ -185,6 +199,7 @@ export const MANAGED_PAGES: NavPage[] = [
       { key: 'create', label: "Tashxis qo'shish" },
       { key: 'edit', label: 'Tahrirlash' },
       { key: 'delete', label: "O'chirish" },
+      { key: 'view_patient', label: "Bemor profiliga o'tish" },
     ],
   },
 ];

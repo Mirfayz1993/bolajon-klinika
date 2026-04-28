@@ -138,6 +138,7 @@ export default function RoomsPage() {
   const canCreateRoom = can('/rooms:create');
   const canEditRoom = can('/rooms:edit');
   const canDeleteRoom = can('/rooms:delete');
+  const canViewDetails = can('/rooms:view_details');
 
   const [rooms, setRooms] = useState<Room[]>([]);
   const [loading, setLoading] = useState(false);
@@ -500,15 +501,17 @@ export default function RoomsPage() {
                 )}
 
                 {/* Actions — permission gated */}
-                {viewMode === 'deleted' && (canEditRoom || canCreateRoom) && (
+                {viewMode === 'deleted' && (canEditRoom || canCreateRoom || canViewDetails) && (
                   <div className="flex items-center gap-2 mt-auto pt-3 border-t border-slate-100 flex-wrap">
-                    <button
-                      onClick={() => router.push(`/rooms/${room.id}`)}
-                      className="flex items-center gap-1.5 text-xs font-medium text-blue-600 hover:text-blue-700 hover:bg-blue-50 px-3 py-1.5 rounded-lg transition-colors"
-                    >
-                      <Info className="w-3.5 h-3.5" />
-                      {t.rooms.details}
-                    </button>
+                    {canViewDetails && (
+                      <button
+                        onClick={() => router.push(`/rooms/${room.id}`)}
+                        className="flex items-center gap-1.5 text-xs font-medium text-blue-600 hover:text-blue-700 hover:bg-blue-50 px-3 py-1.5 rounded-lg transition-colors"
+                      >
+                        <Info className="w-3.5 h-3.5" />
+                        {t.rooms.details}
+                      </button>
+                    )}
                     {canEditRoom && (
                       <button
                         onClick={(e) => handleRestoreRoom(room.id, e)}
@@ -520,15 +523,17 @@ export default function RoomsPage() {
                     )}
                   </div>
                 )}
-                {viewMode === 'active' && (canEditRoom || canDeleteRoom) && (
+                {viewMode === 'active' && (canEditRoom || canDeleteRoom || canViewDetails) && (
                   <div className="flex items-center gap-2 mt-auto pt-3 border-t border-slate-100 flex-wrap">
-                    <button
-                      onClick={() => router.push(`/rooms/${room.id}`)}
-                      className="flex items-center gap-1.5 text-xs font-medium text-blue-600 hover:text-blue-700 hover:bg-blue-50 px-3 py-1.5 rounded-lg transition-colors"
-                    >
-                      <Info className="w-3.5 h-3.5" />
-                      {t.rooms.details}
-                    </button>
+                    {canViewDetails && (
+                      <button
+                        onClick={() => router.push(`/rooms/${room.id}`)}
+                        className="flex items-center gap-1.5 text-xs font-medium text-blue-600 hover:text-blue-700 hover:bg-blue-50 px-3 py-1.5 rounded-lg transition-colors"
+                      >
+                        <Info className="w-3.5 h-3.5" />
+                        {t.rooms.details}
+                      </button>
+                    )}
                     {canEditRoom && (
                       <button
                         onClick={(e) => openEditRoomModal(room, e)}

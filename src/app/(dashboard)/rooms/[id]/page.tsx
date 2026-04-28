@@ -102,6 +102,7 @@ export default function RoomDetailPage() {
   const canManageInventory = can('/rooms:manage_inventory');
   const canAssignResponsible = can('/rooms:assign_responsible');
   const canEditRoom = can('/rooms:edit');
+  const canRestoreBed = can('/rooms:restore_bed');
 
   const [tab, setTab] = useState<'inventory' | 'beds' | 'settings'>('inventory');
 
@@ -796,15 +797,17 @@ export default function RoomDetailPage() {
                     {canEditRoom && (
                       <div className="flex items-center gap-2">
                         {isDeleted ? (
-                          <button
-                            onClick={() => handleRestoreBed(bed.id)}
-                            disabled={!!room.deletedAt}
-                            title={room.deletedAt ? t.rooms.restoreRoomConfirm : t.rooms.restore}
-                            className="flex items-center gap-1.5 text-xs font-medium text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50 disabled:opacity-50 disabled:cursor-not-allowed px-3 py-1.5 rounded-lg transition-colors"
-                          >
-                            <RotateCcw className="w-3.5 h-3.5" />
-                            {t.rooms.restore}
-                          </button>
+                          canRestoreBed && (
+                            <button
+                              onClick={() => handleRestoreBed(bed.id)}
+                              disabled={!!room.deletedAt}
+                              title={room.deletedAt ? t.rooms.restoreRoomConfirm : t.rooms.restore}
+                              className="flex items-center gap-1.5 text-xs font-medium text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50 disabled:opacity-50 disabled:cursor-not-allowed px-3 py-1.5 rounded-lg transition-colors"
+                            >
+                              <RotateCcw className="w-3.5 h-3.5" />
+                              {t.rooms.restore}
+                            </button>
+                          )
                         ) : (
                           bed.status === 'AVAILABLE' && (
                             <button

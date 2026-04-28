@@ -145,6 +145,7 @@ export default function AmbulatoryPage() {
   const router = useRouter();
   const canManage = can('/ambulatory:create');
   const canDischarge = can('/ambulatory:discharge');
+  const canDispense = can('/ambulatory:dispense_medicine');
 
   // All admissions (active + discharged)
   const [allAdmissions, setAllAdmissions] = useState<AmbulatoryAdmission[]>([]);
@@ -696,13 +697,15 @@ export default function AmbulatoryPage() {
                     <td className="px-4 py-3 text-right">
                       {adm.status === 'ACTIVE' && (
                         <div className="flex items-center justify-end gap-2">
-                          <button
-                            onClick={(e) => { e.stopPropagation(); openMedModal(adm); }}
-                            className="flex items-center gap-1.5 text-xs font-medium text-teal-600 hover:text-teal-700 hover:bg-teal-50 px-3 py-1.5 rounded-lg transition-colors"
-                          >
-                            <Pill className="w-3.5 h-3.5" />
-                            Dori
-                          </button>
+                          {canDispense && (
+                            <button
+                              onClick={(e) => { e.stopPropagation(); openMedModal(adm); }}
+                              className="flex items-center gap-1.5 text-xs font-medium text-teal-600 hover:text-teal-700 hover:bg-teal-50 px-3 py-1.5 rounded-lg transition-colors"
+                            >
+                              <Pill className="w-3.5 h-3.5" />
+                              Dori
+                            </button>
+                          )}
                           {canDischarge && (
                             <button
                               onClick={(e) => openDischarge(adm, e)}

@@ -180,7 +180,7 @@ export default function AdmissionsPage() {
 
   const canManage = can('/admissions:create');
   const canDischarge = can('/admissions:discharge');
-  const canDispense = can('/pharmacy:dispense');
+  const canDispense = can('/admissions:dispense_medicine');
   const canEditRate = can('/admissions:edit_rate') || can('/admissions:create');
 
   // -- List state --

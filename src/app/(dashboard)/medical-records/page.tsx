@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useSession } from 'next-auth/react';
 import { useLanguage } from '@/hooks/useLanguage';
+import { usePermissions } from '@/hooks/usePermissions';
 import Link from 'next/link';
 import {
   Search,
@@ -75,6 +76,8 @@ function DiagnosisBadge({ diagnosis }: { diagnosis: string | null }) {
 export default function MedicalRecordsPage() {
   const { data: session } = useSession();
   const { t } = useLanguage();
+  const { can } = usePermissions();
+  const canViewPatient = can('/medical-records:view_patient');
 
   // Search & filter state
   const [patientSearch, setPatientSearch] = useState('');
@@ -327,13 +330,15 @@ export default function MedicalRecordsPage() {
 
                       {/* Amallar */}
                       <td className="px-4 py-3 text-right">
-                        <Link
-                          href={`/patients/${record.patientId}`}
-                          className="inline-flex items-center gap-1.5 text-blue-600 hover:text-blue-800 hover:bg-blue-50 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors border border-blue-200 hover:border-blue-400"
-                        >
-                          <ExternalLink size={12} />
-                          {t.medicalRecords.tabRecords}
-                        </Link>
+                        {canViewPatient && (
+                          <Link
+                            href={`/patients/${record.patientId}`}
+                            className="inline-flex items-center gap-1.5 text-blue-600 hover:text-blue-800 hover:bg-blue-50 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors border border-blue-200 hover:border-blue-400"
+                          >
+                            <ExternalLink size={12} />
+                            {t.medicalRecords.tabRecords}
+                          </Link>
+                        )}
                       </td>
                     </tr>
                   ))}
