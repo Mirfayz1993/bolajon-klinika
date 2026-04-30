@@ -103,6 +103,12 @@ export default function Sidebar({ collapsed, onToggle, userName, userRole }: Sid
       labelKey: 'patients',
     },
     {
+      key: 'appointments',
+      href: '/appointments',
+      icon: <CalendarRange size={20} />,
+      labelKey: 'appointments',
+    },
+    {
       key: 'queue',
       href: '/queue-display',
       icon: <MonitorPlay size={20} />,

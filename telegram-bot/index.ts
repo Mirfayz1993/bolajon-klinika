@@ -12,8 +12,20 @@ import {
   registerTaskCallbacks,
   pendingCompletionNote,
 } from './handlers/task-callbacks';
+import {
+  registerAppointmentCallbacks,
+  pendingRejectReason,
+} from './handlers/appointment-callbacks';
+import { registerQueueCallbacks } from './handlers/queue-callbacks';
+import { registerQueueMenu } from './handlers/queue-menu';
 
-const bot = new TelegramBot(process.env.TELEGRAM_BOT_TOKEN!, { polling: true });
+// Token'ni avval lokal const'ga olamiz — pm2 jarayonida `process.env.X` ni
+// inline TelegramBot constructor'ga uzatish polling thread'da xato berdi.
+const TOKEN = process.env.TELEGRAM_BOT_TOKEN;
+if (!TOKEN) {
+  throw new Error('TELEGRAM_BOT_TOKEN env not configured (telegram-bot/.env yoki clinic-cms/.env tekshiring)');
+}
+const bot = new TelegramBot(TOKEN, { polling: true });
 
 // Eski bemor flow uchun chatId ↔ telefon mapping
 const userPhones = new Map<number, string>();
@@ -120,6 +132,8 @@ bot.on('message', async (msg) => {
   if (msg.contact) return;
   // Vazifa "Izoh bilan tugatish" oqimida bo'lsa — task-callbacks handleridan o'tkazib yuboramiz
   if (pendingCompletionNote.has(msg.chat.id)) return;
+  // Uchrashuv "Rad etish sababi" oqimida bo'lsa — appointment-callbacks handleridan o'tkazib yuboramiz
+  if (pendingRejectReason.has(msg.chat.id)) return;
   const text = msg.text?.trim();
   if (!text) return;
 
@@ -185,5 +199,14 @@ bot.on('message', async (msg) => {
 
 // Vazifa callback'lari (▶ Boshlash, ✅ Tugatdim, 📝 Izoh bilan)
 registerTaskCallbacks(bot);
+
+// Uchrashuv callback'lari (✅ Qabul qilish, ❌ Rad etish)
+registerAppointmentCallbacks(bot);
+
+// Navbat callback'lari (📞 Chaqirish, ✅ Bajarildi)
+registerQueueCallbacks(bot);
+
+// /navbat menyusi
+registerQueueMenu(bot);
 
 console.log('Telegram bot ishga tushdi...');

@@ -290,16 +290,18 @@ model RoomExpense {
 }
 
 model Appointment {
-  id        String            @id @default(cuid())
-  patientId String
-  doctorId  String
-  type      AppointmentType
-  dateTime  DateTime
-  status    AppointmentStatus @default(SCHEDULED)
-  roomId    String?
-  notes     String?
-  createdAt DateTime          @default(now())
-  updatedAt DateTime          @updatedAt
+  id                String            @id @default(cuid())
+  patientId         String
+  doctorId          String
+  type              AppointmentType
+  dateTime          DateTime
+  status            AppointmentStatus @default(SCHEDULED)
+  roomId            String?
+  notes             String?
+  telegramMessageId Int?
+  notifiedAt        DateTime?
+  createdAt         DateTime          @default(now())
+  updatedAt         DateTime          @updatedAt
 
   patient  Patient   @relation(fields: [patientId], references: [id])
   doctor   User      @relation("DoctorAppointments", fields: [doctorId], references: [id])

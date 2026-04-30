@@ -183,6 +183,12 @@
     "dateTo": "Санагача",
     "editPayment": "Тўловни таҳрирлаш",
     "selected": "Танланган: ",
+    "byCategory": "Бўлимлар бўйича",
+    "period": {
+      "today": "Бугун",
+      "week": "Ҳафта",
+      "month": "Ой"
+    },
     "status": {
       "PAID": "Тўланган",
       "PARTIAL": "Қисман",
@@ -205,7 +211,7 @@
       "PAYME": "Payme"
     },
     "categories": {
-      "CHECKUP": "Текширув",
+      "CHECKUP": "Шифокор кўриги",
       "LAB_TEST": "Лаборатория",
       "SPEECH_THERAPY": "Логопедия",
       "MASSAGE": "Массаж",
@@ -597,7 +603,7 @@
     "accessDenied": "Рухсат йўқ"
   },
   "appointmentTypes": {
-    "CHECKUP": "Текширув",
+    "CHECKUP": "Шифокор кўриги",
     "FOLLOW_UP": "Такрорий қабул",
     "SPEECH_THERAPY": "Логопедия",
     "MASSAGE": "Массаж",

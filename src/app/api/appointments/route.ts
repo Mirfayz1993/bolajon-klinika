@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { AppointmentType, AppointmentStatus } from '@prisma/client';
 import { requireSession, requireAction } from '@/lib/api-auth';
+import { notifyAppointmentCreated } from '@/lib/telegram/notify';
 
 export async function GET(req: NextRequest) {
   const auth = await requireSession();
@@ -160,6 +161,11 @@ export async function POST(req: NextRequest) {
 
       return { appointment: newAppointment, queue: newQueue };
     });
+
+    // Fire-and-forget: doktorga Telegram xabar (ulanmagan bo'lsa sukut)
+    notifyAppointmentCreated(appointment.id).catch((err) =>
+      console.error('[telegram] notifyAppointmentCreated failed:', err),
+    );
 
     return NextResponse.json({ ...appointment, queue }, { status: 201 });
   } catch (error) {

@@ -97,6 +97,23 @@ export const botTaskCompleteSchema = z.object({
   progressNote: z.string().trim().max(2000).optional(),
 });
 
+export const botAppointmentAcceptSchema = z.object({
+  chatId: chatIdSchema,
+});
+
+export const botAppointmentRejectSchema = z.object({
+  chatId: chatIdSchema,
+  reason: z.string().trim().max(500).optional(),
+});
+
+export const botQueueActionSchema = z.object({
+  chatId: chatIdSchema,
+});
+
+export const botQueueListQuerySchema = z.object({
+  chatId: chatIdSchema,
+});
+
 // --- Prescription ------------------------------------------------------------
 
 export const prescriptionCreateSchema = z.object({

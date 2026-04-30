@@ -10,7 +10,7 @@
  */
 
 import { prisma } from '@/lib/prisma';
-import { taskAssigneeKeyboard } from './keyboards';
+import { taskAssigneeKeyboard, appointmentDoctorKeyboard } from './keyboards';
 
 type SendOpts = {
   reply_markup?: unknown;
@@ -159,4 +159,156 @@ function escapeHtml(s: string): string {
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;');
+}
+
+/**
+ * Bemor uchrashuvga yozilganda doktorga Telegram xabar yuborish.
+ *
+ * - Agar doktor Telegram'ga ulanmagan (`telegramChatId == null`) → sukut
+ * - Yuborilgan bo'lsa: `Appointment.telegramMessageId` va `Appointment.notifiedAt` saqlanadi
+ * - Xato bo'lsa: stderr'ga log, lekin throw qilinmaydi (fire-and-forget)
+ */
+export async function notifyAppointmentCreated(
+  appointmentId: string,
+): Promise<void> {
+  const appointment = await prisma.appointment.findUnique({
+    where: { id: appointmentId },
+    include: {
+      patient: true,
+      doctor: { select: { telegramChatId: true, name: true } },
+      room: { select: { roomNumber: true, floor: true } },
+    },
+  });
+  if (!appointment) {
+    console.error('[telegram] notifyAppointmentCreated: appointment not found', {
+      appointmentId,
+    });
+    return;
+  }
+  if (!appointment.doctor?.telegramChatId) return; // ulanmagan — sukut
+
+  const text = formatAppointmentMessage({
+    patient: {
+      firstName: appointment.patient.firstName,
+      lastName: appointment.patient.lastName,
+      birthDate: appointment.patient.birthDate,
+      gender: appointment.patient.gender,
+      phone: appointment.patient.phone,
+    },
+    dateTime: appointment.dateTime,
+    room: appointment.room
+      ? { roomNumber: appointment.room.roomNumber, floor: appointment.room.floor }
+      : null,
+    notes: appointment.notes,
+  });
+
+  try {
+    const result = await sendTelegramMessage(
+      appointment.doctor.telegramChatId,
+      text,
+      {
+        reply_markup: appointmentDoctorKeyboard(appointment.id),
+        parse_mode: 'HTML',
+      },
+    );
+
+    if (result.ok && result.result?.message_id) {
+      await prisma.appointment.update({
+        where: { id: appointmentId },
+        data: {
+          telegramMessageId: result.result.message_id,
+          notifiedAt: new Date(),
+        },
+      });
+    } else {
+      console.error('[telegram] notifyAppointmentCreated failed:', {
+        appointmentId,
+        error_code: result.error_code,
+        description: result.description,
+      });
+    }
+  } catch (err) {
+    console.error('[telegram] notifyAppointmentCreated error:', {
+      appointmentId,
+      error: err instanceof Error ? err.message : String(err),
+    });
+  }
+}
+
+/**
+ * Doktor "Chaqirish" tugmasini bosganda — bemorga (telefon orqali ulangan bo'lsa) xabar.
+ *
+ * HOZIRDA: bot bemorlar bilan ulashmagan, shuning uchun bu funksiya no-op.
+ * Kelajakda bemor `Patient.telegramChatId` orqali ulansa shu yerda xabar yuboriladi.
+ */
+export async function notifyQueueCalled(queueId: string): Promise<void> {
+  // No-op: bemor Telegram bilan ulashish hali yo'q.
+  // Funksiya signature kelajakdagi integratsiya uchun saqlangan.
+  void queueId;
+}
+
+function formatAppointmentMessage(appointment: {
+  patient: {
+    firstName: string;
+    lastName: string;
+    birthDate: Date;
+    gender: string | null;
+    phone: string;
+  };
+  dateTime: Date;
+  room: { roomNumber: string; floor: number } | null;
+  notes: string | null;
+}): string {
+  const dateTimeStr = new Date(appointment.dateTime).toLocaleString('uz-UZ', {
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+
+  const age = calculateAge(appointment.patient.birthDate);
+  const genderLabel =
+    appointment.patient.gender === 'MALE'
+      ? 'erkak'
+      : appointment.patient.gender === 'FEMALE'
+        ? 'ayol'
+        : null;
+  const ageGenderParts = [
+    `${age} yosh`,
+    genderLabel,
+  ].filter(Boolean) as string[];
+  const ageGender = ageGenderParts.length > 0 ? ` (${ageGenderParts.join(', ')})` : '';
+
+  const fullName = escapeHtml(
+    `${appointment.patient.lastName} ${appointment.patient.firstName}`,
+  );
+
+  const roomLine = appointment.room
+    ? `\n🚪 Xona: ${escapeHtml(appointment.room.roomNumber)} (${appointment.room.floor}-qavat)`
+    : '';
+
+  const notesLine = appointment.notes
+    ? `\n📝 Tashxis: ${escapeHtml(appointment.notes)}`
+    : '';
+
+  return (
+    `🩺 <b>Yangi uchrashuv!</b>\n\n` +
+    `👤 Bemor: <b>${fullName}</b>${ageGender}\n` +
+    `📞 Telefon: ${escapeHtml(appointment.patient.phone)}\n` +
+    `📅 Vaqt: ${dateTimeStr}` +
+    roomLine +
+    notesLine
+  );
+}
+
+function calculateAge(birthDate: Date): number {
+  const today = new Date();
+  const birth = new Date(birthDate);
+  let age = today.getFullYear() - birth.getFullYear();
+  const m = today.getMonth() - birth.getMonth();
+  if (m < 0 || (m === 0 && today.getDate() < birth.getDate())) {
+    age--;
+  }
+  return age < 0 ? 0 : age;
 }

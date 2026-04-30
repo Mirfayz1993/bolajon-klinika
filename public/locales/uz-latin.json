@@ -183,6 +183,12 @@
     "dateTo": "Sana gacha",
     "editPayment": "To'lovni tahrirlash",
     "selected": "Tanlangan: ",
+    "byCategory": "Bo'limlar bo'yicha",
+    "period": {
+      "today": "Bugun",
+      "week": "Hafta",
+      "month": "Oy"
+    },
     "status": {
       "PAID": "To'langan",
       "PARTIAL": "Qisman",
@@ -205,7 +211,7 @@
       "PAYME": "Payme"
     },
     "categories": {
-      "CHECKUP": "Tekshiruv",
+      "CHECKUP": "Shifokor ko'rigi",
       "LAB_TEST": "Laboratoriya",
       "SPEECH_THERAPY": "Logopediya",
       "MASSAGE": "Massaj",
@@ -597,7 +603,7 @@
     "accessDenied": "Ruxsat yo'q"
   },
   "appointmentTypes": {
-    "CHECKUP": "Tekshiruv",
+    "CHECKUP": "Shifokor ko'rigi",
     "FOLLOW_UP": "Takroriy qabul",
     "SPEECH_THERAPY": "Logopediya",
     "MASSAGE": "Massaj",

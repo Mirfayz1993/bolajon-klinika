@@ -18,6 +18,14 @@ import {
   Search,
   Edit2,
   Printer,
+  Stethoscope,
+  FlaskConical,
+  BedDouble,
+  User,
+  Mic,
+  Hand,
+  Pill,
+  type LucideIcon,
 } from 'lucide-react';
 
 // --- Types -----------------------------------------------------------------
@@ -29,7 +37,10 @@ type PaymentCategory =
   | 'SPEECH_THERAPY'
   | 'MASSAGE'
   | 'TREATMENT'
-  | 'INPATIENT';
+  | 'INPATIENT'
+  | 'AMBULATORY';
+
+type SummaryPeriod = 'today' | 'week' | 'month';
 type PaymentStatus = 'PAID' | 'PENDING' | 'PARTIAL' | 'CANCELLED' | 'REFUNDED';
 
 interface Payment {
@@ -98,6 +109,16 @@ const STATUS_CLASSES: Record<PaymentStatus, string> = {
   REFUNDED: 'bg-blue-100 text-blue-800',
 };
 
+const CATEGORY_ICONS: Record<PaymentCategory, { Icon: LucideIcon; color: string }> = {
+  CHECKUP: { Icon: Stethoscope, color: 'text-blue-500' },
+  LAB_TEST: { Icon: FlaskConical, color: 'text-purple-500' },
+  INPATIENT: { Icon: BedDouble, color: 'text-red-500' },
+  AMBULATORY: { Icon: User, color: 'text-green-500' },
+  SPEECH_THERAPY: { Icon: Mic, color: 'text-yellow-500' },
+  MASSAGE: { Icon: Hand, color: 'text-pink-500' },
+  TREATMENT: { Icon: Pill, color: 'text-teal-500' },
+};
+
 const EMPTY_FORM: NewPaymentForm = {
   patientId: '',
   amount: '',
@@ -142,6 +163,7 @@ export default function PaymentsPage() {
   // Summary
   const [summary, setSummary] = useState<PaymentSummary | null>(null);
   const [summaryLoading, setSummaryLoading] = useState(false);
+  const [summaryPeriod, setSummaryPeriod] = useState<SummaryPeriod>('today');
 
   // Add modal
   const [showAddModal, setShowAddModal] = useState(false);
@@ -201,7 +223,7 @@ export default function PaymentsPage() {
   const fetchSummary = useCallback(async () => {
     setSummaryLoading(true);
     try {
-      const res = await fetch('/api/payments/summary?period=today');
+      const res = await fetch(`/api/payments/summary?period=${summaryPeriod}`);
       if (!res.ok) return;
       const json: PaymentSummary = await res.json();
       setSummary(json);
@@ -210,7 +232,7 @@ export default function PaymentsPage() {
     } finally {
       setSummaryLoading(false);
     }
-  }, []);
+  }, [summaryPeriod]);
 
   useEffect(() => {
     fetchSummary();
@@ -383,8 +405,25 @@ export default function PaymentsPage() {
   return (
     <div className="p-6">
       {/* Header */}
-      <div className="flex items-center justify-between mb-6">
-        <h1 className="text-2xl font-bold text-slate-800">{t.payments.title}</h1>
+      <div className="flex flex-wrap items-center justify-between gap-3 mb-6">
+        <div className="flex flex-wrap items-center gap-4">
+          <h1 className="text-2xl font-bold text-slate-800">{t.payments.title}</h1>
+          <div className="inline-flex rounded-lg border border-slate-200 bg-white p-1">
+            {(['today', 'week', 'month'] as const).map((p) => (
+              <button
+                key={p}
+                onClick={() => setSummaryPeriod(p)}
+                className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${
+                  summaryPeriod === p
+                    ? 'bg-blue-600 text-white'
+                    : 'text-slate-600 hover:bg-slate-100'
+                }`}
+              >
+                {t.payments.period[p]}
+              </button>
+            ))}
+          </div>
+        </div>
         {can('/payments:create') && (
           <button
             onClick={openAddModal}
@@ -464,6 +503,45 @@ export default function PaymentsPage() {
               </p>
             )}
           </div>
+        </div>
+      </div>
+
+      {/* Category Cards */}
+      <div className="mb-6">
+        <h3 className="text-sm font-semibold text-slate-600 mb-3">{t.payments.byCategory}</h3>
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-7 gap-3">
+          {(Object.keys(CATEGORY_ICONS) as PaymentCategory[]).map((cat) => {
+            const amount = summary?.byCategory?.[cat] ?? 0;
+            const { Icon, color } = CATEGORY_ICONS[cat];
+            const isActive = filterCategory === cat;
+            return (
+              <button
+                key={cat}
+                type="button"
+                onClick={() => {
+                  setFilterCategory((prev) => (prev === cat ? '' : cat));
+                  setPage(1);
+                }}
+                className={`text-left p-3 rounded-lg border bg-white cursor-pointer transition-all hover:shadow-md hover:border-blue-300 ${
+                  isActive ? 'border-blue-500 ring-2 ring-blue-200' : 'border-slate-200'
+                }`}
+              >
+                <div className="flex items-center gap-2 mb-1">
+                  <Icon className={`w-3.5 h-3.5 ${color}`} />
+                  <span className="text-xs text-slate-500 truncate">
+                    {CATEGORY_LABELS[cat]}
+                  </span>
+                </div>
+                <div className="text-base font-bold text-slate-800 break-all">
+                  {summaryLoading ? (
+                    <span className="text-slate-300">…</span>
+                  ) : (
+                    formatMoney(amount)
+                  )}
+                </div>
+              </button>
+            );
+          })}
         </div>
       </div>
 

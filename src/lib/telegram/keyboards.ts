@@ -47,3 +47,33 @@ export function taskInProgressKeyboard(taskId: string): InlineKeyboardMarkup {
 export function taskCompletedKeyboard(): InlineKeyboardMarkup {
   return { inline_keyboard: [] };
 }
+
+/**
+ * Yangi yaratilgan uchrashuv uchun doktorga yuboriladigan keyboard.
+ * Doktor "Tasdiqlash" yoki "Bekor qilish" tugmalarini bosishi mumkin.
+ *
+ * Callback data formati: `appt:<action>:<appointmentId>`.
+ */
+export function appointmentDoctorKeyboard(appointmentId: string): InlineKeyboardMarkup {
+  return {
+    inline_keyboard: [[
+      { text: '✅ Tasdiqlash', callback_data: `appt:accept:${appointmentId}` },
+      { text: '❌ Bekor qilish', callback_data: `appt:reject:${appointmentId}` },
+    ]],
+  };
+}
+
+/**
+ * Doktor o'z navbat yozuvi uchun keyboard.
+ * "Chaqirish" — bemorni chaqirish, "Bajarildi" — qabul tugadi.
+ *
+ * Callback data formati: `queue:<action>:<queueId>`.
+ */
+export function queueDoctorKeyboard(queueId: string): InlineKeyboardMarkup {
+  return {
+    inline_keyboard: [[
+      { text: '📞 Chaqirish', callback_data: `queue:call:${queueId}` },
+      { text: '✅ Bajarildi', callback_data: `queue:done:${queueId}` },
+    ]],
+  };
+}
