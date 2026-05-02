@@ -31,7 +31,7 @@ export async function GET(_req: NextRequest) {
             nurse: { select: { name: true, role: true } },
           },
         },
-        assignedServices: {
+        assignedService: {
           include: {
             assignedBy: { select: { id: true, name: true, role: true } },
           },

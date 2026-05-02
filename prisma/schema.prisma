@@ -490,7 +490,7 @@ model Admission {
   payments             Payment[]
   medicineTransactions MedicineTransaction[]
   nurseNotes           NurseNote[]
-  assignedServices     AssignedService[]
+  assignedService      AssignedService?
   tasks                Task[]
   medicalRecords       MedicalRecord[]
   vitals               Vital[]
@@ -637,8 +637,8 @@ model AssignedService {
   doctorId      String?
   appointmentId String?   @unique
   isUrgent      Boolean   @default(false)
-  // Ambulator uchun — bir admission'ga bir nechta xizmat tayinlanishi mumkin
-  admissionId   String?
+  // Ambulator uchun
+  admissionId   String?   @unique
   bedId         String?
 
   patient    Patient    @relation(fields: [patientId], references: [id], onDelete: Cascade)
