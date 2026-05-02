@@ -4,6 +4,7 @@ import { requireBotKey } from '@/lib/bot-auth';
 import { writeAuditLog } from '@/lib/audit';
 import { validateBody } from '@/lib/validate';
 import { botAppointmentRejectSchema } from '@/lib/schemas';
+import { notifyAppointmentCancelled } from '@/lib/telegram/notify';
 
 /**
  * POST /api/bot/appointments/[id]/reject
@@ -17,8 +18,9 @@ import { botAppointmentRejectSchema } from '@/lib/schemas';
  *
  * Body: { chatId, reason? }
  *
- * Eslatma: bu yerda Queue yozuvi alohida qoldiriladi — status o'zgarishi
- * bemorni navbatdan olib tashlamaydi (qabulxona qo'lda hal qiladi).
+ * Queue qatorini ham DONE statusiga o'tkazadi (auto-cancel, qabulxona qo'lda
+ * hal qilishi shart emas). `QueueStatus` enum'da `CANCELLED` yo'q — DONE
+ * ishlatamiz (DELETE endpoint allaqachon shu pattern'ni qo'llaydi).
  */
 export async function POST(
   req: NextRequest,
@@ -72,15 +74,29 @@ export async function POST(
     );
   }
 
-  await prisma.appointment.update({
-    where: { id },
-    data: {
-      status: 'CANCELLED',
-      notes: reason
-        ? `${appointment.notes ? `${appointment.notes}\n` : ''}[Bekor qilindi: ${reason}]`
-        : appointment.notes,
-    },
-  });
+  await prisma.$transaction([
+    prisma.appointment.update({
+      where: { id },
+      data: {
+        status: 'CANCELLED',
+        notes: reason
+          ? `${appointment.notes ? `${appointment.notes}\n` : ''}[Bekor qilindi: ${reason}]`
+          : appointment.notes,
+      },
+    }),
+    prisma.queue.updateMany({
+      where: { appointmentId: id },
+      data: { status: 'DONE' },
+    }),
+  ]);
+
+  // Telegram xabarni sinxronlash: eski "Yangi uchrashuv"
+  // xabarini "Bekor qilindi" matniga edit qilamiz, tugmalarni olib tashlaymiz.
+  try {
+    await notifyAppointmentCancelled(id, reason ?? undefined);
+  } catch (err) {
+    console.error('[telegram] cancel notify failed (reject):', err);
+  }
 
   await writeAuditLog({
     userId: user.id,

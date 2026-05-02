@@ -19,7 +19,7 @@ import { notifyTaskCompleted } from '@/lib/telegram/notify';
  * - progressNote saqlanadi (bo'lsa)
  * - seenByAssigner = false (assigner yangi bildirishnomani ko'radi)
  *
- * Yopilgach assigner Telegram'ga ulangan bo'lsa unga xabar boradi (fire-and-forget).
+ * Yopilgach assigner Telegram'ga ulangan bo'lsa unga xabar boradi.
  */
 export async function POST(
   req: NextRequest,

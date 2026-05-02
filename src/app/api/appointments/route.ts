@@ -162,12 +162,19 @@ export async function POST(req: NextRequest) {
       return { appointment: newAppointment, queue: newQueue };
     });
 
-    // Fire-and-forget: doktorga Telegram xabar (ulanmagan bo'lsa sukut)
-    notifyAppointmentCreated(appointment.id).catch((err) =>
-      console.error('[telegram] notifyAppointmentCreated failed:', err),
-    );
+    // Doktorga Telegram xabar — POST javobidan oldin yuboriladi.
+    // telegramDelivered flag javobga qo'shiladi va frontend ogohlantirish uchun ishlatishi mumkin.
+    let telegramDelivered = false;
+    try {
+      telegramDelivered = await notifyAppointmentCreated(appointment.id);
+    } catch (err) {
+      console.error('[telegram] notifyAppointmentCreated failed:', err);
+    }
 
-    return NextResponse.json({ ...appointment, queue }, { status: 201 });
+    return NextResponse.json(
+      { ...appointment, queue, telegramDelivered },
+      { status: 201 },
+    );
   } catch (error) {
     console.error(error);
     return NextResponse.json({ error: 'Server error' }, { status: 500 });

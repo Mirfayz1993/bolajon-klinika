@@ -5,24 +5,27 @@
  *   - appt:accept:<id>  → uchrashuvni qabul qilish
  *   - appt:reject:<id>  → uchrashuvni rad qilish (sabab so'raladi, ixtiyoriy)
  *
- * Rad etish oqimi:
- *   - "❌ Rad etish" bosilsa → `pendingRejectReason.set(chatId, appointmentId)`
- *   - Bot force_reply bilan sabab so'raydi
- *   - Foydalanuvchi javob yozsa — `pendingRejectReason`dan id olinib
- *     `reject` endpoint chaqiriladi va Map'dan o'chiriladi.
- *   - Foydalanuvchi `/skip` yoki `-` yozsa, sababsiz reject qilinadi.
+ * Rad etish oqimi (marker pattern — Map'siz, bot restart'ga chidamli):
+ *   - "❌ Rad etish" bosilsa → bot `force_reply` xabar yuboradi va xabar matn
+ *     oxiriga `[id:<appointmentId>]` markerini yashiradi.
+ *   - Foydalanuvchi javob bersa, Telegram `reply_to_message.text`'ni qaytaradi.
+ *     Marker'dan appointmentId ajratib olib `reject` endpoint chaqiriladi.
+ *   - Foydalanuvchi `-` yoki `/skip` yozsa, sababsiz reject qilinadi.
+ *   - Boshqa `/buyruq`lar (masalan `/start`, `/menu`) reply'da kelsa — e'tiborsiz qoldiriladi.
+ *
+ * Map ishlatilmaydi:
+ *   - bot restart bo'lsa ham doktor reply qila oladi (state Telegram serverida)
+ *   - bir doktor ketma-ket bir nechta reject qilsa kollizya bo'lmaydi
+ *     (har xabarda o'z markeri bor)
  */
 
 import TelegramBot from 'node-telegram-bot-api';
 import { cmsRequest } from '../lib/cms-client';
 
-/**
- * chatId → appointmentId xaritasi: foydalanuvchi "Rad etish" bosgan, lekin
- * hali sababini yozmagan uchrashuvlar.
- */
-export const pendingRejectReason = new Map<number, string>();
-
 type BotApiResponse = { ok: boolean; error?: string };
+
+/** Force-reply xabarni boshqa reply'lardan ajratish uchun marker matn. */
+const REJECT_PROMPT_MARKER = 'Rad etish sababini';
 
 /** `cmsRequest` data union'idan xabarni xavfsiz olib chiqish */
 function asBotResponse(d: BotApiResponse | { error?: string }): BotApiResponse {
@@ -73,14 +76,14 @@ export function registerAppointmentCallbacks(bot: TelegramBot) {
       }
 
       if (action === 'reject') {
-        // Sabab so'rash — force_reply
-        pendingRejectReason.set(chatId, appointmentId);
+        // Sabab so'rash — force_reply.
+        // appointmentId xabar matnida marker sifatida yashiriladi:
+        // foydalanuvchi javob bersa Telegram reply_to_message.text'ni qaytaradi
+        // va biz undan id'ni regex bilan ajratamiz. Map shart emas.
         await bot.sendMessage(
           chatId,
-          "📝 Rad etish sababini yozing (yoki '-' yuboring sababsiz rad etish uchun):",
-          {
-            reply_markup: { force_reply: true, selective: true },
-          },
+          `📝 ${REJECT_PROMPT_MARKER} yozing (yoki '-' yuboring sababsiz rad etish uchun):\n\n[id:${appointmentId}]`,
+          { reply_markup: { force_reply: true, selective: true } },
         );
         await bot.answerCallbackQuery(cq.id);
         return;
@@ -105,14 +108,30 @@ export function registerAppointmentCallbacks(bot: TelegramBot) {
 
   // -- Force-reply javoblarini ushlash (rad etish sababi) -----------------
   bot.on('message', async (msg) => {
-    const appointmentId = pendingRejectReason.get(msg.chat.id);
-    if (!appointmentId) return;
-    if (!msg.text || msg.text.startsWith('/')) return;
+    // Faqat reply'lar bizga qiziq
+    const replyText = msg.reply_to_message?.text;
+    if (!replyText) return;
 
-    pendingRejectReason.delete(msg.chat.id);
+    // Bot o'zining "Rad etish sababini..." force-reply xabariga reply ekanligini
+    // tekshirish (boshqa reply'larni ushlamaymiz)
+    if (!replyText.includes(REJECT_PROMPT_MARKER)) return;
 
-    const reasonRaw = msg.text.trim();
-    const reason = reasonRaw === '-' ? undefined : reasonRaw;
+    // Marker'dan appointmentId chiqarish
+    const match = replyText.match(/\[id:([^\]]+)\]/);
+    if (!match) return;
+    const appointmentId = match[1];
+
+    if (!msg.text) return;
+
+    const trimmed = msg.text.trim();
+
+    // /skip yoki '-' = sababsiz reject
+    const isSkip = trimmed === '/skip' || trimmed === '-';
+
+    // Boshqa /buyruq'lar (masalan /start, /menu) — bu reject sababi emas
+    if (!isSkip && trimmed.startsWith('/')) return;
+
+    const reason = isSkip ? undefined : trimmed;
 
     try {
       const res = await cmsRequest<BotApiResponse>(

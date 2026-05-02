@@ -2,6 +2,10 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { AppointmentStatus, QueueStatus } from '@prisma/client';
 import { requireAction } from '@/lib/api-auth';
+import {
+  notifyAppointmentUpdated,
+  notifyAppointmentCancelled,
+} from '@/lib/telegram/notify';
 
 // Map appointment status → queue status
 function resolveQueueStatus(appointmentStatus: AppointmentStatus): QueueStatus {
@@ -90,6 +94,17 @@ export async function PATCH(
           ]
         : []),
     ]);
+
+    // Telegram xabarni sinxronlash
+    try {
+      if (newStatus === 'CANCELLED') {
+        await notifyAppointmentCancelled(id);
+      } else {
+        await notifyAppointmentUpdated(id);
+      }
+    } catch (err) {
+      console.error('[telegram] sync after status change failed:', err);
+    }
 
     return NextResponse.json(appointment);
   } catch (error) {

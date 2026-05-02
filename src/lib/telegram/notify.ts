@@ -1,12 +1,15 @@
 /**
- * Telegram Bot API'ga raw xabar yuborish va vazifa bildirishnomalari.
+ * Telegram Bot API'ga raw xabar yuborish va vazifa/uchrashuv bildirishnomalari.
  *
- * - `sendTelegramMessage` — quyi darajadagi raw helper
- * - `notifyTaskCreated` — vazifa yaratilganda assignee'ga inline keyboard bilan xabar
- * - `notifyTaskCompleted` — vazifa bajarilganda assigner'ga xabar
+ * - `sendTelegramMessage` / `editTelegramMessage` — quyi darajadagi raw helperlar
+ * - `notifyTaskCreated` / `notifyTaskCompleted` — vazifa hayotining xabarnomalari
+ * - `notifyAppointmentCreated` / `notifyAppointmentUpdated` / `notifyAppointmentCancelled`
+ *   — uchrashuv hayotining xabarnomalari
  *
- * Bu funksiyalar fire-and-forget tarzda chaqiriladi (CMS API endpoint'lari
- * Telegram javobini kutmaydi). Xato bo'lsa stderr'ga structured log yoziladi.
+ * Eslatma: notify funksiyalari `await` bilan chaqiriladi va boolean qaytaradi
+ * (delivered/edited muvaffaqiyatli bo'lganmi). Xato bo'lsa funksiya throw
+ * qilmaydi — xato stderr'ga log qilinadi va `false` qaytariladi. Caller javob
+ * holatini opsional ravishda foydalanuvchiga ko'rsatishi mumkin.
  */
 
 import { prisma } from '@/lib/prisma';
@@ -41,11 +44,41 @@ export async function sendTelegramMessage(
 }
 
 /**
+ * Mavjud Telegram xabarni `editMessageText` API orqali yangilash.
+ *
+ * `sendTelegramMessage` ga o'xshash signature, lekin `message_id` orqali
+ * eski xabar matnini (va ixtiyoriy holda `reply_markup`'ini) yangilaydi.
+ *
+ * Throw qilmaydi — chaqiruvchi `result.ok` bo'yicha tekshirsin.
+ */
+export async function editTelegramMessage(
+  chatId: string,
+  messageId: number,
+  text: string,
+  opts: SendOpts = {},
+): Promise<TelegramSendResult> {
+  const token = process.env.TELEGRAM_BOT_TOKEN;
+  if (!token) throw new Error('TELEGRAM_BOT_TOKEN env not configured');
+
+  const res = await fetch(`https://api.telegram.org/bot${token}/editMessageText`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      chat_id: chatId,
+      message_id: messageId,
+      text,
+      ...opts,
+    }),
+  });
+  return res.json() as Promise<TelegramSendResult>;
+}
+
+/**
  * Vazifa yaratilganda assignee'ga Telegram xabar yuborish.
  *
  * - Agar assignee Telegram'ga ulanmagan (`telegramChatId == null`) → sukut, hech narsa qilinmaydi
  * - Yuborilgan bo'lsa: `Task.telegramMessageId` va `Task.notifiedAt` saqlanadi
- * - Xato bo'lsa: stderr'ga log, lekin throw qilinmaydi (fire-and-forget)
+ * - Xato bo'lsa: stderr'ga log, lekin throw qilinmaydi
  */
 export async function notifyTaskCreated(taskId: string): Promise<void> {
   const task = await prisma.task.findUnique({
@@ -144,6 +177,7 @@ function formatTaskMessage(task: {
     day: '2-digit',
     hour: '2-digit',
     minute: '2-digit',
+    timeZone: 'Asia/Tashkent',
   });
   return (
     `📋 <b>Yangi vazifa!</b>\n\n` +
@@ -164,13 +198,20 @@ function escapeHtml(s: string): string {
 /**
  * Bemor uchrashuvga yozilganda doktorga Telegram xabar yuborish.
  *
- * - Agar doktor Telegram'ga ulanmagan (`telegramChatId == null`) → sukut
- * - Yuborilgan bo'lsa: `Appointment.telegramMessageId` va `Appointment.notifiedAt` saqlanadi
- * - Xato bo'lsa: stderr'ga log, lekin throw qilinmaydi (fire-and-forget)
+ * Qaytaradi:
+ *  - `true` — Telegram API muvaffaqiyatli xabar yetkazgan (`message_id` mavjud)
+ *  - `false` — doktor ulanmagan (`telegramChatId == null`),
+ *    Telegram API xato qaytargan, network/exception bo'lgan, yoki appointment topilmagan.
+ *
+ * Side effect: muvaffaqiyatli yuborilganda `Appointment.telegramMessageId`
+ * va `Appointment.notifiedAt` yangilanadi.
+ *
+ * Funksiya hech qachon throw qilmaydi — chaqiruvchi (API endpoint) bu boolean
+ * orqali bemor javobiga `telegramDelivered` flag qo'sha oladi.
  */
 export async function notifyAppointmentCreated(
   appointmentId: string,
-): Promise<void> {
+): Promise<boolean> {
   const appointment = await prisma.appointment.findUnique({
     where: { id: appointmentId },
     include: {
@@ -183,9 +224,11 @@ export async function notifyAppointmentCreated(
     console.error('[telegram] notifyAppointmentCreated: appointment not found', {
       appointmentId,
     });
-    return;
+    return false;
   }
-  if (!appointment.doctor?.telegramChatId) return; // ulanmagan — sukut
+  if (!appointment.doctor?.telegramChatId) {
+    return false;
+  }
 
   const text = formatAppointmentMessage({
     patient: {
@@ -220,18 +263,21 @@ export async function notifyAppointmentCreated(
           notifiedAt: new Date(),
         },
       });
-    } else {
-      console.error('[telegram] notifyAppointmentCreated failed:', {
-        appointmentId,
-        error_code: result.error_code,
-        description: result.description,
-      });
+      return true;
     }
+
+    console.error('[telegram] notifyAppointmentCreated failed:', {
+      appointmentId,
+      error_code: result.error_code,
+      description: result.description,
+    });
+    return false;
   } catch (err) {
     console.error('[telegram] notifyAppointmentCreated error:', {
       appointmentId,
       error: err instanceof Error ? err.message : String(err),
     });
+    return false;
   }
 }
 
@@ -247,24 +293,197 @@ export async function notifyQueueCalled(queueId: string): Promise<void> {
   void queueId;
 }
 
-function formatAppointmentMessage(appointment: {
-  patient: {
-    firstName: string;
-    lastName: string;
-    birthDate: Date;
-    gender: string | null;
-    phone: string;
-  };
-  dateTime: Date;
-  room: { roomNumber: string; floor: number } | null;
-  notes: string | null;
-}): string {
+/**
+ * Uchrashuv yangilanganda doktorga yuborilgan eski Telegram xabarni
+ * `editMessageText` orqali sinxronlash.
+ *
+ * Faqat **bir xil doktor** uchun matnni yangilaydi. Doktor o'zgartirilgan
+ * bo'lsa caller `notifyAppointmentCancelled` (eski) + `notifyAppointmentCreated`
+ * (yangi) ni o'zi chaqirsin.
+ *
+ * Qaytaradi:
+ *  - `true` — Telegram API muvaffaqiyatli matnni yangilagan
+ *  - `false` — `telegramMessageId` yo'q, doktor ulanmagan, API xato qaytargan,
+ *    network exception, yoki appointment topilmagan
+ *
+ * `Appointment.notifiedAt` qayta yozilmaydi (bu birinchi yuborish vaqti).
+ */
+export async function notifyAppointmentUpdated(
+  appointmentId: string,
+): Promise<boolean> {
+  const appointment = await prisma.appointment.findUnique({
+    where: { id: appointmentId },
+    include: {
+      patient: true,
+      doctor: { select: { telegramChatId: true, name: true } },
+      room: { select: { roomNumber: true, floor: true } },
+    },
+  });
+  if (!appointment) {
+    console.error('[telegram] notifyAppointmentUpdated: appointment not found', {
+      appointmentId,
+    });
+    return false;
+  }
+  if (appointment.telegramMessageId == null) {
+    return false; // Xabar yuborilmagan — sinxronlash kerak emas
+  }
+  if (!appointment.doctor?.telegramChatId) {
+    return false;
+  }
+
+  const text = formatAppointmentMessage(
+    {
+      patient: {
+        firstName: appointment.patient.firstName,
+        lastName: appointment.patient.lastName,
+        birthDate: appointment.patient.birthDate,
+        gender: appointment.patient.gender,
+        phone: appointment.patient.phone,
+      },
+      dateTime: appointment.dateTime,
+      room: appointment.room
+        ? { roomNumber: appointment.room.roomNumber, floor: appointment.room.floor }
+        : null,
+      notes: appointment.notes,
+    },
+    { title: '🔄 <b>Uchrashuv yangilandi</b>' },
+  );
+
+  try {
+    const result = await editTelegramMessage(
+      appointment.doctor.telegramChatId,
+      appointment.telegramMessageId,
+      text,
+      {
+        reply_markup: appointmentDoctorKeyboard(appointment.id),
+        parse_mode: 'HTML',
+      },
+    );
+
+    if (result.ok) {
+      return true;
+    }
+
+    console.error('[telegram] notifyAppointmentUpdated failed:', {
+      appointmentId,
+      error_code: result.error_code,
+      description: result.description,
+    });
+    return false;
+  } catch (err) {
+    console.error('[telegram] notifyAppointmentUpdated error:', {
+      appointmentId,
+      error: err instanceof Error ? err.message : String(err),
+    });
+    return false;
+  }
+}
+
+/**
+ * Uchrashuv bekor qilinganda doktorga yuborilgan eski Telegram xabarni
+ * "❌ Uchrashuv bekor qilindi" matniga o'zgartirish + tugmalarni olib tashlash.
+ *
+ * Qaytaradi:
+ *  - `true` — Telegram API muvaffaqiyatli yangilagan
+ *  - `false` — `telegramMessageId` yo'q, doktor ulanmagan, API xato, yoki
+ *    appointment topilmagan
+ */
+export async function notifyAppointmentCancelled(
+  appointmentId: string,
+  reason?: string,
+): Promise<boolean> {
+  const appointment = await prisma.appointment.findUnique({
+    where: { id: appointmentId },
+    include: {
+      patient: true,
+      doctor: { select: { telegramChatId: true } },
+    },
+  });
+  if (!appointment) {
+    console.error('[telegram] notifyAppointmentCancelled: appointment not found', {
+      appointmentId,
+    });
+    return false;
+  }
+  if (appointment.telegramMessageId == null) {
+    return false;
+  }
+  if (!appointment.doctor?.telegramChatId) {
+    return false;
+  }
+
   const dateTimeStr = new Date(appointment.dateTime).toLocaleString('uz-UZ', {
     year: 'numeric',
     month: '2-digit',
     day: '2-digit',
     hour: '2-digit',
     minute: '2-digit',
+    timeZone: 'Asia/Tashkent',
+  });
+  const fullName = escapeHtml(
+    `${appointment.patient.lastName} ${appointment.patient.firstName}`,
+  );
+  const reasonLine = reason ? `\n📝 Sabab: ${escapeHtml(reason)}` : '';
+
+  const text =
+    `❌ <b>Uchrashuv bekor qilindi</b>\n\n` +
+    `👤 Bemor: <b>${fullName}</b>\n` +
+    `📅 Vaqt: ${dateTimeStr}` +
+    reasonLine;
+
+  try {
+    const result = await editTelegramMessage(
+      appointment.doctor.telegramChatId,
+      appointment.telegramMessageId,
+      text,
+      {
+        reply_markup: { inline_keyboard: [] },
+        parse_mode: 'HTML',
+      },
+    );
+
+    if (result.ok) {
+      return true;
+    }
+
+    console.error('[telegram] notifyAppointmentCancelled failed:', {
+      appointmentId,
+      error_code: result.error_code,
+      description: result.description,
+    });
+    return false;
+  } catch (err) {
+    console.error('[telegram] notifyAppointmentCancelled error:', {
+      appointmentId,
+      error: err instanceof Error ? err.message : String(err),
+    });
+    return false;
+  }
+}
+
+function formatAppointmentMessage(
+  appointment: {
+    patient: {
+      firstName: string;
+      lastName: string;
+      birthDate: Date;
+      gender: string | null;
+      phone: string;
+    };
+    dateTime: Date;
+    room: { roomNumber: string; floor: number } | null;
+    notes: string | null;
+  },
+  opts: { title?: string } = {},
+): string {
+  const dateTimeStr = new Date(appointment.dateTime).toLocaleString('uz-UZ', {
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    timeZone: 'Asia/Tashkent',
   });
 
   const age = calculateAge(appointment.patient.birthDate);
@@ -289,11 +508,13 @@ function formatAppointmentMessage(appointment: {
     : '';
 
   const notesLine = appointment.notes
-    ? `\n📝 Tashxis: ${escapeHtml(appointment.notes)}`
+    ? `\n📝 Izoh: ${escapeHtml(appointment.notes)}`
     : '';
 
+  const title = opts.title ?? '🩺 <b>Yangi uchrashuv!</b>';
+
   return (
-    `🩺 <b>Yangi uchrashuv!</b>\n\n` +
+    `${title}\n\n` +
     `👤 Bemor: <b>${fullName}</b>${ageGender}\n` +
     `📞 Telefon: ${escapeHtml(appointment.patient.phone)}\n` +
     `📅 Vaqt: ${dateTimeStr}` +

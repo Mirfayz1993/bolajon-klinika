@@ -19,7 +19,7 @@ interface TodayStats {
 interface QueueRow {
   id: string;
   patient: { firstName: string; lastName: string };
-  doctor: { firstName: string; lastName: string } | null;
+  doctor: { id: string; name: string; role: string } | null;
   dateTime: string;
   status: string;
   type: string;
@@ -247,7 +247,7 @@ export default function DashboardPage() {
                         {row.patient.lastName} {row.patient.firstName}
                       </td>
                       <td className="px-6 py-3 text-slate-600">
-                        {row.doctor ? `${row.doctor.lastName} ${row.doctor.firstName}` : '—'}
+                        {row.doctor ? row.doctor.name : '—'}
                       </td>
                       <td className="px-6 py-3 text-slate-600">
                         {new Date(row.dateTime).toLocaleTimeString('uz-UZ', { hour: '2-digit', minute: '2-digit' })}

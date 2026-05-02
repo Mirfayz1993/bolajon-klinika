@@ -300,6 +300,7 @@ model Appointment {
   notes             String?
   telegramMessageId Int?
   notifiedAt        DateTime?
+  confirmedAt       DateTime?
   createdAt         DateTime          @default(now())
   updatedAt         DateTime          @updatedAt
 

@@ -12,10 +12,7 @@ import {
   registerTaskCallbacks,
   pendingCompletionNote,
 } from './handlers/task-callbacks';
-import {
-  registerAppointmentCallbacks,
-  pendingRejectReason,
-} from './handlers/appointment-callbacks';
+import { registerAppointmentCallbacks } from './handlers/appointment-callbacks';
 import { registerQueueCallbacks } from './handlers/queue-callbacks';
 import { registerQueueMenu } from './handlers/queue-menu';
 
@@ -132,8 +129,10 @@ bot.on('message', async (msg) => {
   if (msg.contact) return;
   // Vazifa "Izoh bilan tugatish" oqimida bo'lsa — task-callbacks handleridan o'tkazib yuboramiz
   if (pendingCompletionNote.has(msg.chat.id)) return;
-  // Uchrashuv "Rad etish sababi" oqimida bo'lsa — appointment-callbacks handleridan o'tkazib yuboramiz
-  if (pendingRejectReason.has(msg.chat.id)) return;
+  // Uchrashuv "Rad etish sababi" oqimi endi marker pattern'da ishlaydi
+  // (appointment-callbacks o'zi reply_to_message orqali filter qiladi).
+  // Bu yerda guard yo'q — agar foydalanuvchi force_reply'ga javob berayotgan
+  // bo'lsa, bu handler'dagi `+998...` regex'i baribir mos kelmaydi.
   const text = msg.text?.trim();
   if (!text) return;
 

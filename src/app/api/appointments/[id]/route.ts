@@ -2,6 +2,12 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { AppointmentType } from '@prisma/client';
 import { requireSession, requireAction } from '@/lib/api-auth';
+import {
+  notifyAppointmentCreated,
+  notifyAppointmentUpdated,
+  notifyAppointmentCancelled,
+  editTelegramMessage,
+} from '@/lib/telegram/notify';
 
 export async function GET(
   req: NextRequest,
@@ -137,6 +143,34 @@ export async function PUT(
       },
     });
 
+    // Telegram xabarni sinxronlash
+    try {
+      // Doktor o'zgartirilgan bo'lsa: eski xabarni "boshqa shifokorga o'tkazildi"
+      // qilib edit qilamiz, yangi doktorga yangi xabar yuboramiz.
+      if (doctorId && doctorId !== existing.doctorId) {
+        if (existing.telegramMessageId) {
+          const oldDoctor = await prisma.user.findUnique({
+            where: { id: existing.doctorId },
+            select: { telegramChatId: true },
+          });
+          if (oldDoctor?.telegramChatId) {
+            await editTelegramMessage(
+              oldDoctor.telegramChatId,
+              existing.telegramMessageId,
+              '❌ Uchrashuv boshqa shifokorga o\'tkazildi.',
+              { reply_markup: { inline_keyboard: [] }, parse_mode: 'HTML' },
+            );
+          }
+        }
+        await notifyAppointmentCreated(id);
+      } else {
+        // Bir xil doktor — xabarni yangilash
+        await notifyAppointmentUpdated(id);
+      }
+    } catch (err) {
+      console.error('[telegram] sync after update failed:', err);
+    }
+
     return NextResponse.json(updated);
   } catch (error) {
     console.error(error);
@@ -177,6 +211,13 @@ export async function DELETE(
         data: { status: 'DONE' },
       }),
     ]);
+
+    // Telegram xabarni sinxronlash
+    try {
+      await notifyAppointmentCancelled(id);
+    } catch (err) {
+      console.error('[telegram] cancel notify failed:', err);
+    }
 
     return NextResponse.json(appointment);
   } catch (error) {

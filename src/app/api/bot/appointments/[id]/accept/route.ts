@@ -9,7 +9,13 @@ import { botAppointmentAcceptSchema } from '@/lib/schemas';
  * POST /api/bot/appointments/[id]/accept
  *
  * Bot tomonidan chaqiriladi: doktor "✅ Tasdiqlash" tugmasini bosganda
- * uchrashuvni tasdiqlaydi (status SCHEDULED holatda saqlanib qoladi/qaytariladi).
+ * uchrashuvga tasdiqlash izi yoziladi.
+ *
+ * Mantiq:
+ * - status o'zgartirilmaydi — SCHEDULED holatida qoladi
+ * - faqat `confirmedAt` field'iga timestamp yoziladi
+ * - idempotent: agar `confirmedAt` allaqachon set bo'lsa qayta yozilmaydi
+ *   va audit log yozilmaydi (spam'dan himoya)
  *
  * Tekshiruv:
  * - x-bot-api-key shared secret
@@ -68,9 +74,18 @@ export async function POST(
     );
   }
 
+  // Idempotensiya: agar uchrashuv allaqachon tasdiqlangan bo'lsa qayta yozmaymiz
+  // va audit log yozmaymiz (Telegram retry yoki ikki marta bosilsa spam bo'lmasin)
+  if (appointment.confirmedAt) {
+    return NextResponse.json({
+      ok: true,
+      message: 'Uchrashuv allaqachon tasdiqlangan',
+    });
+  }
+
   await prisma.appointment.update({
     where: { id },
-    data: { status: 'SCHEDULED' },
+    data: { confirmedAt: new Date() },
   });
 
   await writeAuditLog({
