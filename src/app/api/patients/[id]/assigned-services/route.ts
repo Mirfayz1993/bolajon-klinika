@@ -128,21 +128,15 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       });
 
       if (existingAdmission) {
-        // Yangi admission yaratmasdan, mavjud to'shakga yangi xizmat qo'shamiz
-        const service = await db.assignedService.create({
-          data: {
-            patientId,
-            categoryName: body.categoryName.trim(),
-            itemName: body.itemName.trim(),
-            price: body.price,
-            itemId: body.itemId ?? null,
-            assignedById: session.user.id,
-            admissionId: existingAdmission.id,
-            bedId: existingAdmission.bedId,
-          },
-          include: { assignedBy: { select: { name: true, role: true } } },
-        });
-        return NextResponse.json(service, { status: 201 });
+        // Schema cheklov: bir admission'ga faqat bitta AssignedService bog'lanadi.
+        // Yangi xizmat tayinlash uchun bemorni avval chiqarish (discharge) zarur.
+        const bedInfo = existingAdmission.bed
+          ? `${existingAdmission.bed.room.floor}-qavat, ${existingAdmission.bed.room.roomNumber}-xona, To'shak №${existingAdmission.bed.bedNumber}`
+          : 'ambulator xona';
+        return NextResponse.json(
+          { error: `Bemor allaqachon ambulator xizmatda (${bedInfo}). Yangi xizmat tayinlash uchun avval chiqaring.` },
+          { status: 409 }
+        );
       }
 
       // Yangi admission — bedId majburiy
