@@ -30,31 +30,53 @@ export async function GET(req: NextRequest) {
 
     dateTo.setHours(23, 59, 59, 999);
 
-    // Jami bemorlar soni
-    const totalPatients = await prisma.patient.count();
-
-    // Yangi bemorlar — from-to oralig'ida yaratilgan
-    const newPatients = await prisma.patient.count({
-      where: {
-        createdAt: {
-          gte: dateFrom,
-          lte: dateTo,
+    // Mustaqil query'larni parallel ravishda ishga tushirish
+    const [
+      totalPatients,
+      newPatients,
+      appointments,
+      totalAdmissions,
+      activeAdmissions,
+    ] = await Promise.all([
+      // Jami bemorlar soni
+      prisma.patient.count(),
+      // Yangi bemorlar — from-to oralig'ida yaratilgan
+      prisma.patient.count({
+        where: {
+          createdAt: {
+            gte: dateFrom,
+            lte: dateTo,
+          },
         },
-      },
-    });
-
-    // from-to oralig'idagi uchrashuvlar
-    const appointments = await prisma.appointment.findMany({
-      where: {
-        dateTime: {
-          gte: dateFrom,
-          lte: dateTo,
+      }),
+      // from-to oralig'idagi uchrashuvlar
+      prisma.appointment.findMany({
+        where: {
+          dateTime: {
+            gte: dateFrom,
+            lte: dateTo,
+          },
         },
-      },
-      select: {
-        status: true,
-      },
-    });
+        select: {
+          status: true,
+        },
+      }),
+      // from-to oralig'idagi statsionar yotqizishlar
+      prisma.admission.count({
+        where: {
+          admissionDate: {
+            gte: dateFrom,
+            lte: dateTo,
+          },
+        },
+      }),
+      // Hozir yotganlar — dischargeDate null
+      prisma.admission.count({
+        where: {
+          dischargeDate: null,
+        },
+      }),
+    ]);
 
     const totalAppointments = appointments.length;
 
@@ -70,23 +92,6 @@ export async function GET(req: NextRequest) {
     for (const a of appointments) {
       byStatus[a.status] += 1;
     }
-
-    // from-to oralig'idagi statsionar yotqizishlar
-    const totalAdmissions = await prisma.admission.count({
-      where: {
-        admissionDate: {
-          gte: dateFrom,
-          lte: dateTo,
-        },
-      },
-    });
-
-    // Hozir yotganlar — dischargeDate null
-    const activeAdmissions = await prisma.admission.count({
-      where: {
-        dischargeDate: null,
-      },
-    });
 
     return NextResponse.json({
       totalPatients,

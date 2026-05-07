@@ -30,18 +30,38 @@ export async function GET(req: NextRequest) {
 
     dateTo.setHours(23, 59, 59, 999);
 
-    // Barcha xodimlar soni
-    const totalStaff = await prisma.user.count();
-
-    // Faol xodimlar
-    const activeStaff = await prisma.user.count({
-      where: { isActive: true },
-    });
-
-    // Rol bo'yicha taqsimot
-    const users = await prisma.user.findMany({
-      select: { role: true },
-    });
+    // Mustaqil query'larni parallel ravishda ishga tushirish
+    const [
+      totalStaff,
+      activeStaff,
+      users,
+      paidSalaries,
+      scheduleCount,
+    ] = await Promise.all([
+      // Barcha xodimlar soni
+      prisma.user.count(),
+      // Faol xodimlar
+      prisma.user.count({
+        where: { isActive: true },
+      }),
+      // Rol bo'yicha taqsimot
+      prisma.user.findMany({
+        select: { role: true },
+      }),
+      // Davr ichida to'langan maoshlar summasi
+      prisma.salary.aggregate({
+        where: {
+          status: 'PAID',
+          paidAt: {
+            gte: dateFrom,
+            lte: dateTo,
+          },
+        },
+        _sum: { amount: true },
+      }),
+      // Jadvallar soni (Schedule model vaqt filtrisiz — umumiy jadvallar)
+      prisma.schedule.count(),
+    ]);
 
     const byRole: Record<Role, number> = {
       ADMIN: 0,
@@ -62,22 +82,7 @@ export async function GET(req: NextRequest) {
       byRole[u.role] += 1;
     }
 
-    // Davr ichida to'langan maoshlar summasi
-    const paidSalaries = await prisma.salary.aggregate({
-      where: {
-        status: 'PAID',
-        paidAt: {
-          gte: dateFrom,
-          lte: dateTo,
-        },
-      },
-      _sum: { amount: true },
-    });
-
     const totalSalaryPaid = Number(paidSalaries._sum.amount ?? 0);
-
-    // Jadvallar soni (Schedule model vaqt filtrisiz — umumiy jadvallar)
-    const scheduleCount = await prisma.schedule.count();
 
     return NextResponse.json({
       totalStaff,

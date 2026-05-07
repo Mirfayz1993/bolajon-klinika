@@ -41,6 +41,11 @@ export async function GET(req: NextRequest) {
         method: true,
         category: true,
         status: true,
+        appointment: {
+          select: {
+            doctor: { select: { id: true, name: true, role: true } },
+          },
+        },
       },
     });
 
@@ -88,25 +93,11 @@ export async function GET(req: NextRequest) {
       .filter(p => p.status === 'PAID' || p.status === 'PARTIAL')
       .reduce((sum, p) => sum + Number(p.amount), 0);
 
-    // byDoctor — appointment bog'langan PAID/PARTIAL to'lovlar shifokor bo'yicha guruhlanadi
-    const doctorPayments = await prisma.payment.findMany({
-      where: {
-        createdAt: { gte: dateFrom, lte: dateTo },
-        status: { in: ['PAID', 'PARTIAL'] },
-        appointment: { isNot: null },
-      },
-      select: {
-        amount: true,
-        appointment: {
-          select: {
-            doctor: { select: { id: true, name: true, role: true } },
-          },
-        },
-      },
-    });
-
+    // byDoctor — appointment bog'langan PAID/PARTIAL to'lovlar shifokor bo'yicha guruhlanadi.
+    // Asosiy `payments` query'idan foydalaniladi (alohida DB query yo'q).
     const doctorMap = new Map<string, { id: string; name: string; role: string; total: number }>();
-    for (const p of doctorPayments) {
+    for (const p of payments) {
+      if (p.status !== 'PAID' && p.status !== 'PARTIAL') continue;
       const doc = p.appointment?.doctor;
       if (!doc) continue;
       const existing = doctorMap.get(doc.id);

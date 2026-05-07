@@ -57,12 +57,24 @@ export async function GET(req: NextRequest) {
           }
         : undefined;
 
+    // lowStock: Prisma column-to-column comparison qo'llab-quvvatlamaydi.
+    // Raw SQL bilan `quantity < "minStock"` shartiga mos id'lar olinadi,
+    // so'ng `where.id = { in: [...] }` orqali asosiy query'ga qo'shiladi.
+    let lowStockIdsWhere: { id: { in: string[] } } | undefined;
+    if (lowStock === 'true') {
+      const lowStockRows = await prisma.$queryRaw<Array<{ id: string }>>`
+        SELECT "id" FROM "medicines" WHERE "quantity" < "minStock"
+      `;
+      lowStockIdsWhere = { id: { in: lowStockRows.map((r) => r.id) } };
+    }
+
     const medicines = await prisma.medicine.findMany({
       where: {
         ...(searchWhere ?? {}),
         ...(floorWhere ?? {}),
         ...(showWrittenOff !== undefined && { writtenOff: showWrittenOff }),
         ...(expiryWhere ?? {}),
+        ...(lowStockIdsWhere ?? {}),
       },
       include: {
         supplier: {
@@ -75,13 +87,7 @@ export async function GET(req: NextRequest) {
       orderBy: { createdAt: 'desc' },
     });
 
-    // lowStock: Prisma column-to-column comparison qo'llab-quvvatlamaydi — post-fetch
-    const result =
-      lowStock === 'true'
-        ? medicines.filter((m) => m.quantity < m.minStock)
-        : medicines;
-
-    return NextResponse.json(result);
+    return NextResponse.json(medicines);
   } catch (error) {
     console.error(error);
     return NextResponse.json({ error: 'Server error' }, { status: 500 });
