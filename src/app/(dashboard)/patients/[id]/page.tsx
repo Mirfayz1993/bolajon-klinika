@@ -18,6 +18,7 @@ import { NurseNoteModal } from './_components/modals/NurseNoteModal';
 import { LabOrderModal } from './_components/modals/LabOrderModal';
 import { PayModal } from './_components/modals/PayModal';
 import { BulkPayModal } from './_components/modals/BulkPayModal';
+import { AssignServiceModal } from './_components/modals/AssignServiceModal';
 import {
   ArrowLeft, Pencil, Trash2, Check, X, Loader2, AlertCircle,
   User, Phone, MapPin,
@@ -105,18 +106,6 @@ interface AssignedService {
   assignedBy: { name: string; role: string };
   doctor?: { name: string; role: string } | null;
   admission?: { bed: { bedNumber: string; room: { roomNumber: string; floor: number } } | null } | null;
-}
-
-interface ServiceCategoryItem {
-  id: string;
-  name: string;
-  price: number;
-}
-
-interface ServiceCategoryData {
-  id: string;
-  name: string;
-  items: ServiceCategoryItem[];
 }
 
 interface ProfileData {
@@ -243,15 +232,6 @@ export default function PatientDetailPage({ params }: PageProps) {
   const [assignedServices, setAssignedServices] = useState<AssignedService[]>([]);
   const [assignedLoading, setAssignedLoading] = useState(false);
   const [showAssignModal, setShowAssignModal] = useState(false);
-  const [serviceCategories, setServiceCategories] = useState<ServiceCategoryData[]>([]);
-  const [assignCatId, setAssignCatId] = useState('');
-  const [assignItemId, setAssignItemId] = useState('');
-  const [assignSaving, setAssignSaving] = useState(false);
-  const [assignDoctorId, setAssignDoctorId] = useState('');
-  const [assignIsUrgent, setAssignIsUrgent] = useState(false);
-  const [assignStaffId, setAssignStaffId] = useState('');
-  const [doctorList, setDoctorList] = useState<{ id: string; name: string; role: string }[]>([]);
-  const [allStaffList, setAllStaffList] = useState<{ id: string; name: string; role: string }[]>([]);
   const [payingId, setPayingId] = useState<string | null>(null);
   // To'lov modal (single)
   const [showPayModal, setShowPayModal] = useState(false);
@@ -477,144 +457,12 @@ export default function PatientDetailPage({ params }: PageProps) {
 
   useEffect(() => { fetchAssigned(); }, [fetchAssigned]);
 
-  const openAssignModal = async () => {
-    setShowAssignModal(true);
-    // Round-robin: rooms va recommendedBed ni atomik (Promise.all) yuklaymiz —
-    // race condition'ning oldini olish uchun setAmbRooms va setRecommendedBed
-    // bir vaqtda ketma-ket o'rnatiladi, useEffect qayta-qayta trigger bo'lmaydi.
-    Promise.all([
-      fetch('/api/rooms?isAmbulatory=true').then(r => r.ok ? r.json() : []),
-      fetch('/api/rooms/next-ambulatory-bed').then(r => r.ok ? r.json() : null),
-    ])
-      .then(([roomsData, rec]: [unknown, { roomId: string | null; bedId: string | null } | null]) => {
-        const all = Array.isArray(roomsData)
-          ? (roomsData as typeof ambRooms)
-          : (((roomsData as { data?: typeof ambRooms } | null)?.data) ?? []);
-        // Faqat kamida 1 ta bo'sh to'shagi bor xonalar
-        const available = all.filter(r => r.beds.some(b => b.admissions.length === 0));
-        setAmbRooms(available);
-        const recBed = rec && (rec.roomId || rec.bedId)
-          ? { roomId: rec.roomId, bedId: rec.bedId }
-          : null;
-        setRecommendedBed(recBed);
-        // Xona tanlash: tavsiyada bo'lsa va available ichida bo'lsa shu, aks holda available[0]
-        const targetRoomId = recBed && recBed.roomId && available.some(r => r.id === recBed.roomId)
-          ? recBed.roomId
-          : (available[0]?.id ?? '');
-        if (targetRoomId) setAmbRoomId(targetRoomId);
-      })
-      .catch(() => null);
-    if (serviceCategories.length > 0) return;
-    try {
-      const res = await fetch('/api/service-categories');
-      if (res.ok) setServiceCategories(await res.json());
-    } catch { /* ignore */ }
-  };
-
-  const assignCat = serviceCategories.find(c => c.id === assignCatId);
-
-  // Lab categories: fetch from lab-test-types
-  const [labTestTypes, setLabTestTypes] = useState<ServiceCategoryItem[]>([]);
-  const isLabCat = assignCat ? ['lab','laboratoriya','labaratoriya','tahlil'].some(k => assignCat.name.toLowerCase().includes(k)) : false;
-  const isDoctorCat = assignCat ? ['doktor','ko\'rik','korik','checkup','qabul','shifokor'].some(k => assignCat.name.toLowerCase().includes(k)) : false;
-  const isAmbulatoryCat = assignCat ? assignCat.name.toLowerCase().includes('ambulator') : false;
-
-  // Ambulatory room + bed selection
-  const [ambRooms, setAmbRooms] = useState<{ id: string; roomNumber: string; floor: number; beds: { id: string; admissions: { id: string }[] }[] }[]>([]);
-  const [ambRoomId, setAmbRoomId] = useState('');
-  const [ambBeds, setAmbBeds] = useState<{ id: string; bedNumber: string; status: string }[]>([]);
-  const [ambBedId, setAmbBedId] = useState('');
-  const [ambBedsLoading, setAmbBedsLoading] = useState(false);
-  // Server tomonidan tavsiya etilgan keyingi bo'sh to'shak (round-robin)
-  const [recommendedBed, setRecommendedBed] = useState<{ roomId: string | null; bedId: string | null } | null>(null);
-
-  useEffect(() => {
-    if (!isLabCat) return;
-    fetch('/api/lab-test-types')
-      .then(r => r.json())
-      .then(d => setLabTestTypes(Array.isArray(d) ? d : (d.data ?? [])))
-      .catch(() => setLabTestTypes([]));
-  }, [isLabCat]);
-
   // Lab order modal trigger (state lives inside LabOrderModal)
   const [showPatientLabOrderModal, setShowPatientLabOrderModal] = useState(false);
 
-  useEffect(() => {
-    if (!isDoctorCat) return;
-    if (doctorList.length > 0) return;
-    fetch('/api/staff?role=DOCTOR&role=HEAD_DOCTOR')
-      .then(r => r.json())
-      .then(d => setDoctorList((d.data ?? d).filter((u: { isActive: boolean }) => u.isActive)))
-      .catch(() => null);
-  }, [isDoctorCat, doctorList.length]);
-
-  useEffect(() => {
-    if (!showAssignModal || allStaffList.length > 0) return;
-    fetch('/api/staff')
-      .then(r => r.json())
-      .then(d => setAllStaffList((d.data ?? d).filter((u: { isActive: boolean }) => u.isActive)))
-      .catch(() => null);
-  }, [showAssignModal, allStaffList.length]);
-
-  // Ambulatory rooms va recommendedBed — atomik tarzda openAssignModal'da yuklanadi
-  // (race condition'ning oldini olish uchun useEffect bu yerdan olib tashlandi).
-
-  // Ambulatory beds — xona o'zgarganda server tavsiyasiga asosan to'shak avtomatik tanlanadi
-  useEffect(() => {
-    if (!ambRoomId) { setAmbBeds([]); setAmbBedId(''); return; }
-    setAmbBedsLoading(true);
-    fetch(`/api/rooms/${ambRoomId}/beds?status=AVAILABLE`)
-      .then(r => r.json())
-      .then(d => {
-        const beds = Array.isArray(d) ? d : [];
-        setAmbBeds(beds);
-        if (beds.length === 0) { setAmbBedId(''); return; }
-        // Round-robin: agar server tavsiyasi shu xonadagi mavjud to'shakka mos kelsa — uni tanlash
-        const recBedId = recommendedBed?.bedId ?? null;
-        const recRoomId = recommendedBed?.roomId ?? null;
-        const recommendedFits = recBedId !== null
-          && recRoomId === ambRoomId
-          && beds.some((b: { id: string }) => b.id === recBedId);
-        if (recommendedFits && recBedId) setAmbBedId(recBedId);
-        else setAmbBedId(beds[0].id);
-      })
-      .catch(() => { setAmbBeds([]); setAmbBedId(''); })
-      .finally(() => setAmbBedsLoading(false));
-  }, [ambRoomId, recommendedBed]);
-
-  const visibleItems: ServiceCategoryItem[] = isLabCat ? labTestTypes : (assignCat?.items ?? []);
-  const assignItem = visibleItems.find(i => i.id === assignItemId);
-
-  const saveAssign = async () => {
-    if (!assignCat || !assignItem) return;
-    if (isDoctorCat && !assignDoctorId) { alert('Iltimos, doktor tanlang'); return; }
-    const activeAmbAdm = profile?.admissions.find(
-      a => a.admissionType === 'AMBULATORY' && ['PENDING', 'ACTIVE'].includes(a.status) && !a.dischargeDate
-    );
-    if (isAmbulatoryCat && !activeAmbAdm && !ambBedId) { alert("Iltimos, ambulator to'shak tanlang"); return; }
-    setAssignSaving(true);
-    try {
-      const res = await fetch(`/api/patients/${patientId}/assigned-services`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          categoryName: assignCat.name,
-          itemName: assignItem.name,
-          price: assignItem.price,
-          itemId: assignItem.id,
-          ...(isDoctorCat && assignDoctorId ? { doctorId: assignDoctorId, isUrgent: assignIsUrgent } : {}),
-          ...(!isDoctorCat && assignStaffId ? { doctorId: assignStaffId } : {}),
-          ...(isAmbulatoryCat && ambBedId ? { bedId: ambBedId } : {}),
-        }),
-      });
-      if (!res.ok) { const d = await res.json(); alert(d.error); return; }
-      setShowAssignModal(false);
-      setAssignCatId(''); setAssignItemId(''); setAssignDoctorId(''); setAssignIsUrgent(false);
-      setAssignStaffId(''); setAmbRoomId(''); setAmbBedId(''); setAmbBeds([]); setAmbRooms([]);
-      setRecommendedBed(null);
-      fetchAssigned();
-    } finally { setAssignSaving(false); }
-  };
+  // NOTE: Stage 5c — xizmat tayinlash modal va u bilan bog'liq state/useEffect/save logikasi
+  // `_components/modals/AssignServiceModal.tsx` ga ko'chirildi. Bu yerda faqat
+  // `showAssignModal` trigger va `fetchAssigned` callback qoldi.
 
   const deleteAssigned = async (id: string) => {
     if (!confirm('Xizmatni o\'chirasizmi?')) return;
@@ -898,7 +746,7 @@ export default function PatientDetailPage({ params }: PageProps) {
           selectAllUnpaid={selectAllUnpaid}
           canSeePrices={canSeePrices}
           canManageServices={canManageServices}
-          onAssignClick={openAssignModal}
+          onAssignClick={() => setShowAssignModal(true)}
           onPayClick={openPayModal}
           onDelete={deleteAssigned}
           onPrintReceipt={handlePrintReceipt}
@@ -937,193 +785,15 @@ export default function PatientDetailPage({ params }: PageProps) {
 
 
       {/* -- ASSIGN SERVICE MODAL ------------------------------------------- */}
-      {showAssignModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-md p-6">
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="font-semibold text-slate-800">Xizmat tayinlash</h3>
-              <button type="button" onClick={() => { setShowAssignModal(false); setAssignCatId(''); setAssignItemId(''); setAssignDoctorId(''); setAssignIsUrgent(false); setAmbRoomId(''); setAmbBedId(''); setAmbBeds([]); setAmbRooms([]); setRecommendedBed(null); }}>
-                <X className="w-5 h-5 text-slate-400" />
-              </button>
-            </div>
-
-            {/* Category */}
-            <div className="mb-3">
-              <label className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1 block">Bo&apos;lim</label>
-              <select
-                value={assignCatId}
-                onChange={e => { setAssignCatId(e.target.value); setAssignItemId(''); }}
-                className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm text-slate-900 bg-white focus:outline-none focus:ring-2 focus:ring-blue-400"
-              >
-                <option value="">— Bo&apos;lim tanlang —</option>
-                {serviceCategories.map(c => (
-                  <option key={c.id} value={c.id}>{c.name}</option>
-                ))}
-              </select>
-            </div>
-
-            {/* Item */}
-            {assignCat && (
-              <div className="mb-4">
-                <label className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1 block">Xizmat turi</label>
-                <select
-                  value={assignItemId}
-                  onChange={e => setAssignItemId(e.target.value)}
-                  className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm text-slate-900 bg-white focus:outline-none focus:ring-2 focus:ring-blue-400"
-                >
-                  <option value="">— Xizmat tanlang —</option>
-                  {visibleItems.map(i => (
-                    <option key={i.id} value={i.id}>{i.name} — {fmtMoney(i.price)}</option>
-                  ))}
-                </select>
-              </div>
-            )}
-
-            {/* Doktor tanlash (faqat doktor kategoriyasi uchun) */}
-            {isDoctorCat && assignCat && (
-              <div className="mb-3">
-                <label className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1 block">Shifokor <span className="text-red-500">*</span></label>
-                <select
-                  value={assignDoctorId}
-                  onChange={e => setAssignDoctorId(e.target.value)}
-                  className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm text-slate-900 bg-white focus:outline-none focus:ring-2 focus:ring-blue-400"
-                >
-                  <option value="">— Shifokorni tanlang —</option>
-                  {doctorList.map(d => (
-                    <option key={d.id} value={d.id}>{d.name}</option>
-                  ))}
-                </select>
-              </div>
-            )}
-
-            {/* Barcha kategoriyalar uchun xodim tanlash (doktor/ambulator emas) */}
-            {!isDoctorCat && !isAmbulatoryCat && assignCat && (
-              <div className="mb-3">
-                <label className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1 block">Xodim (ixtiyoriy)</label>
-                <select
-                  value={assignStaffId}
-                  onChange={e => setAssignStaffId(e.target.value)}
-                  className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm text-slate-900 bg-white focus:outline-none focus:ring-2 focus:ring-blue-400"
-                >
-                  <option value="">— Xodimni tanlang —</option>
-                  {allStaffList.map(s => (
-                    <option key={s.id} value={s.id}>{s.name}</option>
-                  ))}
-                </select>
-              </div>
-            )}
-
-            {/* Shoshilinch checkbox */}
-            {isDoctorCat && assignDoctorId && (
-              <label className="flex items-center gap-2 mb-3 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={assignIsUrgent}
-                  onChange={e => setAssignIsUrgent(e.target.checked)}
-                  className="w-4 h-4 accent-red-500"
-                />
-                <span className="text-sm text-red-600 font-medium">⚠ Shoshilinch bemor</span>
-              </label>
-            )}
-
-            {/* Ambulator xona tanlash */}
-            {isAmbulatoryCat && assignCat && (() => {
-              const activeAmbAdm = profile?.admissions.find(
-                a => a.admissionType === 'AMBULATORY' && ['PENDING', 'ACTIVE'].includes(a.status) && !a.dischargeDate
-              ) ?? null;
-              if (activeAmbAdm) {
-                // Bemor allaqachon to'shakda — yangi to'shak tanlash shart emas
-                return (
-                  <div className="mb-3 px-4 py-3 bg-teal-50 border border-teal-200 rounded-xl text-sm">
-                    <div className="font-semibold text-teal-800 mb-0.5">Bemor allaqachon joylashtirilgan</div>
-                    <div className="text-teal-700">
-                      {floorLabel(activeAmbAdm.bed.room.floor)}, {activeAmbAdm.bed.room.roomNumber}-xona — To&apos;shak №{activeAmbAdm.bed.bedNumber}
-                    </div>
-                    <div className="text-teal-600 text-xs mt-1">Yangi xizmat shu to&apos;shakga qo&apos;shiladi</div>
-                  </div>
-                );
-              }
-              // Yangi joylashtirish — xona/to'shak tanlash
-              return (
-                <>
-                  <div className="mb-3">
-                    <label className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1 block">
-                      Xona (ambulator) <span className="text-red-500">*</span>
-                    </label>
-                    <select
-                      value={ambRoomId}
-                      onChange={e => { setAmbRoomId(e.target.value); setAmbBedId(''); }}
-                      className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm text-slate-900 bg-white focus:outline-none focus:ring-2 focus:ring-teal-500"
-                    >
-                      <option value="">— Xona tanlang —</option>
-                      {ambRooms.map(r => (
-                        <option key={r.id} value={r.id}>
-                          {floorLabel(r.floor)}, {r.roomNumber}-xona
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                  {ambRoomId && (
-                    <div className="mb-3">
-                      <label className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1 block">
-                        Bo&apos;sh to&apos;shak <span className="text-red-500">*</span>
-                      </label>
-                      {ambBedsLoading ? (
-                        <div className="flex items-center gap-2 text-sm text-slate-400 px-3 py-2 border border-slate-200 rounded-xl">
-                          <Loader2 className="w-4 h-4 animate-spin" /> Yuklanmoqda...
-                        </div>
-                      ) : ambBeds.length === 0 ? (
-                        <div className="px-3 py-2 text-sm text-slate-400 border border-slate-200 rounded-xl">
-                          Bu xonada bo&apos;sh to&apos;shak yo&apos;q
-                        </div>
-                      ) : (
-                        <select
-                          value={ambBedId}
-                          onChange={e => setAmbBedId(e.target.value)}
-                          className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm text-slate-900 bg-white focus:outline-none focus:ring-2 focus:ring-teal-500"
-                        >
-                          <option value="">— To&apos;shak tanlang —</option>
-                          {ambBeds.map(b => (
-                            <option key={b.id} value={b.id}>
-                              To&apos;shak {b.bedNumber}
-                            </option>
-                          ))}
-                        </select>
-                      )}
-                    </div>
-                  )}
-                </>
-              );
-            })()}
-
-            {assignItem && (
-              <div className={`mb-4 px-4 py-3 rounded-xl flex justify-between text-sm ${assignIsUrgent ? 'bg-red-50' : 'bg-blue-50'}`}>
-                <span className="text-slate-700">{assignItem.name}</span>
-                <span className={`font-bold ${assignIsUrgent ? 'text-red-700' : 'text-blue-700'}`}>{fmtMoney(assignItem.price)}</span>
-              </div>
-            )}
-
-            <div className="flex gap-2 justify-end">
-              <button
-                type="button"
-                onClick={() => { setShowAssignModal(false); setAssignCatId(''); setAssignItemId(''); setAssignDoctorId(''); setAssignIsUrgent(false); setAmbRoomId(''); setAmbBedId(''); setAmbBeds([]); setAmbRooms([]); setRecommendedBed(null); }}
-                className="px-4 py-2 text-sm text-slate-600 border border-slate-200 rounded-xl hover:bg-slate-50"
-              >
-                Bekor
-              </button>
-              <button
-                type="button"
-                onClick={saveAssign}
-                disabled={!assignItem || assignSaving}
-                className="flex items-center gap-1.5 px-4 py-2 text-sm font-semibold bg-blue-600 text-white rounded-xl hover:bg-blue-700 disabled:opacity-50"
-              >
-                {assignSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
-                Tayinlash
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      <AssignServiceModal
+        open={showAssignModal}
+        patientId={patientId}
+        patient={patient}
+        profile={profile}
+        canSeePrices={canSeePrices}
+        onClose={() => setShowAssignModal(false)}
+        onSaved={fetchAssigned}
+      />
 
       {/* -- TAB: TASHXISLAR ------------------------------------------------ */}
       {activeTab === 'records' && (
@@ -1412,9 +1082,6 @@ export default function PatientDetailPage({ params }: PageProps) {
                 <select value={taskForm.assigneeId} onChange={e => setTaskForm(f => ({ ...f, assigneeId: e.target.value }))} required
                   className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
                   <option value="">Hamshirani tanlang</option>
-                  {nurseList.length === 0 && allStaffList.filter(s => ['NURSE','HEAD_NURSE'].includes(s.role)).map(s => (
-                    <option key={s.id} value={s.id}>{s.name} ({s.role})</option>
-                  ))}
                   {nurseList.map(s => <option key={s.id} value={s.id}>{s.name} ({s.role})</option>)}
                 </select>
               </div>
