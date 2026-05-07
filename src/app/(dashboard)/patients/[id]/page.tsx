@@ -6,9 +6,11 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { useLanguage } from '@/hooks/useLanguage';
 import { usePermissions } from '@/hooks/usePermissions';
 import { floorLabel } from '@/lib/utils';
-import { printQr, printReceipt, printPrescription, printPrescriptions } from './_lib/print-templates';
+import { printQr, printReceipt } from './_lib/print-templates';
 import { Section, Empty, Modal } from './_components/ui';
 import { InfoTab } from './_components/InfoTab';
+import { RecordsTab } from './_components/RecordsTab';
+import { MedicalRecordModal } from './_components/modals/MedicalRecordModal';
 import {
   ArrowLeft, Pencil, Trash2, Check, X, Loader2, AlertCircle,
   User, Phone, MapPin,
@@ -223,13 +225,6 @@ export default function PatientDetailPage({ params }: PageProps) {
 
   // Medical record modal
   const [showRecordModal, setShowRecordModal] = useState(false);
-  const [recordForm, setRecordForm] = useState({
-    diagnosis: '',
-    treatment: '',
-    notes: '',
-    prescriptions: [] as { medicineName: string; dosage: string; duration: string; instructions: string }[],
-  });
-  const [savingRecord, setSavingRecord] = useState(false);
 
   // Nurse note modal
   const [showNurseModal, setShowNurseModal] = useState(false);
@@ -786,47 +781,6 @@ export default function PatientDetailPage({ params }: PageProps) {
 
   const removeMedicine = (idx: number) =>
     setNurseForm(f => ({ ...f, medicines: f.medicines.filter((_, i) => i !== idx) }));
-
-  const saveRecord = async () => {
-    if (!recordForm.diagnosis.trim() && !recordForm.treatment.trim() && !recordForm.notes.trim()) return;
-    setSavingRecord(true);
-    try {
-      const res = await fetch('/api/medical-records', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          patientId,
-          doctorId: session?.user?.id,
-          diagnosis: recordForm.diagnosis || undefined,
-          treatment: recordForm.treatment || undefined,
-          notes: recordForm.notes || undefined,
-        }),
-      });
-      if (!res.ok) throw new Error();
-      const record = await res.json();
-
-      // Prescriptions saqlash
-      const rxList = recordForm.prescriptions.filter(rx => rx.medicineName.trim() && rx.dosage.trim() && rx.duration.trim());
-      for (const rx of rxList) {
-        await fetch(`/api/medical-records/${record.id}/prescriptions`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(rx),
-        });
-      }
-
-      // Agar prescription bor bo'lsa, print qil
-      if (rxList.length > 0 && profile) {
-        printPrescriptions(profile.patient, rxList);
-      }
-
-      setShowRecordModal(false);
-      setRecordForm({ diagnosis: '', treatment: '', notes: '', prescriptions: [] });
-      fetchProfile();
-    } catch { /* ignore */ } finally {
-      setSavingRecord(false);
-    }
-  };
 
   const saveNurseNote = async () => {
     if (!nurseForm.procedure.trim()) return;
@@ -1551,71 +1505,12 @@ export default function PatientDetailPage({ params }: PageProps) {
 
       {/* -- TAB: TASHXISLAR ------------------------------------------------ */}
       {activeTab === 'records' && (
-        <div className="space-y-4">
-          {isDoctor && (
-            <div className="flex justify-end">
-              <button onClick={() => setShowRecordModal(true)}
-                className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm rounded-lg">
-                <Plus className="w-4 h-4" /> Tashxis qo&apos;shish
-              </button>
-            </div>
-          )}
-          {medicalRecords.length === 0 ? <Empty text="Tashxis mavjud emas" /> : medicalRecords.map(r => (
-            <div key={r.id} className="bg-white rounded-xl border border-slate-200 overflow-hidden">
-              <div className="px-4 py-3 bg-slate-50 border-b border-slate-100 flex justify-between items-center">
-                <div>
-                  <span className="text-sm font-semibold text-slate-800">{r.doctor?.name}</span>
-                  <span className="text-xs text-slate-500 ml-2">
-                    {r.doctor?.specialization?.name ?? r.doctor?.role}
-                  </span>
-                </div>
-                <span className="text-xs text-slate-400">{fmt(r.createdAt)}</span>
-              </div>
-              <div className="p-4 space-y-3">
-                {r.diagnosis && (
-                  <div>
-                    <div className="text-xs font-semibold text-slate-500 uppercase mb-1">Tashxis</div>
-                    <p className="text-sm text-slate-800">{r.diagnosis}</p>
-                  </div>
-                )}
-                {r.treatment && (
-                  <div>
-                    <div className="text-xs font-semibold text-slate-500 uppercase mb-1">Davolash</div>
-                    <p className="text-sm text-slate-700">{r.treatment}</p>
-                  </div>
-                )}
-                {r.notes && (
-                  <div>
-                    <div className="text-xs font-semibold text-slate-500 uppercase mb-1">Izoh</div>
-                    <p className="text-sm text-slate-600">{r.notes}</p>
-                  </div>
-                )}
-                {r.prescriptions.length > 0 && (
-                  <div className="mt-3 border-t border-slate-100 pt-3">
-                    <div className="text-xs font-semibold text-slate-500 uppercase mb-2">
-                      Retsept ({r.prescriptions.length} ta dori)
-                    </div>
-                    <div className="space-y-2">
-                      {r.prescriptions.map(rx => (
-                        <div key={rx.id} className="flex items-center justify-between bg-blue-50 rounded-lg px-3 py-2">
-                          <div>
-                            <span className="text-sm font-medium text-blue-900">{rx.medicineName}</span>
-                            <span className="text-xs text-blue-700 ml-2">{rx.dosage} • {rx.duration}</span>
-                            {rx.instructions && <p className="text-xs text-blue-600 mt-0.5">{rx.instructions}</p>}
-                          </div>
-                          <button onClick={() => printPrescription(rx)}
-                            className="p-1.5 text-blue-600 hover:bg-blue-100 rounded-md" title="Chop etish">
-                            <Printer className="w-3.5 h-3.5" />
-                          </button>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-              </div>
-            </div>
-          ))}
-        </div>
+        <RecordsTab
+          records={medicalRecords}
+          isDoctor={isDoctor}
+          onAddClick={() => setShowRecordModal(true)}
+          fmt={fmt}
+        />
       )}
 
       {/* -- TAB: HAMSHIRA QAYDLARI ------------------------------------------ */}
@@ -2404,110 +2299,13 @@ export default function PatientDetailPage({ params }: PageProps) {
 
       {/* -- Medical Record Modal -------------------------------------------- */}
       {showRecordModal && (
-        <Modal title="Tashxis qo'shish" onClose={() => setShowRecordModal(false)}>
-          <div className="space-y-4">
-            <div>
-              <label className="block text-xs font-medium text-slate-600 mb-1">Tashxis</label>
-              <textarea rows={2} value={recordForm.diagnosis} placeholder="Tashxis..."
-                onChange={e => setRecordForm(f => ({ ...f, diagnosis: e.target.value }))}
-                className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-900 bg-white focus:outline-none focus:ring-2 focus:ring-blue-400 resize-none" />
-            </div>
-            <div>
-              <label className="block text-xs font-medium text-slate-600 mb-1">Davolash</label>
-              <textarea rows={2} value={recordForm.treatment} placeholder="Davolash rejasi..."
-                onChange={e => setRecordForm(f => ({ ...f, treatment: e.target.value }))}
-                className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-900 bg-white focus:outline-none focus:ring-2 focus:ring-blue-400 resize-none" />
-            </div>
-            <div>
-              <label className="block text-xs font-medium text-slate-600 mb-1">Izoh</label>
-              <textarea rows={2} value={recordForm.notes} placeholder="Qo'shimcha izoh..."
-                onChange={e => setRecordForm(f => ({ ...f, notes: e.target.value }))}
-                className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-900 bg-white focus:outline-none focus:ring-2 focus:ring-blue-400 resize-none" />
-            </div>
-          </div>
-          {/* Dori yozish */}
-          <div className="border-t border-slate-100 pt-4">
-            <div className="flex items-center justify-between mb-3">
-              <span className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Retsept — Dorilar</span>
-              <button
-                type="button"
-                onClick={() => setRecordForm(f => ({
-                  ...f,
-                  prescriptions: [...f.prescriptions, { medicineName: '', dosage: '', duration: '', instructions: '' }]
-                }))}
-                className="flex items-center gap-1 text-xs text-blue-600 hover:text-blue-800"
-              >
-                <Plus className="w-3.5 h-3.5" /> Dori qo&apos;shish
-              </button>
-            </div>
-            {recordForm.prescriptions.map((rx, idx) => (
-              <div key={idx} className="mb-3 p-3 border border-slate-200 rounded-lg space-y-2 bg-blue-50/40">
-                <div className="flex gap-2">
-                  <input
-                    type="text"
-                    placeholder="Dori nomi *"
-                    value={rx.medicineName}
-                    onChange={e => setRecordForm(f => ({
-                      ...f,
-                      prescriptions: f.prescriptions.map((r, i) => i === idx ? { ...r, medicineName: e.target.value } : r)
-                    }))}
-                    className="flex-1 border border-slate-200 rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-blue-400"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setRecordForm(f => ({ ...f, prescriptions: f.prescriptions.filter((_, i) => i !== idx) }))}
-                    className="text-red-400 hover:text-red-600 px-2"
-                  >
-                    <X className="w-4 h-4" />
-                  </button>
-                </div>
-                <div className="grid grid-cols-2 gap-2">
-                  <input
-                    type="text"
-                    placeholder="Dozasi * (masalan: 1 x 3)"
-                    value={rx.dosage}
-                    onChange={e => setRecordForm(f => ({
-                      ...f,
-                      prescriptions: f.prescriptions.map((r, i) => i === idx ? { ...r, dosage: e.target.value } : r)
-                    }))}
-                    className="border border-slate-200 rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-blue-400"
-                  />
-                  <input
-                    type="text"
-                    placeholder="Muddat * (masalan: 5 kun)"
-                    value={rx.duration}
-                    onChange={e => setRecordForm(f => ({
-                      ...f,
-                      prescriptions: f.prescriptions.map((r, i) => i === idx ? { ...r, duration: e.target.value } : r)
-                    }))}
-                    className="border border-slate-200 rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-blue-400"
-                  />
-                </div>
-                <input
-                  type="text"
-                  placeholder="Ko'rsatma (ixtiyoriy)"
-                  value={rx.instructions}
-                  onChange={e => setRecordForm(f => ({
-                    ...f,
-                    prescriptions: f.prescriptions.map((r, i) => i === idx ? { ...r, instructions: e.target.value } : r)
-                  }))}
-                  className="w-full border border-slate-200 rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-blue-400"
-                />
-              </div>
-            ))}
-          </div>
-          <div className="flex justify-end gap-3 mt-6">
-            <button onClick={() => setShowRecordModal(false)}
-              className="px-4 py-2 border border-slate-200 text-slate-600 rounded-lg text-sm">
-              Bekor qilish
-            </button>
-            <button onClick={saveRecord} disabled={savingRecord || (!recordForm.diagnosis.trim() && !recordForm.treatment.trim() && !recordForm.notes.trim())}
-              className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg text-sm disabled:opacity-60">
-              {savingRecord && <Loader2 className="w-4 h-4 animate-spin" />}
-              Saqlash
-            </button>
-          </div>
-        </Modal>
+        <MedicalRecordModal
+          patientId={patientId}
+          doctorId={session?.user?.id}
+          patient={patient}
+          onClose={() => setShowRecordModal(false)}
+          onSaved={fetchProfile}
+        />
       )}
 
       {/* -- Nurse Note Modal ------------------------------------------------ */}
