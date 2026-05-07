@@ -88,12 +88,48 @@ export async function GET(req: NextRequest) {
       .filter(p => p.status === 'PAID' || p.status === 'PARTIAL')
       .reduce((sum, p) => sum + Number(p.amount), 0);
 
+    // byDoctor — appointment bog'langan PAID/PARTIAL to'lovlar shifokor bo'yicha guruhlanadi
+    const doctorPayments = await prisma.payment.findMany({
+      where: {
+        createdAt: { gte: dateFrom, lte: dateTo },
+        status: { in: ['PAID', 'PARTIAL'] },
+        appointment: { isNot: null },
+      },
+      select: {
+        amount: true,
+        appointment: {
+          select: {
+            doctor: { select: { id: true, name: true, role: true } },
+          },
+        },
+      },
+    });
+
+    const doctorMap = new Map<string, { id: string; name: string; role: string; total: number }>();
+    for (const p of doctorPayments) {
+      const doc = p.appointment?.doctor;
+      if (!doc) continue;
+      const existing = doctorMap.get(doc.id);
+      if (existing) {
+        existing.total += Number(p.amount);
+      } else {
+        doctorMap.set(doc.id, {
+          id: doc.id,
+          name: doc.name,
+          role: doc.role,
+          total: Number(p.amount),
+        });
+      }
+    }
+    const byDoctor = Array.from(doctorMap.values()).sort((a, b) => b.total - a.total);
+
     return NextResponse.json({
       totalAmount,
       totalCount,
       byMethod,
       byCategory,
       byStatus,
+      byDoctor,
     });
   } catch (error) {
     console.error(error);

@@ -72,6 +72,7 @@ interface PaymentSummary {
   byMethod: Record<string, number>;
   byCategory: Record<string, number>;
   byStatus: Record<string, number>;
+  byDoctor: Array<{ id: string; name: string; role: string; total: number }>;
 }
 
 interface PatientOption {
@@ -117,6 +118,15 @@ const CATEGORY_ICONS: Record<PaymentCategory, { Icon: LucideIcon; color: string 
   SPEECH_THERAPY: { Icon: Mic, color: 'text-yellow-500' },
   MASSAGE: { Icon: Hand, color: 'text-pink-500' },
   TREATMENT: { Icon: Pill, color: 'text-teal-500' },
+};
+
+const ROLE_LABELS: Record<string, string> = {
+  DOCTOR: 'Shifokor',
+  HEAD_DOCTOR: 'Bosh shifokor',
+  SPEECH_THERAPIST: 'Logoped',
+  MASSAGE_THERAPIST: 'Massajchi',
+  NURSE: 'Hamshira',
+  HEAD_NURSE: 'Bosh hamshira',
 };
 
 const EMPTY_FORM: NewPaymentForm = {
@@ -544,6 +554,48 @@ export default function PaymentsPage() {
           })}
         </div>
       </div>
+
+      {/* Doctor income */}
+      {summary && summary.byDoctor.length > 0 && (
+        <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-6 mb-6">
+          <h3 className="text-sm font-semibold text-slate-800 mb-4 flex items-center gap-2">
+            <Stethoscope className="w-4 h-4 text-blue-500" />
+            Shifokor bo&apos;yicha tushum
+          </h3>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="text-left text-xs text-slate-500 border-b border-slate-100">
+                  <th className="px-4 py-3 font-medium">Shifokor</th>
+                  <th className="px-4 py-3 font-medium">Rol</th>
+                  <th className="px-4 py-3 font-medium text-right">Tushum</th>
+                </tr>
+              </thead>
+              <tbody>
+                {summary.byDoctor.map((d) => (
+                  <tr key={d.id} className="border-b border-slate-50 last:border-0 hover:bg-slate-50">
+                    <td className="px-4 py-3 font-medium text-slate-800">{d.name}</td>
+                    <td className="px-4 py-3 text-slate-600 text-xs">
+                      {ROLE_LABELS[d.role] ?? d.role}
+                    </td>
+                    <td className="px-4 py-3 text-right font-semibold text-emerald-600">
+                      {new Intl.NumberFormat('uz-UZ').format(d.total)} so&apos;m
+                    </td>
+                  </tr>
+                ))}
+                <tr className="bg-slate-50 font-semibold">
+                  <td className="px-4 py-3" colSpan={2}>Jami</td>
+                  <td className="px-4 py-3 text-right text-emerald-700">
+                    {new Intl.NumberFormat('uz-UZ').format(
+                      summary.byDoctor.reduce((s, d) => s + d.total, 0)
+                    )} so&apos;m
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
 
       {/* Filters */}
       <div className="bg-white rounded-xl border border-slate-200 p-4 mb-4">
