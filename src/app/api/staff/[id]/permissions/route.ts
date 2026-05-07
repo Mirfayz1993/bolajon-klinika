@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { requireAction } from '@/lib/api-auth';
+import { invalidateUserPermissionsCache } from '@/lib/permissions';
 
 type Ctx = { params: Promise<{ id: string }> };
 
@@ -52,6 +53,7 @@ export async function PUT(req: NextRequest, { params }: Ctx) {
 
   if (clear) {
     await prisma.userPermission.deleteMany({ where: { userId: id, page } });
+    invalidateUserPermissionsCache();
     return NextResponse.json({ ok: true, cleared: true });
   }
 
@@ -60,6 +62,8 @@ export async function PUT(req: NextRequest, { params }: Ctx) {
     create: { userId: id, page, canAccess, level: level ?? 'EDIT' },
     update: { canAccess, level: level ?? 'EDIT' },
   });
+
+  invalidateUserPermissionsCache();
 
   return NextResponse.json({ ok: true });
 }

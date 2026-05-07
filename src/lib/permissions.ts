@@ -49,3 +49,34 @@ export async function canRoleAccess(role: string, page: string): Promise<boolean
 export function invalidatePermissionsCache(): void {
   cache = null;
 }
+
+// --- User permissions cache (60 soniya) -----------------------------------
+
+let userCache: Map<string, boolean> | null = null;
+let userCacheTime = 0;
+
+/**
+ * Foydalanuvchi uchun sahifa/action ruxsati.
+ * Returns: true (ruxsat), false (rad), null (UserPermission yozuvi yo'q — caller RolePermission'ga o'tsin).
+ * Natija 60 soniya keshlanadi.
+ */
+export async function canUserAccess(userId: string, page: string): Promise<boolean | null> {
+  const now = Date.now();
+
+  if (!userCache || now - userCacheTime > 60_000) {
+    const perms = await prisma.userPermission.findMany();
+    userCache = new Map(perms.map((p: { userId: string; page: string; canAccess: boolean }) => [`${p.userId}:${p.page}`, p.canAccess]));
+    userCacheTime = now;
+  }
+
+  const key = `${userId}:${page}`;
+  if (userCache.has(key)) return userCache.get(key)!;
+  return null; // yozuv yo'q
+}
+
+/**
+ * User cache'ni tozalaydi — UserPermission o'zgarganda chaqiriladi.
+ */
+export function invalidateUserPermissionsCache(): void {
+  userCache = null;
+}

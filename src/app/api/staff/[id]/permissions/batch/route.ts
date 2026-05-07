@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { requireAction } from '@/lib/api-auth';
+import { invalidateUserPermissionsCache } from '@/lib/permissions';
 
 type Ctx = { params: Promise<{ id: string }> };
 
@@ -38,6 +39,8 @@ export async function POST(req: NextRequest, { params }: Ctx) {
         }
       }
     });
+
+    invalidateUserPermissionsCache();
 
     return NextResponse.json({ ok: true, saved: body.permissions.length });
   } catch (err) {

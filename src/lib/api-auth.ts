@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getServerSession, Session } from 'next-auth';
 import { authOptions } from '@/lib/auth';
-import { prisma } from '@/lib/prisma';
+import { canUserAccess, canRoleAccess } from '@/lib/permissions';
 import { Role } from '@prisma/client';
 
 export type AuthResult =
@@ -72,25 +72,19 @@ export async function requireAction(actionPath: string): Promise<AuthResult> {
   const userId = session.user.id;
   const role = session.user.role as Role;
 
-  // 1) UserPermission ustunlik qiladi
-  const userPerm = await prisma.userPermission.findUnique({
-    where: { userId_page: { userId, page: actionPath } },
-  });
-
-  if (userPerm) {
-    if (userPerm.canAccess) {
-      return { ok: true, session };
-    }
+  // 1) UserPermission cache (ustunlik qiladi)
+  const userResult = await canUserAccess(userId, actionPath);
+  if (userResult === true) {
+    return { ok: true, session };
+  }
+  if (userResult === false) {
     // UserPermission mavjud, lekin canAccess=false → ruxsat yo'q
     return { ok: false, response: NextResponse.json({ error: 'Forbidden' }, { status: 403 }) };
   }
 
-  // 2) UserPermission yo'q → RolePermission'ni tekshir
-  const rolePerm = await prisma.rolePermission.findUnique({
-    where: { role_page: { role, page: actionPath } },
-  });
-
-  if (rolePerm?.canAccess) {
+  // 2) UserPermission yozuvi yo'q → RolePermission cache
+  const roleResult = await canRoleAccess(role, actionPath);
+  if (roleResult) {
     return { ok: true, session };
   }
 
@@ -131,25 +125,19 @@ export async function requireAnyAction(...actionPaths: string[]): Promise<AuthRe
   const role = session.user.role as Role;
 
   for (const actionPath of actionPaths) {
-    // 1) UserPermission ustunlik qiladi
-    const userPerm = await prisma.userPermission.findUnique({
-      where: { userId_page: { userId, page: actionPath } },
-    });
-
-    if (userPerm) {
-      if (userPerm.canAccess) {
-        return { ok: true, session };
-      }
+    // 1) UserPermission cache (ustunlik qiladi)
+    const userResult = await canUserAccess(userId, actionPath);
+    if (userResult === true) {
+      return { ok: true, session };
+    }
+    if (userResult === false) {
       // canAccess=false → bu key bo'yicha rad, lekin boshqa key urinib ko'rilsin
       continue;
     }
 
-    // 2) UserPermission yo'q → RolePermission'ni tekshir
-    const rolePerm = await prisma.rolePermission.findUnique({
-      where: { role_page: { role, page: actionPath } },
-    });
-
-    if (rolePerm?.canAccess) {
+    // 2) UserPermission yozuvi yo'q → RolePermission cache
+    const roleResult = await canRoleAccess(role, actionPath);
+    if (roleResult) {
       return { ok: true, session };
     }
   }
