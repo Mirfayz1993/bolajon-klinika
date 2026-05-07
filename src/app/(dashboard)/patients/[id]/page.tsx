@@ -16,6 +16,8 @@ import { LabTab } from './_components/LabTab';
 import { MedicalRecordModal } from './_components/modals/MedicalRecordModal';
 import { NurseNoteModal } from './_components/modals/NurseNoteModal';
 import { LabOrderModal } from './_components/modals/LabOrderModal';
+import { PayModal } from './_components/modals/PayModal';
+import { BulkPayModal } from './_components/modals/BulkPayModal';
 import {
   ArrowLeft, Pencil, Trash2, Check, X, Loader2, AlertCircle,
   User, Phone, MapPin,
@@ -251,7 +253,6 @@ export default function PatientDetailPage({ params }: PageProps) {
   const [doctorList, setDoctorList] = useState<{ id: string; name: string; role: string }[]>([]);
   const [allStaffList, setAllStaffList] = useState<{ id: string; name: string; role: string }[]>([]);
   const [payingId, setPayingId] = useState<string | null>(null);
-  const [payMethod, setPayMethod] = useState('CASH');
   // To'lov modal (single)
   const [showPayModal, setShowPayModal] = useState(false);
   const [payModalService, setPayModalService] = useState<AssignedService | null>(null);
@@ -259,7 +260,6 @@ export default function PatientDetailPage({ params }: PageProps) {
   const [selectedForPay, setSelectedForPay] = useState<Set<string>>(new Set());
   const [showBulkPayModal, setShowBulkPayModal] = useState(false);
   const [bulkPaying, setBulkPaying] = useState(false);
-  const [bulkPayMethod, setBulkPayMethod] = useState('CASH');
 
   // Statsionar tab state
   const [inpatientTasks, setInpatientTasks] = useState<InpatientTask[]>([]);
@@ -628,18 +628,17 @@ export default function PatientDetailPage({ params }: PageProps) {
 
   const openPayModal = (svc: AssignedService) => {
     setPayModalService(svc);
-    setPayMethod('CASH');
     setShowPayModal(true);
   };
 
-  const confirmPay = async () => {
+  const confirmPay = async (method: string) => {
     if (!payModalService) return;
     setPayingId(payModalService.id);
     try {
       const res = await fetch(`/api/patients/${patientId}/assigned-services/${payModalService.id}/pay`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ method: payMethod }),
+        body: JSON.stringify({ method }),
       });
       if (!res.ok) { const d = await res.json(); alert(d.error); return; }
       setShowPayModal(false);
@@ -708,7 +707,7 @@ export default function PatientDetailPage({ params }: PageProps) {
     setSelectedForPay(new Set(unpaidIds));
   };
 
-  const bulkPay = async () => {
+  const bulkPay = async (method: string) => {
     if (selectedForPay.size === 0) return;
     setBulkPaying(true);
     try {
@@ -717,7 +716,7 @@ export default function PatientDetailPage({ params }: PageProps) {
         fetch(`/api/patients/${patientId}/assigned-services/${id}/pay`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ method: bulkPayMethod }),
+          body: JSON.stringify({ method }),
         })
       ));
       setShowBulkPayModal(false);
@@ -913,120 +912,29 @@ export default function PatientDetailPage({ params }: PageProps) {
       )}
 
       {/* -- PAY MODAL ----------------------------------------------------- */}
-      {showPayModal && payModalService && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm p-6">
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="font-semibold text-slate-800">To&apos;lov qilish</h3>
-              <button type="button" onClick={() => setShowPayModal(false)}>
-                <X className="w-5 h-5 text-slate-400" />
-              </button>
-            </div>
-            <div className="mb-4 p-3 bg-slate-50 rounded-xl text-sm">
-              <p className="text-slate-500 text-xs mb-1">{payModalService.categoryName}</p>
-              <p className="font-medium text-slate-800">{payModalService.itemName}</p>
-              <p className="text-blue-700 font-bold mt-1">{fmtMoney(Number(payModalService.price))}</p>
-            </div>
-            <div className="mb-5">
-              <label className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2 block">To&apos;lov usuli</label>
-              <div className="grid grid-cols-2 gap-2">
-                {[
-                  { val: 'CASH', label: 'Naqd pul' },
-                  { val: 'CARD', label: 'Karta' },
-                  { val: 'CLICK', label: 'Click' },
-                  { val: 'PAYME', label: 'Payme' },
-                  { val: 'BANK_TRANSFER', label: "Bank o'tkazma" },
-                ].map(opt => (
-                  <button
-                    key={opt.val}
-                    type="button"
-                    onClick={() => setPayMethod(opt.val)}
-                    className={`px-3 py-2.5 rounded-xl text-sm font-medium border-2 transition-all ${
-                      payMethod === opt.val
-                        ? 'border-green-500 bg-green-50 text-green-700'
-                        : 'border-slate-200 text-slate-600 hover:border-slate-300'
-                    }`}
-                  >
-                    {opt.label}
-                  </button>
-                ))}
-              </div>
-            </div>
-            <div className="flex gap-2">
-              <button
-                type="button"
-                onClick={() => setShowPayModal(false)}
-                className="flex-1 px-4 py-2.5 text-sm text-slate-600 border border-slate-200 rounded-xl hover:bg-slate-50"
-              >
-                Bekor
-              </button>
-              <button
-                type="button"
-                onClick={confirmPay}
-                disabled={!!payingId}
-                className="flex-1 flex items-center justify-center gap-1.5 px-4 py-2.5 text-sm font-semibold bg-green-600 text-white rounded-xl hover:bg-green-700 disabled:opacity-50"
-              >
-                {payingId ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
-                To&apos;lash
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      <PayModal
+        open={showPayModal}
+        service={payModalService}
+        onClose={() => setShowPayModal(false)}
+        onConfirm={confirmPay}
+        paying={!!payingId}
+        fmtMoney={fmtMoney}
+        canSeePrices={canSeePrices}
+      />
 
       {/* -- BULK PAY MODAL ------------------------------------------------ */}
-      {showBulkPayModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm p-6">
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="font-semibold text-slate-800">To&apos;lov qilish ({selectedForPay.size} ta)</h3>
-              <button type="button" onClick={() => setShowBulkPayModal(false)}><X className="w-5 h-5 text-slate-400" /></button>
-            </div>
-            <div className="mb-4 max-h-40 overflow-y-auto divide-y divide-slate-50 border border-slate-100 rounded-xl">
-              {assignedServices.filter(s => selectedForPay.has(s.id)).map(svc => (
-                <div key={svc.id} className="flex justify-between px-3 py-2 text-sm">
-                  <span className="text-slate-700 truncate">{svc.itemName}</span>
-                  <span className="font-semibold text-blue-700 ml-2 flex-shrink-0">{fmtMoney(Number(svc.price))}</span>
-                </div>
-              ))}
-              <div className="flex justify-between px-3 py-2 text-sm font-bold bg-blue-50">
-                <span>Jami</span>
-                <span className="text-blue-700">{fmtMoney(assignedServices.filter(s => selectedForPay.has(s.id)).reduce((sum, s) => sum + Number(s.price), 0))}</span>
-              </div>
-            </div>
-            <div className="mb-5">
-              <label className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2 block">To&apos;lov usuli</label>
-              <div className="grid grid-cols-2 gap-2">
-                {[
-                  { val: 'CASH', label: 'Naqd pul' },
-                  { val: 'CARD', label: 'Karta' },
-                  { val: 'CLICK', label: 'Click' },
-                  { val: 'PAYME', label: 'Payme' },
-                  { val: 'BANK_TRANSFER', label: "Bank o'tkazma" },
-                ].map(opt => (
-                  <button key={opt.val} type="button" onClick={() => setBulkPayMethod(opt.val)}
-                    className={`px-3 py-2.5 rounded-xl text-sm font-medium border-2 transition-all ${
-                      bulkPayMethod === opt.val ? 'border-green-500 bg-green-50 text-green-700' : 'border-slate-200 text-slate-600 hover:border-slate-300'
-                    }`}>
-                    {opt.label}
-                  </button>
-                ))}
-              </div>
-            </div>
-            <div className="flex gap-2">
-              <button type="button" onClick={() => setShowBulkPayModal(false)}
-                className="flex-1 px-4 py-2.5 text-sm text-slate-600 border border-slate-200 rounded-xl hover:bg-slate-50">
-                Bekor
-              </button>
-              <button type="button" onClick={bulkPay} disabled={bulkPaying}
-                className="flex-1 flex items-center justify-center gap-1.5 px-4 py-2.5 text-sm font-semibold bg-green-600 text-white rounded-xl hover:bg-green-700 disabled:opacity-50">
-                {bulkPaying ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
-                To&apos;lash
-              </button>
-            </div>
-          </div>
-        </div>
-        )}
+      <BulkPayModal
+        open={showBulkPayModal}
+        count={selectedForPay.size}
+        total={assignedServices.filter(s => selectedForPay.has(s.id)).reduce((sum, s) => sum + Number(s.price), 0)}
+        services={assignedServices.filter(s => selectedForPay.has(s.id))}
+        onClose={() => setShowBulkPayModal(false)}
+        onConfirm={bulkPay}
+        paying={bulkPaying}
+        fmtMoney={fmtMoney}
+        canSeePrices={canSeePrices}
+      />
+
 
       {/* -- ASSIGN SERVICE MODAL ------------------------------------------- */}
       {showAssignModal && (
