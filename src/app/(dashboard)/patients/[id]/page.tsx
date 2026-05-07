@@ -10,7 +10,9 @@ import { printQr, printReceipt } from './_lib/print-templates';
 import { Section, Empty, Modal } from './_components/ui';
 import { InfoTab } from './_components/InfoTab';
 import { RecordsTab } from './_components/RecordsTab';
+import { NurseTab } from './_components/NurseTab';
 import { MedicalRecordModal } from './_components/modals/MedicalRecordModal';
+import { NurseNoteModal } from './_components/modals/NurseNoteModal';
 import {
   ArrowLeft, Pencil, Trash2, Check, X, Loader2, AlertCircle,
   User, Phone, MapPin,
@@ -228,11 +230,6 @@ export default function PatientDetailPage({ params }: PageProps) {
 
   // Nurse note modal
   const [showNurseModal, setShowNurseModal] = useState(false);
-  const [nurseForm, setNurseForm] = useState({
-    procedure: '', notes: '', admissionId: '', noteType: '',
-    medicines: [] as { name: string; quantity: number; unit: string }[],
-  });
-  const [savingNote, setSavingNote] = useState(false);
 
   const { can, isAdmin } = usePermissions();
   const canSeePrices = can('/patients:see_prices');
@@ -767,38 +764,6 @@ export default function PatientDetailPage({ params }: PageProps) {
       const res = await fetch(`/api/patients/${patientId}/qr`);
       if (res.ok) { const j = await res.json(); setQrDataUrl(j.dataUrl); }
     } finally { setQrLoading(false); }
-  };
-
-  // -- Nurse note -------------------------------------------------------------
-  const addMedicineRow = () =>
-    setNurseForm(f => ({ ...f, medicines: [...f.medicines, { name: '', quantity: 1, unit: 'ml' }] }));
-
-  const updateMedicine = (idx: number, field: string, value: string | number) =>
-    setNurseForm(f => ({
-      ...f,
-      medicines: f.medicines.map((m, i) => i === idx ? { ...m, [field]: value } : m),
-    }));
-
-  const removeMedicine = (idx: number) =>
-    setNurseForm(f => ({ ...f, medicines: f.medicines.filter((_, i) => i !== idx) }));
-
-  const saveNurseNote = async () => {
-    if (!nurseForm.procedure.trim()) return;
-    setSavingNote(true);
-    try {
-      const body: Record<string, unknown> = { procedure: nurseForm.procedure, notes: nurseForm.notes };
-      if (nurseForm.admissionId) body.admissionId = nurseForm.admissionId;
-      if (nurseForm.medicines.length) body.medicines = nurseForm.medicines.filter(m => m.name.trim());
-      if (nurseForm.noteType) body.noteType = nurseForm.noteType;
-      const res = await fetch(`/api/patients/${patientId}/nurse-notes`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
-      });
-      if (!res.ok) throw new Error();
-      setShowNurseModal(false);
-      setNurseForm({ procedure: '', notes: '', admissionId: '', noteType: '', medicines: [] });
-      fetchProfile();
-    } finally { setSavingNote(false); }
   };
 
   // -- Bulk pay --------------------------------------------------------------
@@ -1515,61 +1480,13 @@ export default function PatientDetailPage({ params }: PageProps) {
 
       {/* -- TAB: HAMSHIRA QAYDLARI ------------------------------------------ */}
       {activeTab === 'nurse' && (
-        <div className="space-y-4">
-          {isNurse && (
-            <div className="flex items-center justify-between">
-              {urlNoteType === 'AMBULATORY' && (
-                <span className="text-xs font-medium bg-teal-100 text-teal-800 px-3 py-1.5 rounded-full flex items-center gap-1.5">
-                  <span className="w-1.5 h-1.5 rounded-full bg-teal-500 inline-block" />
-                  Ambulator bo&apos;limdan kirildi
-                </span>
-              )}
-              <button
-                onClick={() => {
-                  setNurseForm(f => ({ ...f, noteType: urlNoteType }));
-                  setShowNurseModal(true);
-                }}
-                className="ml-auto flex items-center gap-2 px-4 py-2 bg-teal-600 hover:bg-teal-700 text-white text-sm rounded-lg">
-                <Plus className="w-4 h-4" /> Qayd qo&apos;shish
-              </button>
-            </div>
-          )}
-
-          {nurseNotes.length === 0 ? <Empty text="Hamshira qaydlari yo'q" /> : nurseNotes.map(n => (
-            <div key={n.id} className="bg-white rounded-xl border border-slate-200 p-4">
-              <div className="flex justify-between items-start mb-2">
-                <div className="flex items-center gap-2 flex-wrap">
-                  <span className="text-sm font-semibold text-slate-800">{n.procedure}</span>
-                  {n.noteType === 'AMBULATORY' && (
-                    <span className="text-xs font-medium bg-teal-100 text-teal-700 px-2 py-0.5 rounded-full">Ambulator</span>
-                  )}
-                  {n.admission && (
-                    <span className="text-xs text-slate-500">
-                      ({floorLabel(n.admission.bed.room.floor)}, {n.admission.bed.room.roomNumber}-xona)
-                    </span>
-                  )}
-                </div>
-                <span className="text-xs text-slate-400 flex-shrink-0">{fmt(n.createdAt)}</span>
-              </div>
-              <p className="text-xs text-slate-500 mb-2">
-                Hamshira: <span className="font-medium">{n.nurse?.name}</span>
-              </p>
-              {n.notes && <p className="text-sm text-slate-700 mb-2">{n.notes}</p>}
-              {n.medicines && n.medicines.length > 0 && (
-                <div className="mt-2 border-t border-slate-100 pt-2">
-                  <div className="text-xs font-semibold text-slate-500 uppercase mb-1">Ishlatilgan dorilar</div>
-                  <div className="flex flex-wrap gap-2">
-                    {n.medicines.map((m, i) => (
-                      <span key={i} className="bg-orange-50 text-orange-800 text-xs px-2 py-1 rounded-md">
-                        {m.name} — {m.quantity} {m.unit}
-                      </span>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </div>
-          ))}
-        </div>
+        <NurseTab
+          nurseNotes={nurseNotes}
+          isNurse={isNurse}
+          urlNoteType={urlNoteType}
+          onAddClick={() => setShowNurseModal(true)}
+          fmt={fmt}
+        />
       )}
 
       {/* -- TAB: LABORATORIYA ----------------------------------------------- */}
@@ -2310,36 +2227,12 @@ export default function PatientDetailPage({ params }: PageProps) {
 
       {/* -- Nurse Note Modal ------------------------------------------------ */}
       {showNurseModal && (
-        <Modal title={nurseForm.noteType === 'AMBULATORY' ? "Ambulator qayd qo'shish" : "Hamshira qaydini qo'shish"} onClose={() => setShowNurseModal(false)}>
-          <div className="space-y-4">
-            <div>
-              <label className="block text-xs font-medium text-slate-600 mb-1">Muolaja nomi *</label>
-              <input type="text" value={nurseForm.procedure} placeholder="Ukol, infuziya, bog'lam..."
-                onChange={e => setNurseForm(f => ({ ...f, procedure: e.target.value }))}
-                className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500" />
-            </div>
-
-            <div>
-              <label className="block text-xs font-medium text-slate-600 mb-1">Izoh</label>
-              <textarea value={nurseForm.notes} rows={3}
-                onChange={e => setNurseForm(f => ({ ...f, notes: e.target.value }))}
-                placeholder="Muolaja haqida qo'shimcha ma'lumot..."
-                className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500" />
-            </div>
-          </div>
-
-          <div className="flex justify-end gap-3 mt-6">
-            <button onClick={() => setShowNurseModal(false)}
-              className="px-4 py-2 border border-slate-200 text-slate-600 rounded-lg text-sm">
-              {t.common.cancel}
-            </button>
-            <button onClick={saveNurseNote} disabled={savingNote || !nurseForm.procedure.trim()}
-              className="flex items-center gap-2 px-4 py-2 bg-teal-600 text-white rounded-lg text-sm disabled:opacity-60">
-              {savingNote ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
-              Saqlash
-            </button>
-          </div>
-        </Modal>
+        <NurseNoteModal
+          patientId={patientId}
+          defaultNoteType={urlNoteType}
+          onClose={() => setShowNurseModal(false)}
+          onSaved={fetchProfile}
+        />
       )}
     </div>
   );
