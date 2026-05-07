@@ -11,8 +11,10 @@ import { Section, Empty, Modal } from './_components/ui';
 import { InfoTab } from './_components/InfoTab';
 import { RecordsTab } from './_components/RecordsTab';
 import { NurseTab } from './_components/NurseTab';
+import { LabTab } from './_components/LabTab';
 import { MedicalRecordModal } from './_components/modals/MedicalRecordModal';
 import { NurseNoteModal } from './_components/modals/NurseNoteModal';
+import { LabOrderModal } from './_components/modals/LabOrderModal';
 import {
   ArrowLeft, Pencil, Trash2, Check, X, Loader2, AlertCircle,
   User, Phone, MapPin,
@@ -156,11 +158,6 @@ const STATUS_COLORS: Record<string, string> = {
   PAID: 'bg-green-100 text-green-800', PENDING: 'bg-yellow-100 text-yellow-800',
   PARTIAL: 'bg-orange-100 text-orange-800', CANCELLED: 'bg-red-100 text-red-800',
   REFUNDED: 'bg-blue-100 text-blue-800',
-};
-
-const LAB_STATUS_COLORS: Record<string, string> = {
-  PENDING: 'bg-slate-100 text-slate-700', IN_PROGRESS: 'bg-yellow-100 text-yellow-800',
-  COMPLETED: 'bg-green-100 text-green-800', CANCELLED: 'bg-red-100 text-red-800',
 };
 
 const APPT_TYPE_LABELS: Record<string, string> = {
@@ -538,78 +535,8 @@ export default function PatientDetailPage({ params }: PageProps) {
       .catch(() => setLabTestTypes([]));
   }, [isLabCat]);
 
-  // Multi-select print (lab tab)
-  const [labPrintSelectedIds, setLabPrintSelectedIds] = useState<string[]>([]);
-  function toggleLabPrint(id: string) {
-    setLabPrintSelectedIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
-  }
-  function printLabSelected() {
-    if (!patientId || labPrintSelectedIds.length === 0) return;
-    router.push(`/lab/print?patientId=${patientId}&testIds=${labPrintSelectedIds.join(',')}`);
-  }
-
-  // Lab order modal (from lab tab)
-  interface LabOrderType { id: string; name: string; price: number; category: string | null; parentId?: string | null; }
+  // Lab order modal trigger (state lives inside LabOrderModal)
   const [showPatientLabOrderModal, setShowPatientLabOrderModal] = useState(false);
-  const [patientLabAllTypes, setPatientLabAllTypes] = useState<LabOrderType[]>([]);
-  const [patientLabSelectedIds, setPatientLabSelectedIds] = useState<string[]>([]);
-  const [patientLabOpenGroups, setPatientLabOpenGroups] = useState<Set<string>>(new Set());
-  const [patientLabOrderSaving, setPatientLabOrderSaving] = useState(false);
-  const [patientLabOrderError, setPatientLabOrderError] = useState<string | null>(null);
-  const [patientLabOrderDone, setPatientLabOrderDone] = useState(false);
-
-  function openPatientLabOrderModal() {
-    setPatientLabSelectedIds([]);
-    setPatientLabOpenGroups(new Set());
-    setPatientLabOrderError(null);
-    setPatientLabOrderDone(false);
-    setShowPatientLabOrderModal(true);
-    fetch('/api/lab-test-types')
-      .then(r => r.json())
-      .then(d => setPatientLabAllTypes(Array.isArray(d) ? d : (d.data ?? [])))
-      .catch(() => {});
-  }
-
-  async function handlePatientLabOrderSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    if (!patient || patientLabSelectedIds.length === 0) return;
-    setPatientLabOrderSaving(true);
-    setPatientLabOrderError(null);
-    try {
-      const results = await Promise.all(
-        patientLabSelectedIds.map(async id => {
-          const tt = patientLabAllTypes.find(x => x.id === id);
-          if (!tt) return null;
-          const res = await fetch(`/api/patients/${patient.id}/assigned-services`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              categoryName: 'Laboratoriya',
-              itemName: tt.name,
-              price: Number(tt.price),
-              itemId: tt.id,
-            }),
-          });
-          if (!res.ok) {
-            const err = await res.json().catch(() => ({}));
-            return { error: err.error || `${tt.name}: xatolik`, name: tt.name };
-          }
-          return null;
-        })
-      );
-      const errors = results.filter(Boolean) as { error: string; name: string }[];
-      if (errors.length > 0) {
-        setPatientLabOrderError(errors.map(e => e.error).join('; '));
-        setPatientLabOrderSaving(false);
-        return;
-      }
-      setPatientLabOrderDone(true);
-    } catch {
-      setPatientLabOrderError('Xatolik yuz berdi');
-    } finally {
-      setPatientLabOrderSaving(false);
-    }
-  }
 
   useEffect(() => {
     if (!isDoctorCat) return;
@@ -1491,137 +1418,14 @@ export default function PatientDetailPage({ params }: PageProps) {
 
       {/* -- TAB: LABORATORIYA ----------------------------------------------- */}
       {activeTab === 'lab' && (
-        <div className="space-y-4">
-          <div className="flex items-center justify-between gap-3 flex-wrap">
-            {labPrintSelectedIds.length > 0 ? (
-              <div className="flex items-center gap-3 bg-blue-50 border border-blue-200 rounded-lg px-4 py-2">
-                <span className="text-sm text-blue-700 font-medium">{labPrintSelectedIds.length} ta tanlandi</span>
-                <button
-                  onClick={printLabSelected}
-                  className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold rounded-lg transition-colors"
-                >
-                  <Printer className="w-3.5 h-3.5" />
-                  Chop et ({labPrintSelectedIds.length} ta)
-                </button>
-                <button
-                  onClick={() => setLabPrintSelectedIds([])}
-                  className="text-xs text-slate-500 hover:text-slate-700 transition-colors"
-                >
-                  Bekor
-                </button>
-              </div>
-            ) : <div />}
-            {canOrderLabTest && (
-              <button
-                onClick={openPatientLabOrderModal}
-                className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors"
-              >
-                <Plus className="w-4 h-4" />
-                Tahlil buyurtma
-              </button>
-            )}
-          </div>
-          {labTests.length === 0 ? <Empty text="Laboratoriya tahlillari yo'q" /> : labTests.map(lt => {
-            const canPrint = lt.status === 'COMPLETED' && (!lt.payment || lt.payment.status === 'PAID');
-            return (
-            <div key={lt.id} className="bg-white rounded-xl border border-slate-200 overflow-hidden">
-              <div className="px-4 py-3 bg-slate-50 border-b border-slate-100 flex justify-between items-center">
-                <div className="flex items-center gap-2 flex-wrap">
-                  {canPrint && (
-                    <input
-                      type="checkbox"
-                      checked={labPrintSelectedIds.includes(lt.id)}
-                      onChange={() => toggleLabPrint(lt.id)}
-                      className="w-4 h-4 accent-blue-600 cursor-pointer flex-shrink-0"
-                    />
-                  )}
-                  <span className="text-sm font-semibold text-slate-800">{lt.testType?.name}</span>
-                  <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${LAB_STATUS_COLORS[lt.status] ?? ''}`}>
-                    {lt.status === 'PENDING' ? 'Kutilmoqda'
-                      : lt.status === 'IN_PROGRESS' ? 'Jarayonda'
-                      : lt.status === 'COMPLETED' ? 'Tayyor'
-                      : 'Bekor qilindi'}
-                  </span>
-                  {lt.payment && lt.payment.status !== 'PAID' && (
-                    <span className="text-xs px-2 py-0.5 rounded-full font-medium bg-orange-100 text-orange-700">
-                      To&apos;lovini kutyapti
-                    </span>
-                  )}
-                </div>
-                <div className="flex items-center gap-3">
-                  {lt.status === 'COMPLETED' && (
-                    lt.payment && lt.payment.status !== 'PAID' ? (
-                      <span className="flex items-center gap-1 px-2 py-1 text-xs bg-red-50 text-red-600 rounded-md font-medium">
-                        <Printer className="w-3 h-3" />
-                        To&apos;lov qilinmagan
-                      </span>
-                    ) : (
-                      <button
-                        onClick={() => router.push(`/lab/print?patientId=${patientId}&testIds=${lt.id}`)}
-                        className="flex items-center gap-1 px-2 py-1 text-xs bg-green-50 text-green-700 hover:bg-green-100 rounded-md transition-colors font-medium"
-                      >
-                        <Printer className="w-3 h-3" />
-                        Chop
-                      </button>
-                    )
-                  )}
-                  <span className="text-xs text-slate-400">{fmt(lt.createdAt)}</span>
-                </div>
-              </div>
-              <div className="p-4">
-                <div className="flex justify-between text-xs text-slate-500 mb-3">
-                  <span>Laborant: {lt.labTech?.name}</span>
-                  {lt.testType.normalRange && <span>Norma: {lt.testType.normalRange} {lt.testType.unit ?? ''}</span>}
-                  {lt.completedAt && <span>Tugallandi: {fmt(lt.completedAt)}</span>}
-                </div>
-
-                {lt.notes && (() => {
-                  try {
-                    const hist = JSON.parse(lt.notes!) as { date: string; from: string | null; to: string; by: string }[];
-                    if (Array.isArray(hist) && hist.length > 0) return (
-                      <div className="bg-amber-50 rounded-lg px-3 py-2 mb-2">
-                        <div className="text-xs font-semibold text-amber-700 uppercase mb-1">O&apos;zgarishlar tarixi</div>
-                        {hist.map((h, i) => (
-                          <div key={i} className="text-xs text-amber-800">
-                            {new Date(h.date).toLocaleString('uz-UZ')} — {h.by}:{' '}
-                            {h.from != null ? `${h.from} → ${h.to}` : h.to}
-                          </div>
-                        ))}
-                      </div>
-                    );
-                  } catch { /* ignore */ }
-                  return (
-                    <div className="text-sm text-slate-700 mb-2">
-                      <span className="font-medium text-slate-500 text-xs uppercase">Izoh: </span>
-                      {lt.notes}
-                    </div>
-                  );
-                })()}
-
-                {lt.status === 'COMPLETED' && lt.results && (
-                  <div className="bg-green-50 rounded-lg p-3">
-                    <div className="text-xs font-semibold text-green-700 uppercase mb-2">Natija</div>
-                    <div className="space-y-1">
-                      {Object.entries(lt.results).map(([k, v]) => (
-                        <div key={k} className="flex justify-between text-sm">
-                          <span className="text-slate-600">{k}</span>
-                          <span className="font-medium text-slate-800">{String(v)}</span>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {lt.status === 'PENDING' && (
-                  <div className="bg-yellow-50 rounded-lg px-3 py-2 text-sm text-yellow-800">
-                    Natija hali kiritilmagan — laboratoriya jarayonida
-                  </div>
-                )}
-              </div>
-            </div>
-          );
-          })}
-        </div>
+        <LabTab
+          labTests={labTests}
+          patientId={patientId}
+          canOrderLabTest={canOrderLabTest}
+          onOpenOrderModal={() => setShowPatientLabOrderModal(true)}
+          fmt={fmt}
+          router={router}
+        />
       )}
 
       {/* -- TAB: STATSIONAR ------------------------------------------------- */}
@@ -1997,141 +1801,12 @@ export default function PatientDetailPage({ params }: PageProps) {
       )}
 
       {/* -- Lab Order Modal ------------------------------------------------- */}
-      {showPatientLabOrderModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-3xl flex flex-col" style={{ maxHeight: '90vh' }}>
-            <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 flex-shrink-0">
-              <h2 className="text-lg font-semibold text-slate-800">{patientLabOrderDone ? 'Buyurtma saqlandi' : 'Tahlil buyurtma'}</h2>
-              <button onClick={() => { setShowPatientLabOrderModal(false); if (patientLabOrderDone) window.location.reload(); }} className="p-1.5 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-md transition-colors">
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-            {patientLabOrderDone ? (
-              <div className="flex flex-col flex-1 min-h-0">
-                <div className="overflow-y-auto flex-1 px-6 py-4 space-y-2">
-                  <p className="text-sm text-slate-500 mb-4">Quyidagi tahlillar tayinlangan xizmatlarga qo&apos;shildi. Qabulxona to&apos;lovni qabul qilgach laboratoriyaga yuboriladi.</p>
-                  {patientLabSelectedIds.map(id => {
-                    const tt = patientLabAllTypes.find(x => x.id === id);
-                    if (!tt) return null;
-                    return (
-                      <div key={id} className="flex items-center justify-between px-4 py-2.5 bg-slate-50 rounded-xl border border-slate-100">
-                        <span className="text-sm text-slate-800">{tt.name}</span>
-                        <div className="flex items-center gap-3">
-                          {canSeePrices && <span className="text-sm text-slate-500">{Number(tt.price).toLocaleString()} so&apos;m</span>}
-                          <span className="text-xs font-medium bg-yellow-100 text-yellow-700 px-2 py-0.5 rounded-full">To&apos;lanmagan</span>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-                <div className="px-6 py-4 border-t border-slate-100 flex justify-end">
-                  <button type="button" onClick={() => { setShowPatientLabOrderModal(false); window.location.reload(); }} className="px-5 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg transition-colors">Yopish</button>
-                </div>
-              </div>
-            ) : (
-            <form onSubmit={handlePatientLabOrderSubmit} className="flex flex-col flex-1 min-h-0">
-              <div className="px-6 py-3 border-b border-slate-100 flex-shrink-0 bg-blue-50">
-                <p className="text-sm font-medium text-slate-700">
-                  Bemor: <span className="font-bold text-slate-900">{patient?.lastName} {patient?.firstName} {patient?.fatherName}</span>
-                </p>
-              </div>
-              {patientLabOrderError && (
-                <div className="px-6 pt-3 flex-shrink-0">
-                  <div className="flex items-center gap-2 text-red-600 bg-red-50 border border-red-200 rounded-lg px-4 py-3 text-sm">
-                    <AlertCircle className="w-4 h-4 flex-shrink-0" />
-                    {patientLabOrderError}
-                  </div>
-                </div>
-              )}
-              <div className="overflow-y-auto flex-1 px-6 py-4">
-                <div className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-3">
-                  Tahlil turini tanlang <span className="text-red-500">*</span>
-                  {patientLabSelectedIds.length > 0 && (
-                    <span className="ml-2 normal-case font-normal text-blue-600">({patientLabSelectedIds.length} ta tanlandi)</span>
-                  )}
-                </div>
-                {patientLabAllTypes.length === 0 ? (
-                  <div className="flex justify-center py-8"><Loader2 className="w-6 h-6 animate-spin text-blue-500" /></div>
-                ) : (() => {
-                  const groups: Record<string, LabOrderType[]> = {};
-                  for (const tt of patientLabAllTypes) {
-                    const cat = tt.category ?? 'Boshqalar';
-                    if (!groups[cat]) groups[cat] = [];
-                    groups[cat].push(tt);
-                  }
-                  return Object.entries(groups).map(([cat, items]) => {
-                    const isOpen = patientLabOpenGroups.has(cat);
-                    const groupSelected = items.filter(it => patientLabSelectedIds.includes(it.id));
-                    return (
-                      <div key={cat} className="mb-2 border border-slate-200 rounded-xl overflow-hidden">
-                        <button type="button" onClick={() => setPatientLabOpenGroups(prev => { const n = new Set(prev); if (n.has(cat)) n.delete(cat); else n.add(cat); return n; })} className="w-full flex items-center justify-between px-4 py-3 bg-slate-50 hover:bg-slate-100 transition-colors text-left">
-                          <div className="flex items-center gap-3">
-                            <span className="font-bold text-slate-800 text-sm uppercase tracking-wide">{cat}</span>
-                            {groupSelected.length > 0 && <span className="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full font-semibold">{groupSelected.length} ta</span>}
-                          </div>
-                          <svg className={`w-4 h-4 text-slate-400 transition-transform ${isOpen ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
-                        </button>
-                        {isOpen && (
-                          <div className="divide-y divide-slate-50">
-                            {items.map(tt => {
-                              const checked = patientLabSelectedIds.includes(tt.id);
-                              return (
-                                <label key={tt.id} className={`flex items-center gap-3 px-4 py-2.5 cursor-pointer hover:bg-slate-50 transition-colors ${checked ? 'bg-blue-50/50' : ''}`}>
-                                  <input type="checkbox" checked={checked} onChange={() => setPatientLabSelectedIds(prev => prev.includes(tt.id) ? prev.filter(x => x !== tt.id) : [...prev, tt.id])} className="w-4 h-4 accent-blue-600 flex-shrink-0" />
-                                  <span className="flex-1 text-sm text-slate-800">{tt.name}</span>
-                                  {canSeePrices && <span className="text-sm text-slate-500 font-medium">{tt.price.toLocaleString()} so&apos;m</span>}
-                                </label>
-                              );
-                            })}
-                          </div>
-                        )}
-                      </div>
-                    );
-                  });
-                })()}
-              </div>
-              <div className="px-6 py-4 border-t border-slate-100 flex-shrink-0">
-                {canSeePrices && patientLabSelectedIds.length > 0 && (() => {
-                  const groups: Record<string, { name: string; total: number }> = {};
-                  for (const id of patientLabSelectedIds) {
-                    const tt = patientLabAllTypes.find(x => x.id === id);
-                    if (!tt) continue;
-                    const cat = tt.category ?? 'Boshqalar';
-                    if (!groups[cat]) groups[cat] = { name: cat, total: 0 };
-                    groups[cat].total += Number(tt.price);
-                  }
-                  const grandTotal = Object.values(groups).reduce((s, g) => s + g.total, 0);
-                  const groupEntries = Object.values(groups);
-                  return (
-                    <div className="mb-4 bg-slate-50 rounded-xl px-4 py-3 space-y-1.5">
-                      {groupEntries.map(g => (
-                        <div key={g.name} className="flex justify-between text-sm text-slate-600">
-                          <span>{g.name}</span>
-                          <span className="font-medium">{g.total.toLocaleString()} so&apos;m</span>
-                        </div>
-                      ))}
-                      {groupEntries.length > 1 && (
-                        <div className="flex justify-between text-sm font-bold text-slate-800 pt-1.5 border-t border-slate-200">
-                          <span>Jami</span>
-                          <span>{grandTotal.toLocaleString()} so&apos;m</span>
-                        </div>
-                      )}
-                    </div>
-                  );
-                })()}
-                <div className="flex items-center justify-end gap-3">
-                  <button type="button" onClick={() => setShowPatientLabOrderModal(false)} className="px-4 py-2 text-sm font-medium text-slate-600 hover:text-slate-800 hover:bg-slate-100 rounded-lg transition-colors">Bekor</button>
-                  <button type="submit" disabled={patientLabOrderSaving || patientLabSelectedIds.length === 0} className="flex items-center gap-2 px-5 py-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-60 disabled:cursor-not-allowed text-white text-sm font-medium rounded-lg transition-colors">
-                    {patientLabOrderSaving && <Loader2 className="w-4 h-4 animate-spin" />}
-                    Buyurtma berish ({patientLabSelectedIds.length})
-                  </button>
-                </div>
-              </div>
-            </form>
-            )}
-          </div>
-        </div>
-      )}
+      <LabOrderModal
+        open={showPatientLabOrderModal}
+        patient={patient}
+        canSeePrices={canSeePrices}
+        onClose={() => setShowPatientLabOrderModal(false)}
+      />
 
       {/* -- QR Modal -------------------------------------------------------- */}
       {showQr && (
