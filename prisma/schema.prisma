@@ -167,6 +167,7 @@ model User {
   writtenOffMedicines   Medicine[]             @relation("MedicineWriteOff")
   inventoryLogs         RoomInventoryLog[]     @relation("InventoryLogPerformedBy")
 
+  @@index([role, isActive, deletedAt])
   @@map("users")
 }
 
@@ -201,6 +202,7 @@ model Patient {
   tasks                Task[]                @relation("PatientTasks")
   vitals               Vital[]
 
+  @@index([deletedAt, updatedAt])
   @@map("patients")
 }
 
@@ -256,6 +258,7 @@ model RoomInventoryLog {
   inventoryItem RoomInventoryItem @relation(fields: [inventoryItemId], references: [id])
   performedBy   User?             @relation("InventoryLogPerformedBy", fields: [performedById], references: [id])
 
+  @@index([roomId, createdAt])
   @@map("room_inventory_logs")
 }
 
@@ -286,6 +289,7 @@ model RoomExpense {
   room      Room  @relation(fields: [roomId], references: [id])
   createdBy User? @relation("ExpenseCreatedBy", fields: [createdById], references: [id])
 
+  @@index([roomId, date])
   @@map("room_expenses")
 }
 
@@ -310,6 +314,10 @@ model Appointment {
   payments Payment[]
   queue    Queue?
 
+  @@index([dateTime])
+  @@index([doctorId, dateTime])
+  @@index([patientId, dateTime])
+  @@index([status])
   @@map("appointments")
 }
 
@@ -332,6 +340,9 @@ model Payment {
   receivedBy  User?        @relation("ReceivedPayments", fields: [receivedById], references: [id])
   labTest     LabTest?     @relation("LabTestPayment")
 
+  @@index([createdAt])
+  @@index([patientId, createdAt])
+  @@index([status])
   @@map("payments")
 }
 
@@ -376,6 +387,9 @@ model LabTest {
   reagent  Reagent?    @relation(fields: [reagentId], references: [id])
   payment  Payment?    @relation("LabTestPayment", fields: [paymentId], references: [id])
 
+  @@index([patientId, createdAt])
+  @@index([status])
+  @@index([completedAt])
   @@map("lab_tests")
 }
 
@@ -400,6 +414,8 @@ model Medicine {
   writtenOffBy User?                 @relation("MedicineWriteOff", fields: [writtenOffById], references: [id])
   transactions MedicineTransaction[]
 
+  @@index([floor, writtenOff])
+  @@index([expiryDate])
   @@map("medicines")
 }
 
@@ -417,6 +433,8 @@ model MedicineTransaction {
   patient   Patient?   @relation(fields: [patientId], references: [id])
   admission Admission? @relation(fields: [admissionId], references: [id])
 
+  @@index([medicineId, createdAt])
+  @@index([type])
   @@map("medicine_transactions")
 }
 
@@ -495,6 +513,9 @@ model Admission {
   medicalRecords       MedicalRecord[]
   vitals               Vital[]
 
+  @@index([patientId, dischargeDate])
+  @@index([bedId, dischargeDate])
+  @@index([admissionType, dischargeDate])
   @@map("admissions")
 }
 
@@ -513,6 +534,8 @@ model MedicalRecord {
   admission     Admission?     @relation(fields: [admissionId], references: [id])
   prescriptions Prescription[]
 
+  @@index([patientId, createdAt])
+  @@index([admissionId])
   @@map("medical_records")
 }
 
@@ -545,6 +568,8 @@ model NurseNote {
   nurse     User       @relation("NurseNoteUser", fields: [nurseId], references: [id])
   admission Admission? @relation(fields: [admissionId], references: [id])
 
+  @@index([patientId, createdAt])
+  @@index([admissionId])
   @@map("nurse_notes")
 }
 
@@ -588,6 +613,8 @@ model AuditLog {
 
   user User @relation(fields: [userId], references: [id])
 
+  @@index([userId, createdAt])
+  @@index([createdAt])
   @@map("audit_logs")
 }
 
@@ -604,6 +631,8 @@ model Queue {
 
   appointment Appointment @relation(fields: [appointmentId], references: [id])
 
+  @@index([status])
+  @@index([appointmentId, status])
   @@map("queue")
 }
 
@@ -618,6 +647,7 @@ model Notification {
 
   patient Patient @relation(fields: [patientId], references: [id])
 
+  @@index([status, createdAt])
   @@map("notifications")
 }
 
@@ -646,6 +676,7 @@ model AssignedService {
   doctor     User?      @relation("AssignedServiceDoctor", fields: [doctorId], references: [id])
   admission  Admission? @relation(fields: [admissionId], references: [id])
 
+  @@index([patientId, isPaid])
   @@map("assigned_services")
 }
 
@@ -713,6 +744,8 @@ model Attendance {
   user User  @relation(fields: [userId], references: [id])
   room Room? @relation(fields: [roomId], references: [id])
 
+  @@index([userId, date])
+  @@index([date])
   @@map("attendances")
 }
 
@@ -745,6 +778,7 @@ model ReagentTransaction {
 
   reagent Reagent @relation(fields: [reagentId], references: [id])
 
+  @@index([reagentId, createdAt])
   @@map("reagent_transactions")
 }
 
@@ -761,6 +795,8 @@ model GeneralExpense {
   room      Room? @relation(fields: [roomId], references: [id])
   createdBy User? @relation(fields: [createdById], references: [id])
 
+  @@index([date])
+  @@index([category, date])
   @@map("general_expenses")
 }
 
@@ -789,6 +825,9 @@ model Task {
   admission Admission? @relation(fields: [admissionId], references: [id])
   patient   Patient?   @relation("PatientTasks", fields: [patientId], references: [id])
 
+  @@index([assigneeId, seenByAssignee])
+  @@index([assignerId])
+  @@index([admissionId])
   @@map("tasks")
 }
 
@@ -825,5 +864,7 @@ model Vital {
   admission  Admission? @relation(fields: [admissionId], references: [id])
   recordedBy User?      @relation(fields: [recordedById], references: [id])
 
+  @@index([patientId, createdAt])
+  @@index([admissionId])
   @@map("vitals")
 }
