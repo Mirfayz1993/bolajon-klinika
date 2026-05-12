@@ -55,6 +55,11 @@ interface Payment {
   description?: string | null;
   createdAt: string;
   patient: { firstName: string; lastName: string };
+  appointment?: {
+    id: string;
+    type: string;
+    doctor: { id: string; name: string; role: string } | null;
+  } | null;
   receivedBy?: { id: string; name: string; role: string } | null;
 }
 
@@ -687,6 +692,7 @@ export default function PaymentsPage() {
                 <th className="text-right px-4 py-3 font-semibold text-slate-600">{t.payments.amount}</th>
                 <th className="text-left px-4 py-3 font-semibold text-slate-600">{t.payments.method}</th>
                 <th className="text-left px-4 py-3 font-semibold text-slate-600">{t.payments.category}</th>
+                <th className="text-left px-4 py-3 font-semibold text-slate-600">Shifokor</th>
                 <th className="text-left px-4 py-3 font-semibold text-slate-600">{t.common.status}</th>
                 <th className="text-left px-4 py-3 font-semibold text-slate-600">{t.common.date}</th>
                 <th className="text-left px-4 py-3 font-semibold text-slate-600">Qabul qiluvchi</th>
@@ -696,13 +702,13 @@ export default function PaymentsPage() {
             <tbody>
               {loading ? (
                 <tr>
-                  <td colSpan={8} className="text-center py-12">
+                  <td colSpan={10} className="text-center py-12">
                     <Loader2 className="w-6 h-6 animate-spin mx-auto text-blue-500" />
                   </td>
                 </tr>
               ) : payments.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="text-center py-12 text-slate-400">
+                  <td colSpan={10} className="text-center py-12 text-slate-400">
                     {t.payments.noPayments}
                   </td>
                 </tr>
@@ -726,6 +732,9 @@ export default function PaymentsPage() {
                     </td>
                     <td className="px-4 py-3 text-slate-600">
                       {CATEGORY_LABELS[payment.category] ?? payment.category}
+                    </td>
+                    <td className="px-4 py-3 text-slate-600">
+                      {payment.appointment?.doctor?.name ?? '—'}
                     </td>
                     <td className="px-4 py-3">
                       <span

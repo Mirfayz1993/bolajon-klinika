@@ -66,7 +66,11 @@ export async function GET(req: NextRequest) {
             select: { firstName: true, lastName: true },
           },
           appointment: {
-            select: { id: true, type: true },
+            select: {
+              id: true,
+              type: true,
+              doctor: { select: { id: true, name: true, role: true } },
+            },
           },
           admission: {
             select: { id: true },
@@ -160,7 +164,11 @@ export async function POST(req: NextRequest) {
           select: { firstName: true, lastName: true },
         },
         appointment: {
-          select: { id: true, type: true },
+          select: {
+            id: true,
+            type: true,
+            doctor: { select: { id: true, name: true, role: true } },
+          },
         },
         admission: {
           select: { id: true },
