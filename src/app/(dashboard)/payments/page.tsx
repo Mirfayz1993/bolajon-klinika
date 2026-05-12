@@ -88,6 +88,12 @@ interface PatientOption {
   phone: string;
 }
 
+interface DoctorOption {
+  id: string;
+  name: string;
+  role: string;
+}
+
 interface NewPaymentForm {
   patientId: string;
   amount: string;
@@ -171,6 +177,9 @@ export default function PaymentsPage() {
   const [summaryLoading, setSummaryLoading] = useState(false);
   const [summaryPeriod, setSummaryPeriod] = useState<SummaryPeriod>('today');
 
+  // Doctor options (all staff with doctor-like roles, period-independent)
+  const [doctorOptions, setDoctorOptions] = useState<DoctorOption[]>([]);
+
   // Add modal
   const [showAddModal, setShowAddModal] = useState(false);
   const [form, setForm] = useState<NewPaymentForm>(EMPTY_FORM);
@@ -243,6 +252,41 @@ export default function PaymentsPage() {
   useEffect(() => {
     fetchSummary();
   }, [fetchSummary]);
+
+  // -- Fetch all doctors (period-independent) ------------------------------
+
+  useEffect(() => {
+    fetch('/api/staff')
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        if (!data) return;
+        // /api/staff hozirda massiv qaytaradi; xavfsizlik uchun wrapped variantlar ham qo'llab-quvvatlanadi.
+        const list: Array<{
+          id: string;
+          name: string;
+          role: string;
+          isActive?: boolean;
+          deletedAt?: string | null;
+        }> = Array.isArray(data)
+          ? data
+          : Array.isArray(data?.data)
+            ? data.data
+            : Array.isArray(data?.users)
+              ? data.users
+              : [];
+        const doctors: DoctorOption[] = list
+          .filter(
+            (u) =>
+              ['DOCTOR', 'HEAD_DOCTOR', 'SPEECH_THERAPIST', 'MASSAGE_THERAPIST'].includes(u.role) &&
+              u.isActive !== false &&
+              !u.deletedAt,
+          )
+          .map((u) => ({ id: u.id, name: u.name, role: u.role }))
+          .sort((a, b) => a.name.localeCompare(b.name));
+        setDoctorOptions(doctors);
+      })
+      .catch(() => {});
+  }, []);
 
   // -- Patient search ------------------------------------------------------
 
@@ -561,7 +605,7 @@ export default function PaymentsPage() {
             className={selectCls}
           >
             <option value="">Barcha shifokorlar</option>
-            {summary?.byDoctor.map((d) => (
+            {doctorOptions.map((d) => (
               <option key={d.id} value={d.id}>{d.name}</option>
             ))}
           </select>
