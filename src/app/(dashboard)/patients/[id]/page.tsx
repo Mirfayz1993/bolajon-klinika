@@ -6,6 +6,13 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { useLanguage } from '@/hooks/useLanguage';
 import { usePermissions } from '@/hooks/usePermissions';
 import { printQr, printReceipt } from './_lib/print-templates';
+import { calcAge, fmt, fmtDate, fmtMoney } from './_lib/format';
+import { APPT_TYPE_LABELS, APPT_STATUS_COLORS } from './_lib/labels';
+import type {
+  Patient,
+  AssignedService,
+  ProfileData,
+} from './_lib/types';
 import { InfoTab } from './_components/InfoTab';
 import { ServicesTab } from './_components/ServicesTab';
 import { RecordsTab } from './_components/RecordsTab';
@@ -27,135 +34,6 @@ import {
   User,
   Stethoscope, CreditCard, FlaskConical, BedDouble, ClipboardList,
 } from 'lucide-react';
-
-// --- Types --------------------------------------------------------------------
-
-interface Patient {
-  id: string; firstName: string; lastName: string; fatherName: string;
-  phone: string; jshshir: string; birthDate: string;
-  district: string | null; houseNumber: string | null;
-  medicalHistory: string | null; allergies: string | null;
-  chronicConditions: string | null;
-  telegramChatId: string | null; createdAt: string; updatedAt: string;
-}
-
-interface Prescription {
-  id: string; medicineName: string; dosage: string;
-  duration: string; instructions?: string; createdAt: string;
-}
-
-interface MedicalRecord {
-  id: string; diagnosis?: string; treatment?: string; notes?: string;
-  createdAt: string;
-  doctor: { name: string; role: string; specialization?: { name: string } | null };
-  prescriptions: Prescription[];
-}
-
-interface Payment {
-  id: string; amount: number; method: string; category: string;
-  status: string; createdAt: string;
-  appointment?: { type: string; dateTime: string } | null;
-  admission?: { admissionType: string; admissionDate: string } | null;
-}
-
-interface LabTest {
-  id: string; status: string; results: Record<string, unknown> | null;
-  notes?: string | null; completedAt?: string | null; createdAt: string;
-  testType: { name: string; unit?: string | null; normalRange?: string | null; price: number };
-  labTech: { name: string; role: string };
-  payment?: { id: string; status: string } | null;
-}
-
-interface Admission {
-  id: string; admissionType: string; admissionDate: string; status: string;
-  dischargeDate?: string | null; dailyRate: number; notes?: string | null;
-  bed: { bedNumber: string; room: { floor: number; roomNumber: string; type: string } };
-}
-
-interface Appointment {
-  id: string; type: string; status: string; dateTime: string; notes?: string | null;
-  doctor: { name: string; role: string; specialization?: { name: string } | null };
-}
-
-interface NurseNote {
-  id: string; procedure: string; notes?: string | null;
-  medicines?: { name: string; quantity: number; unit: string }[] | null;
-  noteType?: string | null;
-  createdAt: string;
-  nurse: { name: string; role: string };
-  admission?: {
-    bed: { bedNumber: string; room: { floor: number; roomNumber: string } };
-  } | null;
-}
-
-interface AssignedService {
-  id: string;
-  categoryName: string;
-  itemName: string;
-  price: number;
-  isPaid: boolean;
-  paidAt: string | null;
-  paymentId: string | null;
-  assignedAt: string;
-  assignedBy: { name: string; role: string };
-  doctor?: { name: string; role: string } | null;
-  admission?: { bed: { bedNumber: string; room: { roomNumber: string; floor: number } } | null } | null;
-}
-
-interface ProfileData {
-  patient: Patient; medicalRecords: MedicalRecord[];
-  payments: Payment[]; labTests: LabTest[];
-  admissions: Admission[]; appointments: Appointment[];
-  nurseNotes: NurseNote[];
-}
-
-// --- Helpers ------------------------------------------------------------------
-
-function calcAge(birthDate: string): number {
-  const today = new Date(); const birth = new Date(birthDate);
-  let age = today.getFullYear() - birth.getFullYear();
-  const m = today.getMonth() - birth.getMonth();
-  if (m < 0 || (m === 0 && today.getDate() < birth.getDate())) age--;
-  return age;
-}
-
-function fmt(dateStr: string) {
-  return new Date(dateStr).toLocaleString('uz-UZ', {
-    year: 'numeric', month: '2-digit', day: '2-digit',
-    hour: '2-digit', minute: '2-digit',
-  });
-}
-
-function fmtDate(dateStr: string) {
-  return new Date(dateStr).toLocaleDateString('uz-UZ');
-}
-
-function fmtMoney(amount: number) {
-  return amount.toLocaleString('uz-UZ') + ' so\'m';
-}
-
-const CAT_LABELS: Record<string, string> = {
-  CHECKUP: 'Shifokor ko\'rigi', LAB_TEST: 'Laboratoriya', SPEECH_THERAPY: 'Logoped',
-  MASSAGE: 'Massaj', TREATMENT: 'Muolaja (ukol)', INPATIENT: 'Statsionar',
-  AMBULATORY: 'Ambulator',
-};
-
-const STATUS_COLORS: Record<string, string> = {
-  PAID: 'bg-green-100 text-green-800', PENDING: 'bg-yellow-100 text-yellow-800',
-  PARTIAL: 'bg-orange-100 text-orange-800', CANCELLED: 'bg-red-100 text-red-800',
-  REFUNDED: 'bg-blue-100 text-blue-800',
-};
-
-const APPT_TYPE_LABELS: Record<string, string> = {
-  CHECKUP: 'Ko\'rik', FOLLOW_UP: 'Qayta ko\'rik', SPEECH_THERAPY: 'Logoped',
-  MASSAGE: 'Massaj', LAB_TEST: 'Laboratoriya',
-};
-
-const APPT_STATUS_COLORS: Record<string, string> = {
-  SCHEDULED: 'bg-blue-100 text-blue-800', IN_QUEUE: 'bg-yellow-100 text-yellow-800',
-  IN_PROGRESS: 'bg-orange-100 text-orange-800', COMPLETED: 'bg-green-100 text-green-800',
-  CANCELLED: 'bg-red-100 text-red-800', NO_SHOW: 'bg-slate-100 text-slate-700',
-};
 
 // --- Page ---------------------------------------------------------------------
 

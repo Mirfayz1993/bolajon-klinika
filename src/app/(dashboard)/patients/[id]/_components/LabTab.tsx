@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { Plus, Printer } from 'lucide-react';
 import { Empty } from './ui';
+import { LAB_STATUS_COLORS } from '../_lib/labels';
 
 // --- Local prop types ---------------------------------------------------------
 
@@ -30,13 +31,6 @@ interface LabTabProps {
   fmt: (dateStr: string) => string;
   router: LabTabRouter;
 }
-
-const LAB_STATUS_COLORS: Record<string, string> = {
-  PENDING: 'bg-slate-100 text-slate-700',
-  IN_PROGRESS: 'bg-yellow-100 text-yellow-800',
-  COMPLETED: 'bg-green-100 text-green-800',
-  CANCELLED: 'bg-red-100 text-red-800',
-};
 
 export function LabTab({ labTests, patientId, canOrderLabTest, onOpenOrderModal, fmt, router }: LabTabProps) {
   const [labPrintSelectedIds, setLabPrintSelectedIds] = useState<string[]>([]);
