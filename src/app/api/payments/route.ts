@@ -15,6 +15,7 @@ export async function GET(req: NextRequest) {
     const status = searchParams.get('status') as PaymentStatus | null;
     const category = searchParams.get('category') as PaymentCategory | null;
     const method = searchParams.get('method') as PaymentMethod | null;
+    const doctorId = searchParams.get('doctorId');
     const dateFrom = searchParams.get('dateFrom');
     const dateTo = searchParams.get('dateTo');
     const pageParam = searchParams.get('page');
@@ -29,6 +30,7 @@ export async function GET(req: NextRequest) {
       status?: PaymentStatus;
       category?: PaymentCategory;
       method?: PaymentMethod;
+      appointment?: { is: { doctorId: string } };
       createdAt?: {
         gte?: Date;
         lte?: Date;
@@ -39,6 +41,7 @@ export async function GET(req: NextRequest) {
     if (status && Object.values(PaymentStatus).includes(status)) where.status = status;
     if (category && Object.values(PaymentCategory).includes(category)) where.category = category;
     if (method && Object.values(PaymentMethod).includes(method)) where.method = method;
+    if (doctorId) where.appointment = { is: { doctorId } };
 
     if (dateFrom || dateTo) {
       where.createdAt = {};
