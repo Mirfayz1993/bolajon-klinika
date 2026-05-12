@@ -25,6 +25,7 @@ import {
   Mic,
   Hand,
   Pill,
+  Download,
   type LucideIcon,
 } from 'lucide-react';
 
@@ -415,6 +416,20 @@ export default function PaymentsPage() {
     }
   };
 
+  // -- Export to CSV -------------------------------------------------------
+
+  const handleExport = () => {
+    const params = new URLSearchParams();
+    if (filterDoctor) params.set('doctorId', filterDoctor);
+    if (filterCategory) params.set('category', filterCategory);
+    if (filterMethod) params.set('method', filterMethod);
+    if (dateFrom) params.set('dateFrom', dateFrom);
+    if (dateTo) params.set('dateTo', dateTo);
+
+    const url = `/api/payments/export?${params.toString()}`;
+    window.location.href = url; // brauzer download boshlaydi
+  };
+
   // -- Filter reset --------------------------------------------------------
 
   const resetFilters = () => {
@@ -477,15 +492,25 @@ export default function PaymentsPage() {
             ))}
           </div>
         </div>
-        {can('/payments:create') && (
+        <div className="flex items-center gap-2">
           <button
-            onClick={openAddModal}
-            className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg transition-colors text-sm font-medium"
+            onClick={handleExport}
+            className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg border border-slate-300 bg-white text-slate-700 hover:bg-slate-50 text-sm font-medium transition"
+            type="button"
           >
-            <Plus className="w-4 h-4" />
-            {t.payments.addPayment}
+            <Download className="w-4 h-4" />
+            Excelga eksport
           </button>
-        )}
+          {can('/payments:create') && (
+            <button
+              onClick={openAddModal}
+              className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg transition-colors text-sm font-medium"
+            >
+              <Plus className="w-4 h-4" />
+              {t.payments.addPayment}
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Summary Cards */}
