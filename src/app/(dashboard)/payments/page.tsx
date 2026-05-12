@@ -66,6 +66,7 @@ interface Payment {
 interface PaymentsResponse {
   data: Payment[];
   total: number;
+  totalAmount: number;
   page: number;
   limit: number;
   totalPages: number;
@@ -160,6 +161,7 @@ export default function PaymentsPage() {
   // List state
   const [payments, setPayments] = useState<Payment[]>([]);
   const [total, setTotal] = useState(0);
+  const [filteredTotalAmount, setFilteredTotalAmount] = useState(0);
   const [totalPages, setTotalPages] = useState(1);
   const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(false);
@@ -221,6 +223,7 @@ export default function PaymentsPage() {
       const json: PaymentsResponse = await res.json();
       setPayments(json.data);
       setTotal(json.total);
+      setFilteredTotalAmount(json.totalAmount ?? 0);
       setTotalPages(json.totalPages);
     } catch {
       setError(t.common.error);
@@ -786,11 +789,9 @@ export default function PaymentsPage() {
           <div className="flex items-center justify-between px-4 py-3 border-t border-slate-100">
             <span className="text-sm text-slate-500">
               {t.common.total}: {total} {t.payments.totalPayments}
-              {summary && (
-                <span className="ml-3 font-semibold text-slate-700">
-                  | {formatMoney(summary.totalAmount)}
-                </span>
-              )}
+              <span className="ml-3 font-semibold text-slate-700">
+                | {formatMoney(filteredTotalAmount)}
+              </span>
             </span>
             <div className="flex items-center gap-1">
               <button

@@ -58,7 +58,7 @@ export async function GET(req: NextRequest) {
       }
     }
 
-    const [payments, total] = await Promise.all([
+    const [payments, total, aggregate] = await Promise.all([
       prisma.payment.findMany({
         where,
         skip,
@@ -84,6 +84,10 @@ export async function GET(req: NextRequest) {
         },
       }),
       prisma.payment.count({ where }),
+      prisma.payment.aggregate({
+        where: { ...where, status: { in: ['PAID', 'PARTIAL'] } },
+        _sum: { amount: true },
+      }),
     ]);
 
     const data = payments.map((p) => ({
@@ -91,9 +95,11 @@ export async function GET(req: NextRequest) {
       amount: Number(p.amount),
     }));
 
+    const totalAmount = Number(aggregate._sum.amount ?? 0);
+
     const totalPages = Math.ceil(total / limit);
 
-    return NextResponse.json({ data, total, page, limit, totalPages });
+    return NextResponse.json({ data, total, totalAmount, page, limit, totalPages });
   } catch (error) {
     console.error(error);
     return NextResponse.json({ error: 'Server error' }, { status: 500 });
