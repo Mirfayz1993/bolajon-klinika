@@ -16,6 +16,11 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: "Bolajon Klinika CMS",
   description: "Bolalar klinikalari uchun to'liq boshqaruv tizimi",
+  icons: {
+    icon: [{ url: '/icon.jpg', type: 'image/jpeg' }],
+    apple: '/icon.jpg',
+    shortcut: '/icon.jpg',
+  },
 };
 
 export default function RootLayout({
