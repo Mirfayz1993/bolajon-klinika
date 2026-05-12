@@ -77,6 +77,8 @@ export async function POST(
           status: 'PAID',
           description: `${svc.categoryName} - ${svc.itemName}`,
           receivedById: session.user.id,
+          appointmentId: svc.appointmentId ?? undefined,
+          admissionId: svc.admissionId ?? undefined,
         },
       });
       await tx.assignedService.update({
